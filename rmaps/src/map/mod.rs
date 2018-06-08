@@ -1,7 +1,9 @@
 use prelude::*;
 
+pub mod render;
 pub mod layers;
 pub mod style;
+pub mod storage;
 
 use map::layers::Layer;
 
@@ -14,12 +16,13 @@ struct Vertex {
 implement_vertex!(Vertex, position, color);
 
 pub struct MapView {
+    facade : Box<glium::backend::Facade>,
     style: Option<style::Style>,
     layers : Vec<layers::LayerHolder>
 }
 
 impl MapView {
-    pub fn new<F: glium::backend::Facade>(f: &F) -> Result<Self> {
+    pub fn new<F: glium::backend::Facade + Clone + 'static>(f: &F) -> Result<Self> {
         let vbo = VertexBuffer::new(f, &[
             Vertex { position: [-0.5, -0.5], color: [0.0, 1.0, 0.0] },
             Vertex { position: [0.0, 0.5], color: [0.0, 0.0, 1.0] },
@@ -37,6 +40,7 @@ impl MapView {
         )?;
 
         return Ok(MapView {
+            facade : Box::new((*f).clone()),
             style: None,
             layers : vec![]
 
@@ -45,7 +49,7 @@ impl MapView {
 
     pub fn set_style(&mut self, style: style::Style) {
         self.layers.clear();
-        self.layers = layers::parse_style_layers(&style);
+        self.layers = layers::parse_style_layers(self.facade.deref(), &style);
         println!("Layers : {:#?}", self.layers);
         self.style = Some(style);
     }

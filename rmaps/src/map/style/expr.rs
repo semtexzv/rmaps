@@ -1,7 +1,7 @@
 use prelude::*;
 
 
-#[derive(Debug, Deserialize,Clone)]
+#[derive(Debug, Deserialize, Clone)]
 #[serde(untagged)]
 pub enum Value {
     String(String),
@@ -9,7 +9,7 @@ pub enum Value {
     Bool(bool),
 }
 
-#[derive(Debug, Deserialize,Clone)]
+#[derive(Debug, Deserialize, Clone)]
 #[serde(untagged)]
 pub enum PropKey {
     #[serde(rename = "$type")]
@@ -19,15 +19,10 @@ pub enum PropKey {
     Key(String),
 }
 
-#[derive(Debug, Deserialize,Clone)]
-#[serde(untagged)]
-pub enum FilterVal {
-    Raw(bool),
-    Filter(Filter),
-}
 
-#[derive(Debug,Clone)]
+#[derive(Debug, Clone)]
 pub enum Filter {
+    Raw(bool),
     Has(PropKey),
     NotHas(PropKey),
     In(PropKey, Vec<Value>),
@@ -57,7 +52,24 @@ fn from_jvalue<T: ::common::serde::de::DeserializeOwned>(val: &json::Value) -> S
 impl<'de> Deserialize<'de> for Filter {
     fn deserialize<D>(deserializer: D) -> StdResult<Self, <D as Deserializer<'de>>::Error> where
         D: Deserializer<'de> {
-        let mut data: Vec<json::Value> = Deserialize::deserialize(deserializer)?;
+        #[derive(Deserialize)]
+        #[serde(untagged)]
+        enum Help {
+            Bool(bool),
+            Arr(Vec<json::Value>),
+        };
+        let data: Help = Deserialize::deserialize(deserializer)?;
+        if let Help::Bool(b) = data {
+            return Ok(Filter::Raw(b));
+        }
+
+        let mut data = if let Help::Arr(d) = data {
+            d
+        }  else {
+            panic!()
+        };
+
+
 
         let serde_err = |e| {
             serde::de::Error::custom("Invalid filter")
@@ -114,7 +126,7 @@ impl<'de> Deserialize<'de> for Filter {
                             .collect::<StdResult<Vec<_>, _>>()?;
 
                         Filter::In(from_jvalue(key).map_err(serde_err)?, vals)
-                    },
+                    }
                     ("!in", [key, rest..]) => {
                         let vals = rest.iter()
                             .map(|v| from_jvalue(v).map_err(serde_err))

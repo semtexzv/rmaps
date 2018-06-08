@@ -6,6 +6,9 @@ pub use std::{
         Debug
     },
     result::Result as StdResult,
+    str::FromStr,
+    string::ToString,
+    ops::{Deref,DerefMut}
 };
 pub use gl;
 pub use glium::{

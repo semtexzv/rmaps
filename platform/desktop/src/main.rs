@@ -15,7 +15,7 @@ fn main() {
 
     let display = glium::Display::new(window, context, &events_loop).unwrap();
 
-    let mut map = rmaps::map::MapView::new(&display).unwrap();
+    let mut map = rmaps::map::MapView::new(&display.clone()).unwrap();
     map.set_style(common::json::from_str(include_str!("../../../bright.json")).unwrap());
 
     let mut running = true;
