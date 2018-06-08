@@ -1,0 +1,16 @@
+[package]
+name = "common"
+version = "0.1.0"
+authors = ["Michal Hornický <semtexzv@gmail.com>"]
+
+[dependencies]
+gl = "*"
+glium = { version = "*", no-default-features = true }
+error-chain = "*"
+
+serde="*"
+serde_derive="*"
+serde_json="*"
+
+
+palette = "0.4"

@@ -1,0 +1,10 @@
+[package]
+name = "rmaps"
+version = "0.1.0"
+authors = ["Michal Hornický <semtexzv@gmail.com>"]
+
+[dependencies]
+common = { path = "../common" }
+mapbox-tiles = { path = "../mapbox-tiles" }
+css-color-parser = "0.1.2"
+serde="*"
