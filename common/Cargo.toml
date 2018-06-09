@@ -7,6 +7,7 @@ authors = ["Michal Hornický <semtexzv@gmail.com>"]
 gl = "*"
 glium = { version = "*", no-default-features = true }
 error-chain = "*"
+reqwest = "*"
 
 serde="*"
 serde_derive="*"

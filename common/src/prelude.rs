@@ -50,5 +50,7 @@ error_chain! {
         GliumIndexCreate(glium::index::BufferCreationError);
         ProgramCreate(glium::program::ProgramCreationError);
         ProgramCreateChooser(glium::program::ProgramChooserCreationError);
+
+        Reqwest(::reqwest::Error);
     }
 }

@@ -6,6 +6,7 @@ pub mod style;
 pub mod storage;
 
 use map::layers::Layer;
+use act::Actor;
 
 #[derive(Copy, Clone)]
 struct Vertex {
@@ -16,10 +17,12 @@ struct Vertex {
 implement_vertex!(Vertex, position, color);
 
 pub struct MapView {
-    facade : Box<glium::backend::Facade>,
+    facade: Box<glium::backend::Facade>,
     style: Option<style::Style>,
-    layers : Vec<layers::LayerHolder>
+    layers: Vec<layers::LayerHolder>,
+    source: storage::FileSource,
 }
+
 
 impl MapView {
     pub fn new<F: glium::backend::Facade + Clone + 'static>(f: &F) -> Result<Self> {
@@ -39,11 +42,14 @@ impl MapView {
             }
         )?;
 
-        return Ok(MapView {
-            facade : Box::new((*f).clone()),
-            style: None,
-            layers : vec![]
+        let source = storage::FileSource::new();
 
+        //source.spawn_thread();
+        return Ok(MapView {
+            facade: Box::new((*f).clone()),
+            style: None,
+            layers: vec![],
+            source: source,
         });
     }
 
@@ -54,10 +60,12 @@ impl MapView {
         self.style = Some(style);
     }
     pub fn render<S: glium::Surface>(&mut self, target: &mut S) {
-
+        self.source.process_messages();
         for l in self.layers.iter_mut() {
             l.render(target);
         }
+        let mut h = self.source.handle().clone();
+        h.test();
         /*
         let uniforms = uniform! {
             matrix: [

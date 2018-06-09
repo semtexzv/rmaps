@@ -13,6 +13,8 @@ fn main() {
     let context = glutin::ContextBuilder::new()
         .with_vsync(true);
 
+    ::rmaps::init();
+
     let display = glium::Display::new(window, context, &events_loop).unwrap();
 
     let mut map = rmaps::map::MapView::new(&display.clone()).unwrap();
