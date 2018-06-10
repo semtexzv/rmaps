@@ -18,7 +18,7 @@ pub fn fn_msg_name(fn_name: &impl ::std::fmt::Display, base_actor_name: &impl ::
     Ident::new(&format!("Msg_{}_{}", base_actor_name, fn_name), Span::call_site())
 }
 
-pub fn make_ident(x: &impl ::std::fmt::Display) -> Ident {
+pub fn make_path(x: &impl ::std::fmt::Display) -> Ident {
     Ident::new(&format!("{}", x), Span::call_site())
 }
 

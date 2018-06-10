@@ -24,11 +24,12 @@ pub fn gen_msg_handle_sig(handle_name : &Ident, base_actor_name : &Ident , sig: 
 
     let mut sig = sig.clone();
     sig.decl.inputs = parse_quote!(&self,#(#args),*);
-
+    sig.decl.output = parse_quote!(-> Box<Future<Item=#msg_return_type, Error=::actix::MailboxError>>);
+/*
     if traited {
         sig.decl.output = parse_quote!(-> ::actix::dev::Request<::actix::Syn,Self::ActorType,#msg_ident #msg_generics>);
     } else {
         sig.decl.output = parse_quote!(-> ::actix::dev::Request<::actix::Syn,#base_actor_name,#msg_ident #msg_generics>);
-    }
+    }*/
     sig
 }

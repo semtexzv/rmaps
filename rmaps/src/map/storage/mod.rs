@@ -8,31 +8,40 @@ pub mod local;
 pub use self::resource::*;
 pub use self::response::Response as ResResponse;
 
-pub trait Source {
-    // TODO, async loading, Callbacks or messages,
-    // Resource -> Response
+#[derive_actor_trait]
+pub trait FileAcceptor {
+    fn resource_ready(&mut self, res: ResResponse);
+}
 
-    fn can_handle(&self, url: &str) -> bool;
+#[derive_actor_trait]
+pub trait FileSource {
+    fn can_handle(&self, res: Resource) -> bool;
+    fn get(&mut self, res: Resource, accept_addr: Box<FileAcceptorAddr + Send + 'static>);
 }
 
 #[derive(Actor)]
-pub struct FileSource {
-    sources: Vec<Box<Source + Send + 'static>>
+pub struct DefaultFileSource {
+    sources: Vec<Box<FileSourceAddr + Send + 'static>>
 }
 
-impl FileSource {
+impl DefaultFileSource {
     pub fn new() -> Self {
-        FileSource {
+        let b: Box<FileSourceAddr + Send + 'static> = Box::new(local::LocalFileSource::spawn());
+        let bb: Box<FileSourceAddr + Send + 'static> = Box::new(local::LocalFileSource::spawn());
+
+        DefaultFileSource {
             sources: vec![
-                Box::new(local::LocalFileSource::new())
+                b,
+                bb
             ]
+        }
+    }
+
+    pub fn spawn() -> DefaultFileSourceAddr {
+        DefaultFileSourceAddr {
+            addr: start_in_thread::<DefaultFileSource,_>(|| DefaultFileSource::new() )
         }
     }
 }
 
-#[actor_impl]
-impl FileSource{
-    fn handle(&mut self, res : Resource) -> Result<response::Response> {
-        panic!("A")
-    }
-}
+

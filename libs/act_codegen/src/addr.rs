@@ -40,7 +40,7 @@ pub fn generate_actor_handle_trait(name: &Ident, actor_trait: &ItemTrait) -> Ite
 
     let res = quote! {
         pub trait #handle_name {
-            type ActorType : ::actix::Actor<Context=::actix::Context<Self::ActorType>> + #(::actix::Handler<#msg_types #msg_ty_generics>)+*;
+           // type ActorType : ::actix::Actor<Context=::actix::Context<Self::ActorType>> + #(::actix::Handler<#msg_types #msg_ty_generics>)+* = #name;
 
             #others
             #(#handle_sigs;)*
@@ -54,7 +54,7 @@ pub fn generate_actor_handle_trait(name: &Ident, actor_trait: &ItemTrait) -> Ite
 
 pub fn generate_actor_handle_impl_simple(item: &ItemImpl) -> ItemImpl {
     let actor_name: Ident =  if let &Type::Path(ref p) = item.self_ty.deref() {
-        let a = make_ident(&quote!( #p));
+        let a = make_path(&quote!( #p));
         a
     } else {
         panic!("Unsupported impl target")
@@ -90,8 +90,8 @@ pub fn generate_actor_handle_impl_traited(item: &ItemImpl) -> ItemImpl {
             None
         };
 
-        let a = make_ident(&quote!( #p));
-        let b = make_ident(&quote!( #trait_path ));
+        let a = make_path(&quote!( #p));
+        let b = make_path(&quote!( #trait_path ));
         (a, b)
     } else {
         panic!("Unsupported impl target")
@@ -111,9 +111,14 @@ pub fn generate_actor_handle_impl_traited(item: &ItemImpl) -> ItemImpl {
             handle_methods.push(::actor_fns::gen_msg_handle_method_async(&handle_name, &_trait_name, &m.sig));
         }
     }
+
+    for m in handle_methods.iter_mut() {
+        m.vis = Visibility::Inherited;
+    }
+
     let res = parse_quote! {
         impl #trait_handle_name for #handle_name {
-            type ActorType = #actor_name;
+           // type ActorType = #actor_name;
             #(#handle_methods)*
         }
     };

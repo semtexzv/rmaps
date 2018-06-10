@@ -2,6 +2,7 @@ pub use ::common::export::*;
 pub use ::act_codegen::*;
 
 pub fn start_in_thread<A: Actor<Context=Context<A>> + Send + 'static, F: FnOnce() -> A + Send + 'static>(a: F) -> Addr<Syn,A> {
+
     let (tx, rx) = ::std::sync::mpsc::channel();
 
     ::std::thread::spawn(move || {

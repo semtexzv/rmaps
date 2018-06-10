@@ -14,7 +14,6 @@ pub extern crate palette;
 
 
 pub extern crate actix;
-pub extern crate actix_derive;
 pub extern crate futures;
 
 

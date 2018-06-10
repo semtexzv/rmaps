@@ -53,13 +53,13 @@ pub struct MapViewImpl {
     facade: Box<glium::backend::Facade>,
     style: Option<style::Style>,
     layers: Vec<layers::LayerHolder>,
-    source: Addr<Syn, storage::FileSource>,
+    source: storage::DefaultFileSourceAddr,
 }
 
 
 impl MapViewImpl {
     pub fn new<F: glium::backend::Facade + Clone + 'static>(f: &F) -> Self {
-        let src_add = start_in_thread(|| storage::FileSource::new());
+        let src_add = storage::DefaultFileSource::spawn();
 
         let m = MapViewImpl {
             facade: Box::new((*f).clone()),

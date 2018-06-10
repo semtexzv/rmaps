@@ -16,7 +16,7 @@ pub fn gen_msg_struct(base_actor_name: &Ident, sig: &MethodSig) -> DeriveInput {
     let mut args = get_args_except_first(&sig.decl.inputs);
     let (arg_names, arg_types) = split_arg_names_and_types(&args);
 
-    parse_quote!( struct #msg_ident #ty_generics (#(#arg_types),*);)
+    parse_quote!(pub struct #msg_ident #ty_generics (#(#arg_types),*);)
 }
 
 

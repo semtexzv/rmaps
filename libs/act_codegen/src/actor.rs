@@ -12,7 +12,7 @@ fn generate_actor_impl(input: &DeriveInput) -> proc_macro2::TokenStream {
     let expanded = quote! {
         // The generated impl.
         impl #impl_generics ::actix::Actor for #name #ty_generics #where_clause {
-            type Context = ::actix::Context<#name #ty_generics>;
+            type Context = ::actix::Context<Self>;
         }
     };
     expanded

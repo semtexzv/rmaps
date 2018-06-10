@@ -15,7 +15,7 @@ pub fn gen_msg_handle_method(handle_name: &Ident, base_actor_name: &Ident, sig: 
     let handle_method = parse_quote!{
         pub #sig {
             let data = #msg_ident(#(#arg_names),*);
-            self.addr.send(data)
+            Box::new(self.addr.send(data))
         }
     };
     handle_method
@@ -72,7 +72,7 @@ pub fn gen_impl_handler(actor_name: &Ident, base_actor_name: &Ident, sig: &Metho
 
 pub fn actor_impl_simple(input : &ItemImpl) -> proc_macro2::TokenStream {
     let i = &input.self_ty;
-    let actor_name = make_ident(&quote!(#i));
+    let actor_name = make_path(&quote!(#i));
     let handle_name = actor_handle_name(&actor_name);
 
 
@@ -110,9 +110,9 @@ pub fn actor_impl_simple(input : &ItemImpl) -> proc_macro2::TokenStream {
 
 pub fn actor_impl_traited(input : &ItemImpl) -> proc_macro2::TokenStream {
     let i = &input.self_ty;
-    let actor_name = make_ident(&quote!(#i));
+    let actor_name = make_path(&quote!(#i));
     let t = &input.trait_.as_ref().unwrap().1;
-    let trait_name = make_ident(&quote!(#t));
+    let trait_name = make_path(&quote!(#t));
 
     let handle_name = actor_handle_name(&actor_name);
     let trait_handle_name = actor_handle_name(&actor_name);
@@ -132,75 +132,3 @@ pub fn actor_impl_traited(input : &ItemImpl) -> proc_macro2::TokenStream {
     };
     res
 }
-
-/*
-pub struct ActorImplRes {
-    pub source_impl: ItemImpl,
-    pub generated: proc_macro2::TokenStream,
-    pub register: proc_macro2::TokenStream,
-}
-pub fn actor_impl(input: &ItemImpl) -> ActorImplRes {
-    let (actor_name, handle_name): (Ident, Ident) = if let &Type::Path(ref p) = input.self_ty.deref() {
-        let a = make_ident(&quote!( #p));
-        let b = actor_handle_name(&a);
-        (a, b)
-    } else {
-        panic!("Unsupported impl target")
-    };
-
-    let trait_path: Option<Path> = if let Some((_, ref p, _)) = input.trait_ {
-        Some(p.clone())
-    } else {
-        None
-    };
-
-    let trait_ident: Option<Ident> = trait_path.as_ref().and_then(|p| {
-        p.segments.last().as_ref().map(|v| v.clone().value().ident.clone())
-    });
-
-    let base_actor_name = if let Some(ref p) = trait_ident {
-        p.clone()
-    } else {
-        actor_name.clone()
-    };
-
-
-    let mut msg_structs = vec![];
-    let mut msg_impls: Vec<ItemImpl> = vec![];
-    let mut handle_methods: Vec<_> = vec![];
-    let mut registers: Vec<_> = vec![];
-
-    for i in input.items.iter() {
-        if let ImplItem::Method(ref m) = i {
-            let mut msg_name = fn_msg_name(&m.sig.ident, &base_actor_name);
-            let mut return_type = return_type(&m.sig);
-
-            msg_structs.push(::msg::gen_msg_struct(&base_actor_name, &m.sig));
-            msg_impls.push(::msg::gen_msg_msg_impl(&base_actor_name, &m.sig));
-
-            handle_methods.push(::actor_fns::gen_msg_handle_method(&handle_name, &base_actor_name, &m.sig));
-            handle_methods.push(::actor_fns::gen_msg_handle_method_async(&handle_name, &base_actor_name, &m.sig));
-            registers.push(::actor_fns::gen_impl_handler(&actor_name, &base_actor_name, &m.sig));
-        }
-    }
-    let mut opt_handle_from = quote!();
-
-    let res = quote! {
-        # ( # msg_structs) *
-        # ( # msg_impls) *
-
-
-        impl # handle_name {
-            # ( # handle_methods) *
-        }
-        #opt_handle_from
-    };
-
-    ActorImplRes {
-        source_impl: input.clone(),
-        generated: res.into(),
-        register: quote!(#(#registers)*),
-    }
-}
-
-*/

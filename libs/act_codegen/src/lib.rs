@@ -20,6 +20,7 @@ mod actor_fns;
 mod msg;
 mod addr;
 
+
 use syn::synom::Parser;
 use syn::synom::Synom;
 use syn::parse;
@@ -39,6 +40,7 @@ pub fn actor_impls(attr: proc_macro::TokenStream, item: proc_macro::TokenStream)
 */
 #[proc_macro_attribute]
 pub fn actor_impl(attr: proc_macro::TokenStream, item: proc_macro::TokenStream) -> proc_macro::TokenStream {
+    //panic!("{:#?}", i);
     let a  : proc_macro2::TokenStream = item.clone().into();
     let _impl : syn::ItemImpl = parse(item).unwrap();
     let res = if let  Some(ref x) = _impl.trait_ {

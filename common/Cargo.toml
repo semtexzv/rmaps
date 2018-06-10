@@ -16,5 +16,5 @@ serde_json="*"
 
 futures = "0.1"
 actix =  { path = "../libs/actix" }
-actix_derive =  { path = "../libs/actix-derive" }
+
 palette = "0.4"

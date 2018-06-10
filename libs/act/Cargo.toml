@@ -1,7 +1,0 @@
-[package]
-name = "act"
-version = "0.1.0"
-authors = ["semtexzv <semtexzv@gmail.com>"]
-
-[dependencies]
-futures = "0.1"
