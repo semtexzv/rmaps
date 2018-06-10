@@ -1,56 +1,38 @@
+use prelude::*;
+
 pub mod resource;
 pub mod response;
 
+pub mod local;
+
 pub use self::resource::*;
+pub use self::response::Response as ResResponse;
 
 pub trait Source {
     // TODO, async loading, Callbacks or messages,
     // Resource -> Response
-}
 
-use act;
-use ::act::Actor;
-use ::act_codegen::{actor_impls, derive_actor_trait, Actor};
+    fn can_handle(&self, url: &str) -> bool;
+}
 
 #[derive(Actor)]
 pub struct FileSource {
-    handle: FileSourceHandle,
-    inbox: ::act::Inbox,
+    sources: Vec<Box<Source + Send + 'static>>
 }
 
 impl FileSource {
     pub fn new() -> Self {
-        let (inbox, handle) = FileSourceHandle::new_inbox_pair();
         FileSource {
-            handle,
-            inbox,
+            sources: vec![
+                Box::new(local::LocalFileSource::new())
+            ]
         }
     }
 }
 
-#[derive_actor_trait]
-pub trait ResourceAcceptor {
-    fn accept(&mut self, data: response::Response);
-}
-
-
-#[actor_impls(FileSource)]
-pub mod actor_impls {
-    use super::*;
-
-    impl FileSource {
-        pub fn get(&mut self, accept: ResourceAcceptorHandle, res: resource::Resource) {
-
-        }
-        pub fn test(&mut self) {
-            panic!("Processing message");
-        }
-    }
-
-    impl ResourceAcceptor for FileSource {
-        fn accept(&mut self, data: response::Response) {
-            let mut h:  ResourceAcceptorHandle = self.handle().clone().into();
-            self.handle.get(h,unimplemented!());
-        }
+#[actor_impl]
+impl FileSource{
+    fn handle(&mut self, res : Resource) -> Result<response::Response> {
+        panic!("A")
     }
 }

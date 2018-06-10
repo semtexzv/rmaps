@@ -4,6 +4,4 @@ version = "0.1.0"
 authors = ["semtexzv <semtexzv@gmail.com>"]
 
 [dependencies]
-
-uuid = "*"
-lazy_static = "1.0"
+futures = "0.1"

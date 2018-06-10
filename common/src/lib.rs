@@ -13,6 +13,11 @@ pub extern crate serde_json as json;
 pub extern crate palette;
 
 
+pub extern crate actix;
+pub extern crate actix_derive;
+pub extern crate futures;
+
+
 pub extern crate reqwest;
 
 pub mod prelude;

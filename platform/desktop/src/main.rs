@@ -17,16 +17,14 @@ fn main() {
 
     let display = glium::Display::new(window, context, &events_loop).unwrap();
 
-    let mut map = rmaps::map::MapView::new(&display.clone()).unwrap();
-    map.set_style(common::json::from_str(include_str!("../../../bright.json")).unwrap());
+    let mut map = rmaps::map::MapView::new(&display.clone());//.unwrap();
+    map.set_style_url("file://../../../bright.json");
 
     let mut running = true;
     while running {
 
-        let mut surface = display.draw();
-        map.render(&mut surface);
-        surface.finish().unwrap();
-
+        let surface = display.draw();
+        map.render(surface);
 
         events_loop.poll_events(|event| {
             match event {

@@ -7,8 +7,8 @@ authors = ["Michal Hornický <semtexzv@gmail.com>"]
 common = { path = "../common" }
 mapbox-tiles = { path = "../mapbox-tiles" }
 
-act = { path = "../libs/act"}
-act_codegen = { path = "../libs/act_codegen"}
-
 css-color-parser = "0.1.2"
 serde="*"
+actix = {path ="../libs/actix"}
+act = {path = "../libs/act"}
+act_codegen = {path ="../libs/act_codegen"}

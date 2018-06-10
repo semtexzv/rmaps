@@ -7,7 +7,8 @@ pub use common::gl::{
 };
 
 pub use common::glium::{
-    self
+    self,
+    Display,
 };
 pub use common::glium::glutin::{
     self,

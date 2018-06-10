@@ -6,51 +6,70 @@ pub mod style;
 pub mod storage;
 
 use map::layers::Layer;
-use act::Actor;
 
-#[derive(Copy, Clone)]
-struct Vertex {
-    position: [f32; 2],
-    color: [f32; 3],
-}
-
-implement_vertex!(Vertex, position, color);
 
 pub struct MapView {
+    addr: Addr<Unsync, MapViewImpl>,
+    sys: SystemRunner,
+}
+
+impl MapView {
+    pub fn new<F: glium::backend::Facade + Clone + 'static>(f: &F) -> Self {
+        let mut sys = System::new("Map");
+        let _impl = MapViewImpl::new(f);
+
+        let addr = _impl.start();
+
+        return MapView {
+            sys,
+            addr,
+        };
+    }
+
+    pub fn do_run<R>(&mut self, f: impl FnOnce(Addr<Unsync, MapViewImpl>) -> R) -> R {
+        let addr = self.addr.clone();
+        let res = self.sys.run_until_complete(::common::futures::future::lazy(|| {
+            Ok::<R, !>(f(addr))
+        }));
+        self.sys.pulse();
+        res.unwrap()
+    }
+
+    pub fn render(&mut self, surface: glium::Frame) {
+        self.do_run(|add| {
+            add.do_send(MapMethodArgs::Render(surface));
+        });
+    }
+
+    pub fn set_style_url(&mut self, url: &str) {
+        self.do_run(|add| {
+            add.do_send(MapMethodArgs::SetStyleUrl(url.into()));
+        });
+    }
+}
+
+
+pub struct MapViewImpl {
     facade: Box<glium::backend::Facade>,
     style: Option<style::Style>,
     layers: Vec<layers::LayerHolder>,
-    source: storage::FileSource,
+    source: Addr<Syn, storage::FileSource>,
 }
 
 
-impl MapView {
-    pub fn new<F: glium::backend::Facade + Clone + 'static>(f: &F) -> Result<Self> {
-        let vbo = VertexBuffer::new(f, &[
-            Vertex { position: [-0.5, -0.5], color: [0.0, 1.0, 0.0] },
-            Vertex { position: [0.0, 0.5], color: [0.0, 0.0, 1.0] },
-            Vertex { position: [0.5, -0.5], color: [1.0, 0.0, 0.0] },
-        ])?;
+impl MapViewImpl {
+    pub fn new<F: glium::backend::Facade + Clone + 'static>(f: &F) -> Self {
+        let src_add = start_in_thread(|| storage::FileSource::new());
 
-        let ibo = glium::IndexBuffer::new(f, PrimitiveType::TrianglesList,
-                                          &[0u16, 1, 2])?;
-
-        let program = program!(f,
-            100 es => {
-                vertex: include_str!("../../../shaders/raster_simple.vert.glsl"),
-                fragment: include_str!("../../../shaders/raster_simple.frag.glsl"),
-            }
-        )?;
-
-        let source = storage::FileSource::new();
-
-        //source.spawn_thread();
-        return Ok(MapView {
+        let m = MapViewImpl {
             facade: Box::new((*f).clone()),
             style: None,
             layers: vec![],
-            source: source,
-        });
+            source: src_add,
+        };
+
+
+        return m;
     }
 
     pub fn set_style(&mut self, style: style::Style) {
@@ -59,28 +78,40 @@ impl MapView {
         println!("Layers : {:#?}", self.layers);
         self.style = Some(style);
     }
-    pub fn render<S: glium::Surface>(&mut self, target: &mut S) {
-        self.source.process_messages();
+
+    pub fn set_style_url(&mut self, url: &str) {}
+    pub fn render(&mut self, target: &mut glium::Frame) {
         for l in self.layers.iter_mut() {
             l.render(target);
         }
-        let mut h = self.source.handle().clone();
-        h.test();
-        /*
-        let uniforms = uniform! {
-            matrix: [
-                [1.0, 0.0, 0.0, 0.0],
-                [0.0, 1.0, 0.0, 0.0],
-                [0.0, 0.0, 1.0, 0.0],
-                [0.0, 0.0, 0.0, 1.0f32]
-            ]
+    }
+}
+
+impl Actor for MapViewImpl {
+    type Context = Context<Self>;
+}
+
+pub enum MapMethodArgs {
+    Render(glium::Frame),
+    SetStyleUrl(String),
+}
+
+impl Message for MapMethodArgs {
+    type Result = ();
+}
+
+impl Handler<MapMethodArgs> for MapViewImpl {
+    type Result = ();
+
+    fn handle(&mut self, mut msg: MapMethodArgs, ctx: &mut Self::Context) -> <Self as Handler<MapMethodArgs>>::Result {
+        match msg {
+            MapMethodArgs::Render(mut frame) => {
+                self.render(&mut frame);
+                frame.finish();
+            }
+            MapMethodArgs::SetStyleUrl(url) => {
+                self.set_style_url(&url)
+            }
         };
-
-        target.clear_color(0.0, 0.0, 0.0, 0.0);
-        target.draw(&self.vbo, &self.ibo, &self.program, &uniforms, &Default::default()).unwrap();
-
-
-        //surface.clear(None, Some((1f32, 0.0, 0.0, 0.0)), false, Some(0f32), Some(0));
-        */
     }
 }

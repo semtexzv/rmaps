@@ -4,6 +4,7 @@
 #![feature(slice_patterns)]
 #![feature(proc_macro)]
 #![feature(proc_macro_mod)]
+#![feature(never_type)]
 #![allow(unused_imports)]
 #[prelude_import]
 use std::prelude::v1::*;
@@ -13,9 +14,13 @@ pub extern crate common;
 pub extern crate css_color_parser;
 pub extern crate mapbox_tiles;
 
+pub extern crate act_codegen;
+
+/*
 pub extern crate act;
 #[macro_use]
 pub extern crate act_codegen;
+*/
 
 pub mod prelude {
 
@@ -47,8 +52,26 @@ pub mod prelude {
     }
     */
 
+    //map::storage::actor_impls::setup();
     //map::storage::setup_FileSource();
+    pub use common::actix_derive::*;
     pub use common::export::*;
+    pub fn start_in_thread<
+        A: Actor<Context = Context<A>> + Send + 'static,
+        F: FnOnce() -> A + Send + 'static,
+    >(
+        a: F,
+    ) -> Addr<Syn, A> {
+        let (tx, rx) = ::std::sync::mpsc::channel();
+        ::std::thread::spawn(move || {
+            let sys = System::new("aa");
+            let actor = a();
+            let addr = actor.start();
+            let _ = tx.send(addr);
+            let _ = sys.run();
+        });
+        rx.recv().unwrap()
+    }
 }
 pub mod map {
     use prelude::*;
@@ -773,31 +796,36 @@ pub mod map {
                                     from_jvalue(value).map_err(serde_err)?,
                                 ),
                                 ("in", [key, rest..]) => {
-                                    let vals = rest.iter()
+                                    let vals = rest
+                                        .iter()
                                         .map(|v| from_jvalue(v).map_err(serde_err))
                                         .collect::<StdResult<Vec<_>, _>>()?;
                                     Filter::In(from_jvalue(key).map_err(serde_err)?, vals)
                                 }
                                 ("!in", [key, rest..]) => {
-                                    let vals = rest.iter()
+                                    let vals = rest
+                                        .iter()
                                         .map(|v| from_jvalue(v).map_err(serde_err))
                                         .collect::<StdResult<Vec<_>, _>>()?;
                                     Filter::NotIn(from_jvalue(key).map_err(serde_err)?, vals)
                                 }
                                 ("all", rest) => {
-                                    let filters = rest.iter()
+                                    let filters = rest
+                                        .iter()
                                         .map(|v| from_jvalue(v).map_err(serde_err))
                                         .collect::<StdResult<Vec<Filter>, _>>()?;
                                     Filter::All(filters)
                                 }
                                 ("any", rest) => {
-                                    let filters = rest.iter()
+                                    let filters = rest
+                                        .iter()
                                         .map(|v| from_jvalue(v).map_err(serde_err))
                                         .collect::<StdResult<Vec<Filter>, _>>()?;
                                     Filter::Any(filters)
                                 }
                                 ("none", rest) => {
-                                    let filters = rest.iter()
+                                    let filters = rest
+                                        .iter()
                                         .map(|v| from_jvalue(v).map_err(serde_err))
                                         .collect::<StdResult<Vec<Filter>, _>>()?;
                                     Filter::None(filters)
@@ -7761,29 +7789,30 @@ pub mod map {
                             where
                                 __A: _serde::de::SeqAccess<'de>,
                             {
-                                let __field0 = match match _serde::de::SeqAccess::next_element::<
-                                    String,
-                                >(&mut __seq)
-                                {
-                                    _serde::export::Ok(__val) => __val,
-                                    _serde::export::Err(__err) => {
-                                        return _serde::export::Err(__err);
-                                    }
-                                } {
-                                    _serde::export::Some(__value) => __value,
-                                    _serde::export::None => {
-                                        return _serde::export::Err(
-                                            _serde::de::Error::invalid_length(
-                                                0usize,
-                                                &"struct LayerCommon with 6 elements",
-                                            ),
-                                        );
-                                    }
-                                };
+                                let __field0 =
+                                    match match _serde::de::SeqAccess::next_element::<String>(
+                                        &mut __seq,
+                                    ) {
+                                        _serde::export::Ok(__val) => __val,
+                                        _serde::export::Err(__err) => {
+                                            return _serde::export::Err(__err);
+                                        }
+                                    } {
+                                        _serde::export::Some(__value) => __value,
+                                        _serde::export::None => {
+                                            return _serde::export::Err(
+                                                _serde::de::Error::invalid_length(
+                                                    0usize,
+                                                    &"struct LayerCommon with 6 elements",
+                                                ),
+                                            );
+                                        }
+                                    };
                                 let __field1 = match match _serde::de::SeqAccess::next_element::<
                                     Option<String>,
-                                >(&mut __seq)
-                                {
+                                >(
+                                    &mut __seq
+                                ) {
                                     _serde::export::Ok(__val) => __val,
                                     _serde::export::Err(__err) => {
                                         return _serde::export::Err(__err);
@@ -7801,8 +7830,9 @@ pub mod map {
                                 };
                                 let __field2 = match match _serde::de::SeqAccess::next_element::<
                                     Option<String>,
-                                >(&mut __seq)
-                                {
+                                >(
+                                    &mut __seq
+                                ) {
                                     _serde::export::Ok(__val) => __val,
                                     _serde::export::Err(__err) => {
                                         return _serde::export::Err(__err);
@@ -7818,48 +7848,49 @@ pub mod map {
                                         );
                                     }
                                 };
-                                let __field3 = match match _serde::de::SeqAccess::next_element::<
-                                    Option<f32>,
-                                >(&mut __seq)
-                                {
-                                    _serde::export::Ok(__val) => __val,
-                                    _serde::export::Err(__err) => {
-                                        return _serde::export::Err(__err);
-                                    }
-                                } {
-                                    _serde::export::Some(__value) => __value,
-                                    _serde::export::None => {
-                                        return _serde::export::Err(
-                                            _serde::de::Error::invalid_length(
-                                                3usize,
-                                                &"struct LayerCommon with 6 elements",
-                                            ),
-                                        );
-                                    }
-                                };
-                                let __field4 = match match _serde::de::SeqAccess::next_element::<
-                                    Option<f32>,
-                                >(&mut __seq)
-                                {
-                                    _serde::export::Ok(__val) => __val,
-                                    _serde::export::Err(__err) => {
-                                        return _serde::export::Err(__err);
-                                    }
-                                } {
-                                    _serde::export::Some(__value) => __value,
-                                    _serde::export::None => {
-                                        return _serde::export::Err(
-                                            _serde::de::Error::invalid_length(
-                                                4usize,
-                                                &"struct LayerCommon with 6 elements",
-                                            ),
-                                        );
-                                    }
-                                };
+                                let __field3 =
+                                    match match _serde::de::SeqAccess::next_element::<Option<f32>>(
+                                        &mut __seq,
+                                    ) {
+                                        _serde::export::Ok(__val) => __val,
+                                        _serde::export::Err(__err) => {
+                                            return _serde::export::Err(__err);
+                                        }
+                                    } {
+                                        _serde::export::Some(__value) => __value,
+                                        _serde::export::None => {
+                                            return _serde::export::Err(
+                                                _serde::de::Error::invalid_length(
+                                                    3usize,
+                                                    &"struct LayerCommon with 6 elements",
+                                                ),
+                                            );
+                                        }
+                                    };
+                                let __field4 =
+                                    match match _serde::de::SeqAccess::next_element::<Option<f32>>(
+                                        &mut __seq,
+                                    ) {
+                                        _serde::export::Ok(__val) => __val,
+                                        _serde::export::Err(__err) => {
+                                            return _serde::export::Err(__err);
+                                        }
+                                    } {
+                                        _serde::export::Some(__value) => __value,
+                                        _serde::export::None => {
+                                            return _serde::export::Err(
+                                                _serde::de::Error::invalid_length(
+                                                    4usize,
+                                                    &"struct LayerCommon with 6 elements",
+                                                ),
+                                            );
+                                        }
+                                    };
                                 let __field5 = match match _serde::de::SeqAccess::next_element::<
                                     Option<Filter>,
-                                >(&mut __seq)
-                                {
+                                >(
+                                    &mut __seq
+                                ) {
                                     _serde::export::Ok(__val) => __val,
                                     _serde::export::Err(__err) => {
                                         return _serde::export::Err(__err);
@@ -8498,25 +8529,25 @@ pub mod map {
                             where
                                 __A: _serde::de::SeqAccess<'de>,
                             {
-                                let __field0 = match match _serde::de::SeqAccess::next_element::<
-                                    Visibility,
-                                >(&mut __seq)
-                                {
-                                    _serde::export::Ok(__val) => __val,
-                                    _serde::export::Err(__err) => {
-                                        return _serde::export::Err(__err);
-                                    }
-                                } {
-                                    _serde::export::Some(__value) => __value,
-                                    _serde::export::None => {
-                                        return _serde::export::Err(
-                                            _serde::de::Error::invalid_length(
-                                                0usize,
-                                                &"struct BaseLayout with 1 element",
-                                            ),
-                                        );
-                                    }
-                                };
+                                let __field0 =
+                                    match match _serde::de::SeqAccess::next_element::<Visibility>(
+                                        &mut __seq,
+                                    ) {
+                                        _serde::export::Ok(__val) => __val,
+                                        _serde::export::Err(__err) => {
+                                            return _serde::export::Err(__err);
+                                        }
+                                    } {
+                                        _serde::export::Some(__value) => __value,
+                                        _serde::export::None => {
+                                            return _serde::export::Err(
+                                                _serde::de::Error::invalid_length(
+                                                    0usize,
+                                                    &"struct BaseLayout with 1 element",
+                                                ),
+                                            );
+                                        }
+                                    };
                                 _serde::export::Ok(BaseLayout {
                                     visibility: __field0,
                                 })
@@ -8966,8 +8997,9 @@ pub mod map {
                                         __field1 = _serde::export::Some(
                                             match _serde::de::MapAccess::next_value::<
                                                 Option<Vec<String>>,
-                                            >(&mut __map)
-                                            {
+                                            >(
+                                                &mut __map
+                                            ) {
                                                 _serde::export::Ok(__val) => __val,
                                                 _serde::export::Err(__err) => {
                                                     return _serde::export::Err(__err);
@@ -9024,8 +9056,9 @@ pub mod map {
                                         __field4 = _serde::export::Some(
                                             match _serde::de::MapAccess::next_value::<
                                                 Option<[f32; 4]>,
-                                            >(&mut __map)
-                                            {
+                                            >(
+                                                &mut __map
+                                            ) {
                                                 _serde::export::Ok(__val) => __val,
                                                 _serde::export::Err(__err) => {
                                                     return _serde::export::Err(__err);
@@ -9055,8 +9088,9 @@ pub mod map {
                                     _ => {
                                         let _ = match _serde::de::MapAccess::next_value::<
                                             _serde::de::IgnoredAny,
-                                        >(&mut __map)
-                                        {
+                                        >(
+                                            &mut __map
+                                        ) {
                                             _serde::export::Ok(__val) => __val,
                                             _serde::export::Err(__err) => {
                                                 return _serde::export::Err(__err);
@@ -9947,8 +9981,9 @@ pub mod map {
                                         __field2 = _serde::export::Some(
                                             match _serde::de::MapAccess::next_value::<
                                                 Option<[f64; 2]>,
-                                            >(&mut __map)
-                                            {
+                                            >(
+                                                &mut __map
+                                            ) {
                                                 _serde::export::Ok(__val) => __val,
                                                 _serde::export::Err(__err) => {
                                                     return _serde::export::Err(__err);
@@ -9986,8 +10021,9 @@ pub mod map {
                                         __field4 = _serde::export::Some(
                                             match _serde::de::MapAccess::next_value::<
                                                 BTreeMap<String, StyleSource>,
-                                            >(&mut __map)
-                                            {
+                                            >(
+                                                &mut __map
+                                            ) {
                                                 _serde::export::Ok(__val) => __val,
                                                 _serde::export::Err(__err) => {
                                                     return _serde::export::Err(__err);
@@ -10055,8 +10091,9 @@ pub mod map {
                                     _ => {
                                         let _ = match _serde::de::MapAccess::next_value::<
                                             _serde::de::IgnoredAny,
-                                        >(&mut __map)
-                                        {
+                                        >(
+                                            &mut __map
+                                        ) {
                                             _serde::export::Ok(__val) => __val,
                                             _serde::export::Err(__err) => {
                                                 return _serde::export::Err(__err);
@@ -10665,6 +10702,7 @@ pub mod map {
         }
     }
     pub mod storage {
+        use prelude::*;
         pub mod resource {
             use prelude::*;
             #[rustc_copy_clone_marker]
@@ -10923,343 +10961,114 @@ pub mod map {
                 data: Vec<u8>,
             }
         }
+        pub mod local {
+            use prelude::*;
+            pub struct LocalFileSource {}
+            impl LocalFileSource {
+                pub fn new() -> LocalFileSource {
+                    LocalFileSource {}
+                }
+            }
+            impl super::Source for LocalFileSource {
+                fn can_handle(&self, url: &str) -> bool {
+                    return url.starts_with("local://") || url.starts_with("file://");
+                }
+            }
+        }
         pub use self::resource::*;
-        pub trait Source {}
-        use act;
-        use act::Actor;
-        use act_codegen::{actor_impls, derive_actor_trait, Actor};
+        pub trait Source {
+            fn can_handle(&self, url: &str) -> bool;
+        }
+        pub struct ResourceRequest(resource::Resource);
+        mod _impl_act_resourcerequest {
+            extern crate actix;
+            impl actix::Message for ResourceRequest {
+                type Result = ();
+            }
+        }
         pub struct FileSource {
-            handle: FileSourceHandle,
-            inbox: ::act::Inbox,
-        }
-        impl ::act::Actor for FileSource {
-            type HandleType = FileSourceHandle;
-            fn process_messages(&mut self) {
-                while let Ok(mut msg) = self.inbox.recvr.try_recv() {
-                    ::act::world().handle_msg(self, msg);
-                }
-            }
-            fn handle(&self) -> &Self::HandleType {
-                &self.handle
-            }
-        }
-        pub struct FileSourceHandle {
-            chan: ::std::sync::mpsc::Sender<::act::MessageWrapper>,
-        }
-        #[automatically_derived]
-        #[allow(unused_qualifications)]
-        impl ::std::clone::Clone for FileSourceHandle {
-            #[inline]
-            fn clone(&self) -> FileSourceHandle {
-                match *self {
-                    FileSourceHandle {
-                        chan: ref __self_0_0,
-                    } => FileSourceHandle {
-                        chan: ::std::clone::Clone::clone(&(*__self_0_0)),
-                    },
-                }
-            }
-        }
-        #[automatically_derived]
-        #[allow(unused_qualifications)]
-        impl ::std::fmt::Debug for FileSourceHandle {
-            fn fmt(&self, f: &mut ::std::fmt::Formatter) -> ::std::fmt::Result {
-                match *self {
-                    FileSourceHandle {
-                        chan: ref __self_0_0,
-                    } => {
-                        let mut debug_trait_builder = f.debug_struct("FileSourceHandle");
-                        let _ = debug_trait_builder.field("chan", &&(*__self_0_0));
-                        debug_trait_builder.finish()
-                    }
-                }
-            }
-        }
-        impl ::act::ActorHandle for FileSourceHandle {}
-        impl FileSourceHandle {
-            fn send<M: ::act::Message>(&mut self, m: M) {
-                self.chan.send(act::MessageWrapper::new(m));
-            }
-            fn new_inbox_pair() -> (::act::Inbox, Self) {
-                let (sendr, recvr) = ::std::sync::mpsc::channel();
-                (::act::Inbox { recvr }, FileSourceHandle { chan: sendr })
-            }
+            sources: Vec<Box<Source + Send + 'static>>,
         }
         impl FileSource {
             pub fn new() -> Self {
-                let (inbox, handle) = FileSourceHandle::new_inbox_pair();
-                FileSource { handle, inbox }
+                FileSource {
+                    sources: <[_]>::into_vec(box [Box::new(local::LocalFileSource::new())]),
+                }
             }
         }
-        pub trait ResourceAcceptor {
-            fn accept(&mut self, data: response::Response);
+        impl Actor for FileSource {
+            type Context = Context<Self>;
         }
-        pub struct ResourceAcceptorHandle {
-            chan: ::std::sync::mpsc::Sender<::act::MessageWrapper>,
-        }
-        #[automatically_derived]
-        #[allow(unused_qualifications)]
-        impl ::std::clone::Clone for ResourceAcceptorHandle {
-            #[inline]
-            fn clone(&self) -> ResourceAcceptorHandle {
-                match *self {
-                    ResourceAcceptorHandle {
-                        chan: ref __self_0_0,
-                    } => ResourceAcceptorHandle {
-                        chan: ::std::clone::Clone::clone(&(*__self_0_0)),
+        impl Handler<ResourceRequest> for FileSource {
+            type Result = ();
+            fn handle(
+                &mut self,
+                msg: ResourceRequest,
+                ctx: &mut Self::Context,
+            ) -> <Self as Handler<ResourceRequest>>::Result {
+                ::io::_print(::std::fmt::Arguments::new_v1_formatted(
+                    &["Serving - ", "\n"],
+                    &match (&::std::thread::current().name(),) {
+                        (arg0,) => [::std::fmt::ArgumentV1::new(arg0, ::std::fmt::Debug::fmt)],
                     },
-                }
-            }
-        }
-        #[automatically_derived]
-        #[allow(unused_qualifications)]
-        impl ::std::fmt::Debug for ResourceAcceptorHandle {
-            fn fmt(&self, f: &mut ::std::fmt::Formatter) -> ::std::fmt::Result {
-                match *self {
-                    ResourceAcceptorHandle {
-                        chan: ref __self_0_0,
-                    } => {
-                        let mut debug_trait_builder = f.debug_struct("ResourceAcceptorHandle");
-                        let _ = debug_trait_builder.field("chan", &&(*__self_0_0));
-                        debug_trait_builder.finish()
-                    }
-                }
-            }
-        }
-        impl ::act::ActorHandle for ResourceAcceptorHandle {}
-        impl ResourceAcceptorHandle {
-            fn send<M: ::act::Message>(&mut self, m: M) {
-                self.chan.send(act::MessageWrapper::new(m));
-            }
-            fn new_inbox_pair() -> (::act::Inbox, Self) {
-                let (sendr, recvr) = ::std::sync::mpsc::channel();
-                (
-                    ::act::Inbox { recvr },
-                    ResourceAcceptorHandle { chan: sendr },
-                )
-            }
-        }
-        pub mod actor_impls {
-            impl FileSource {
-                pub fn get(&mut self, accept: ResourceAcceptorHandle, res: resource::Resource) {}
-                pub fn test(&mut self) {
-                    {
-                        ::rt::begin_panic(
-                            "Processing message",
-                            &("rmaps/src/map/storage/mod.rs", 37u32, 1u32),
-                        )
-                    };
-                }
-            }
-            struct Msg_FileSource_get(ResourceAcceptorHandle, resource::Resource);
-            struct Msg_FileSource_test();
-            impl ::act::Message for Msg_FileSource_get {}
-            impl ::act::Message for Msg_FileSource_test {}
-            impl FileSourceHandle {
-                pub fn get(&mut self, accept: ResourceAcceptorHandle, res: resource::Resource) {
-                    let data = Msg_FileSource_get(accept, res);
-                    self.send(data);
-                }
-                pub fn test(&mut self) {
-                    let data = Msg_FileSource_test();
-                    self.send(data);
-                }
-            }
-            impl ResourceAcceptor for FileSource {
-                fn accept(&mut self, data: response::Response) {
-                    let mut h: ResourceAcceptorHandle = self.handle().clone().into();
-                    self.handle().get(
-                        {
-                            ::rt::begin_panic(
-                                "not yet implemented",
-                                &("rmaps/src/map/storage/mod.rs", 37u32, 1u32),
-                            )
+                    &[::std::fmt::rt::v1::Argument {
+                        position: ::std::fmt::rt::v1::Position::At(0usize),
+                        format: ::std::fmt::rt::v1::FormatSpec {
+                            fill: ' ',
+                            align: ::std::fmt::rt::v1::Alignment::Unknown,
+                            flags: 0u32,
+                            precision: ::std::fmt::rt::v1::Count::Implied,
+                            width: ::std::fmt::rt::v1::Count::Implied,
                         },
-                        {
-                            ::rt::begin_panic(
-                                "not yet implemented",
-                                &("rmaps/src/map/storage/mod.rs", 37u32, 1u32),
-                            )
-                        },
-                    );
-                }
-            }
-            struct Msg_FileSource_accept(response::Response);
-            impl ::act::Message for Msg_FileSource_accept {}
-            impl FileSourceHandle {
-                fn accept(&mut self, data: response::Response) {
-                    let data = Msg_FileSource_accept(data);
-                    self.send(data);
-                }
-            }
-            impl ::std::convert::Into<ResourceAcceptorHandle> for FileSourceHandle {
-                fn into(self) -> ResourceAcceptorHandle {
-                    ResourceAcceptorHandle { chan: self.chan }
-                }
-            }
-            pub fn setup() {
-                ::act::world().register_handler(
-                    move |a: &mut FileSource, mut msg: Box<Msg_FileSource_get>| {
-                        let msg = *msg;
-                        a.get(msg.0, msg.1);
-                    },
-                );
-                ::act::world().register_handler(
-                    move |a: &mut FileSource, mut msg: Box<Msg_FileSource_test>| {
-                        let msg = *msg;
-                        a.test();
-                    },
-                );
-                ::act::world().register_handler(
-                    move |a: &mut FileSource, mut msg: Box<Msg_FileSource_accept>| {
-                        let msg = *msg;
-                        a.accept(msg.0);
-                    },
-                );
+                    }],
+                ));
+                ()
             }
         }
     }
-    use act::Actor;
     use map::layers::Layer;
-    #[rustc_copy_clone_marker]
-    struct Vertex {
-        position: [f32; 2],
-        color: [f32; 3],
-    }
-    #[automatically_derived]
-    #[allow(unused_qualifications)]
-    impl ::std::marker::Copy for Vertex {}
-    #[automatically_derived]
-    #[allow(unused_qualifications)]
-    impl ::std::clone::Clone for Vertex {
-        #[inline]
-        fn clone(&self) -> Vertex {
-            {
-                let _: ::std::clone::AssertParamIsClone<[f32; 2]>;
-                let _: ::std::clone::AssertParamIsClone<[f32; 3]>;
-                *self
-            }
-        }
-    }
-    impl ::vertex::Vertex for Vertex {
-        #[inline]
-        fn build_bindings() -> ::vertex::VertexFormat {
-            use std::borrow::Cow;
-            Cow::Owned(<[_]>::into_vec(box [
-                (
-                    Cow::Borrowed("position"),
-                    {
-                        let dummy: Vertex = unsafe { ::std::mem::uninitialized() };
-                        let offset: usize = {
-                            let dummy_ref = &dummy;
-                            let field_ref = &dummy.position;
-                            (field_ref as *const _ as usize) - (dummy_ref as *const _ as usize)
-                        };
-                        offset
-                    },
-                    {
-                        fn attr_type_of_val<T: ::vertex::Attribute>(
-                            _: &T,
-                        ) -> ::vertex::AttributeType {
-                            <T as ::vertex::Attribute>::get_type()
-                        }
-                        let dummy: &Vertex = unsafe { ::std::mem::transmute(0usize) };
-                        attr_type_of_val(&dummy.position)
-                    },
-                    false,
-                ),
-                (
-                    Cow::Borrowed("color"),
-                    {
-                        let dummy: Vertex = unsafe { ::std::mem::uninitialized() };
-                        let offset: usize = {
-                            let dummy_ref = &dummy;
-                            let field_ref = &dummy.color;
-                            (field_ref as *const _ as usize) - (dummy_ref as *const _ as usize)
-                        };
-                        offset
-                    },
-                    {
-                        fn attr_type_of_val<T: ::vertex::Attribute>(
-                            _: &T,
-                        ) -> ::vertex::AttributeType {
-                            <T as ::vertex::Attribute>::get_type()
-                        }
-                        let dummy: &Vertex = unsafe { ::std::mem::transmute(0usize) };
-                        attr_type_of_val(&dummy.color)
-                    },
-                    false,
-                ),
-            ]))
-        }
-    }
     pub struct MapView {
+        addr: Addr<Unsync, MapViewImpl>,
+        sys: SystemRunner,
+    }
+    impl MapView {
+        pub fn new<F: glium::backend::Facade + Clone + 'static>(f: &F) -> Self {
+            let mut sys = System::new("Test");
+            let _impl = MapViewImpl::new(f);
+            let addr = _impl.start();
+            return MapView { sys, addr };
+        }
+        pub fn do_run<R>(&mut self, f: impl FnOnce(Addr<Unsync, MapViewImpl>) -> R) -> R {
+            let addr = self.addr.clone();
+            let res = self
+                .sys
+                .run_until_complete(::common::futures::future::lazy(|| Ok::<R, !>(f(addr))));
+            self.sys.pulse();
+            res.unwrap()
+        }
+        pub fn render(&mut self, surface: glium::Frame) {
+            self.do_run(|add| add.do_send(MapMethodArgs::Render(surface)));
+        }
+        pub fn set_style_url(&mut self, url: &str) {
+            self.do_run(|add| add.do_send(MapMethodArgs::SetStyleUrl(url.into())));
+        }
+    }
+    pub struct MapViewImpl {
         facade: Box<glium::backend::Facade>,
         style: Option<style::Style>,
         layers: Vec<layers::LayerHolder>,
-        source: storage::FileSource,
+        source: Addr<Syn, storage::FileSource>,
     }
-    impl MapView {
-        pub fn new<F: glium::backend::Facade + Clone + 'static>(f: &F) -> Result<Self> {
-            let vbo = VertexBuffer::new(
-                f,
-                &[
-                    Vertex {
-                        position: [-0.5, -0.5],
-                        color: [0.0, 1.0, 0.0],
-                    },
-                    Vertex {
-                        position: [0.0, 0.5],
-                        color: [0.0, 0.0, 1.0],
-                    },
-                    Vertex {
-                        position: [0.5, -0.5],
-                        color: [1.0, 0.0, 0.0],
-                    },
-                ],
-            )?;
-            let ibo = glium::IndexBuffer::new(f, PrimitiveType::TrianglesList, &[0u16, 1, 2])?;
-            let program = {
-                let context = ::backend::Facade::get_context(f);
-                let version = {
-                    let num: u32 = 100;
-                    ::Version(::Api::GlEs, (num / 100) as u8, ((num % 100) / 10) as u8)
-                };
-                if context.is_glsl_version_supported(&version) {
-                    let __vertex_shader: &str = "";
-                    let __tessellation_control_shader: Option<&str> = None;
-                    let __tessellation_evaluation_shader: Option<&str> = None;
-                    let __geometry_shader: Option<&str> = None;
-                    let __fragment_shader: &str = "";
-                    let __outputs_srgb: bool = false;
-                    let __uses_point_size: bool = false;
-                    let __vertex_shader =
-                            "#version 100\n\nuniform highp mat4 matrix;\nattribute highp vec2 position;\nattribute highp vec3 color;\n\nvarying highp vec3 vColor;\n\nvoid main() {\n    gl_Position = vec4(position, 0.0, 1.0) * matrix;\n    vColor = color;\n}";
-                    let __fragment_shader =
-                            "#version 100\nvarying highp vec3 vColor;\nvoid main() {\n    gl_FragColor = vec4(vColor, 1.0);\n}";
-                    let input = ::program::ProgramCreationInput::SourceCode {
-                        vertex_shader: __vertex_shader,
-                        tessellation_control_shader: __tessellation_control_shader,
-                        tessellation_evaluation_shader: __tessellation_evaluation_shader,
-                        geometry_shader: __geometry_shader,
-                        fragment_shader: __fragment_shader,
-                        transform_feedback_varyings: None,
-                        outputs_srgb: __outputs_srgb,
-                        uses_point_size: __uses_point_size,
-                    };
-                    ::program::Program::new(context, input)
-                        .map_err(|err| ::program::ProgramChooserCreationError::from(err))
-                } else {
-                    Err(::program::ProgramChooserCreationError::NoVersion)
-                }
-            }?;
-            let source = storage::FileSource::new();
-            return Ok(MapView {
+    impl MapViewImpl {
+        pub fn new<F: glium::backend::Facade + Clone + 'static>(f: &F) -> Self {
+            let src_add = start_in_thread(|| storage::FileSource::new());
+            let m = MapViewImpl {
                 facade: Box::new((*f).clone()),
                 style: None,
                 layers: <[_]>::into_vec(box []),
-                source: source,
-            });
+                source: src_add,
+            };
+            return m;
         }
         pub fn set_style(&mut self, style: style::Style) {
             self.layers.clear();
@@ -11282,17 +11091,129 @@ pub mod map {
             ));
             self.style = Some(style);
         }
-        pub fn render<S: glium::Surface>(&mut self, target: &mut S) {
-            self.source.process_messages();
+        pub fn set_style_url(&mut self, url: &str) {}
+        pub fn render(&mut self, target: &mut glium::Frame) {
             for l in self.layers.iter_mut() {
                 l.render(target);
             }
-            let mut h = self.source.handle().clone();
-            h.test();
+        }
+    }
+    impl Actor for MapViewImpl {
+        type Context = Context<Self>;
+    }
+    pub enum MapMethodArgs {
+        Render(glium::Frame),
+        SetStyleUrl(String),
+    }
+    impl Message for MapMethodArgs {
+        type Result = ();
+    }
+    impl Handler<MapMethodArgs> for MapViewImpl {
+        type Result = ();
+        fn handle(
+            &mut self,
+            mut msg: MapMethodArgs,
+            ctx: &mut Self::Context,
+        ) -> <Self as Handler<MapMethodArgs>>::Result {
+            match msg {
+                MapMethodArgs::Render(mut frame) => {
+                    self.render(&mut frame);
+                    frame.finish();
+                }
+                MapMethodArgs::SetStyleUrl(url) => self.set_style_url(&url),
+            };
+        }
+    }
+    pub struct StyleReady(storage::response::Response);
+    impl Message for StyleReady {
+        type Result = ();
+    }
+    impl Handler<StyleReady> for MapViewImpl {
+        type Result = ();
+        fn handle(&mut self, msg: StyleReady, ctx: &mut Self::Context) {
+            {
+                ::rt::begin_panic(
+                    "not yet implemented",
+                    &("rmaps/src/map/mod.rs", 128u32, 9u32),
+                )
+            }
         }
     }
 }
-use act_codegen::actor_impls;
+use prelude::*;
+pub struct A1 {}
+impl ::actix::Actor for A1 {
+    type Context = ::actix::Context<A1>;
+}
+pub struct A1Addr {
+    pub addr: ::actix::Addr<Syn, A1>,
+}
+#[automatically_derived]
+#[allow(unused_qualifications)]
+impl ::std::clone::Clone for A1Addr {
+    #[inline]
+    fn clone(&self) -> A1Addr {
+        match *self {
+            A1Addr {
+                addr: ref __self_0_0,
+            } => A1Addr {
+                addr: ::std::clone::Clone::clone(&(*__self_0_0)),
+            },
+        }
+    }
+}
+use act_codegen::*;
+impl A1 {
+    fn test(&mut self, a: usize) -> usize {
+        return a * 2;
+    }
+    fn cloner<T: Clone + 'static + Send>(&mut self, c: T) -> T {
+        c.clone()
+    }
+}
+struct Msg_A1_test(usize);
+struct Msg_A1_cloner<T>(T);
+impl ::actix::Message for Msg_A1_test {
+    type Result = usize;
+}
+impl<T: Clone + 'static + Send> ::actix::Message for Msg_A1_cloner<T> {
+    type Result = T;
+}
+impl A1Addr {
+    pub fn test(&self, a: usize) -> impl Future<Item = usize, Error = ::actix::MailboxError> {
+        let data = Msg_A1_test(a);
+        self.addr.send(data)
+    }
+    pub fn cloner<T: Clone + 'static + Send>(
+        &self,
+        c: T,
+    ) -> impl Future<Item = T, Error = ::actix::MailboxError> {
+        let data = Msg_A1_cloner(c);
+        self.addr.send(data)
+    }
+}
+impl ::actix::Handler<Msg_A1_test> for A1 {
+    type Result = usize;
+    fn handle(&mut self, msg: Msg_A1_test, ctx: &mut Self::Context) -> usize {
+        self.test(msg.0)
+    }
+}
+impl<T: Clone + 'static + Send> ::actix::Handler<Msg_A1_cloner<T>> for A1 {
+    type Result = T;
+    fn handle(&mut self, msg: Msg_A1_cloner<T>, ctx: &mut Self::Context) -> T {
+        self.cloner(msg.0)
+    }
+}
+fn test() {
+    let a = A1 {};
+    let add = a.start();
+    let add = A1Addr { addr: add };
+    add.test(0).wait();
+}
 pub fn init() {
-    map::storage::actor_impls::setup();
+    use common::prelude::*;
+    ::std::thread::spawn(move || {
+        let sys = actix::System::new("test");
+        sys.run();
+    });
 }
