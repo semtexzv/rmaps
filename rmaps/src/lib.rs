@@ -6,11 +6,13 @@
 #![feature(associated_type_defaults)]
 #![feature(box_syntax)]
 
+
 #![allow(unused_imports)]
 pub extern crate common;
 pub extern crate mapbox_tiles;
 pub extern crate css_color_parser;
 
+pub extern crate act;
 pub extern crate act_codegen;
 
 

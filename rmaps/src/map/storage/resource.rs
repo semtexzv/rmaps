@@ -34,12 +34,12 @@ pub enum ResourceData {
 
 #[derive(Debug, Clone)]
 pub struct Resource {
-    load_pref: LoadPreference,
-    data: ResourceData,
+    pub load_pref: LoadPreference,
+    pub data: ResourceData,
 }
 
 impl Resource {
-    fn url<'a>(&'a self) -> &'a str {
+    pub fn url<'a>(&'a self) -> &'a str {
         return match &self.data {
             ResourceData::StyleJson  { ref url } => &url,
             ResourceData::SourceJson { ref url } => &url,
@@ -48,7 +48,7 @@ impl Resource {
             }
         };
     }
-    fn style(url: String) -> Resource {
+    pub fn style(url: String) -> Resource {
         Resource {
             load_pref: LoadPreference::Any,
             data: ResourceData::StyleJson {
@@ -56,7 +56,7 @@ impl Resource {
             },
         }
     }
-    fn source(url: String) -> Resource {
+    pub fn source(url: String) -> Resource {
         Resource {
             load_pref: LoadPreference::Any,
             data: ResourceData::SourceJson {

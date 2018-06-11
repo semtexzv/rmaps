@@ -10,5 +10,5 @@ mapbox-tiles = { path = "../mapbox-tiles" }
 css-color-parser = "0.1.2"
 serde="*"
 actix = {path ="../libs/actix"}
-
+act = { path = "../libs/act"}
 act_codegen = {path ="../libs/act_codegen"}

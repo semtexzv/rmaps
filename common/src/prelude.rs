@@ -1,22 +1,16 @@
 pub use std::{
-    collections::{
-        BTreeMap
-    },
-    fmt::{
-        Debug
-    },
+    collections::BTreeMap,
+    fmt::Debug,
     result::Result as StdResult,
     str::FromStr,
     string::ToString,
-    ops::{Deref,DerefMut}
+    ops::{Deref, DerefMut},
 };
 pub use gl;
 pub use glium::{
     self,
     implement_vertex,
-    vertex::{
-        VertexBuffer
-    },
+    vertex::VertexBuffer,
     index::{
         IndexBuffer,
         PrimitiveType,
@@ -24,7 +18,6 @@ pub use glium::{
     Display,
     vertex::BufferCreationError,
     program::{
-
         Program,
         ProgramCreationInput,
     },
@@ -35,23 +28,16 @@ pub use serde::{
 };
 
 
-pub use actix::*;
-pub use actix;
 pub use futures::prelude::*;
 
+pub use actix::{
+    self,
+    SystemRunner,
+    prelude::*
+};
 
-use error_chain::*;
 
+pub use failure::{Error, Fail};
+pub type Result<T> = StdResult<T,Error>;
 
-
-
-error_chain! {
-    foreign_links {
-        GliumVertexCreate(glium::vertex::BufferCreationError);
-        GliumIndexCreate(glium::index::BufferCreationError);
-        ProgramCreate(glium::program::ProgramCreationError);
-        ProgramCreateChooser(glium::program::ProgramChooserCreationError);
-
-        Reqwest(::reqwest::Error);
-    }
-}
+pub type BoxFuture<T,E> = Box<Future<Item=T,Error=E>>;

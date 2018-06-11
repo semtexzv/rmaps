@@ -18,7 +18,7 @@ fn main() {
     let display = glium::Display::new(window, context, &events_loop).unwrap();
 
     let mut map = rmaps::map::MapView::new(&display.clone());//.unwrap();
-    map.set_style_url("file://../../../bright.json");
+    map.set_style_url("http://github.com/mapbox/mapbox-gl-native/issues/6273");
 
     let mut running = true;
     while running {

@@ -19,6 +19,20 @@ fn generate_actor_impl(input: &DeriveInput) -> proc_macro2::TokenStream {
 }
 
 
+pub fn gen_actor_handle(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
+    let input: DeriveInput = ::syn::parse(input).unwrap();
+
+    let actor_handle = ::addr::generate_actor_handle_struct(&input.ident);
+
+    let res = quote! {
+        #input
+        #actor_handle
+    };
+
+    res.into()
+}
+
+
 pub fn do_derive_actor(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
     let input: DeriveInput = ::syn::parse(input).unwrap();
 

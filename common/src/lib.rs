@@ -4,7 +4,7 @@ pub extern crate gl;
 #[macro_use]
 pub extern crate glium;
 
-pub extern crate error_chain;
+pub extern crate failure;
 
 pub extern crate serde;
 pub extern crate serde_derive;
@@ -14,10 +14,12 @@ pub extern crate palette;
 
 
 pub extern crate actix;
+pub extern crate actix_web;
+
 pub extern crate futures;
+pub extern crate tokio;
 
-
-pub extern crate reqwest;
+pub extern crate url;
 
 pub mod prelude;
 pub mod export;

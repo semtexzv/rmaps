@@ -48,20 +48,31 @@ impl MapView {
     }
 }
 
-
+#[actor_handle]
 pub struct MapViewImpl {
+    addr: Option<MapViewImplAddr>,
     facade: Box<glium::backend::Facade>,
     style: Option<style::Style>,
     layers: Vec<layers::LayerHolder>,
     source: storage::DefaultFileSourceAddr,
 }
 
+impl Actor for MapViewImpl {
+    type Context = Context<MapViewImpl>;
+
+    fn started(&mut self, ctx: &mut <Self as Actor>::Context) {
+        self.addr = Some(MapViewImplAddr {
+            addr: ctx.address(),
+        })
+    }
+}
 
 impl MapViewImpl {
     pub fn new<F: glium::backend::Facade + Clone + 'static>(f: &F) -> Self {
         let src_add = storage::DefaultFileSource::spawn();
 
         let m = MapViewImpl {
+            addr: None,
             facade: Box::new((*f).clone()),
             style: None,
             layers: vec![],
@@ -75,11 +86,22 @@ impl MapViewImpl {
     pub fn set_style(&mut self, style: style::Style) {
         self.layers.clear();
         self.layers = layers::parse_style_layers(self.facade.deref(), &style);
-        println!("Layers : {:#?}", self.layers);
+        println!("Layers : {:?}", style);
         self.style = Some(style);
     }
 
-    pub fn set_style_url(&mut self, url: &str) {}
+    pub fn set_style_url(&mut self, url: &str) {
+        println!("Setting style url : {:?}", url);
+
+        let resource = storage::Resource::style(url.into());
+
+        actix::Arbiter::handle().spawn(
+            self.source.get(resource).flatten()
+                .then(|s| {
+                    panic!("DATA: {:?}", s);
+                    Ok(())
+                }));
+    }
     pub fn render(&mut self, target: &mut glium::Frame) {
         for l in self.layers.iter_mut() {
             l.render(target);
@@ -87,9 +109,8 @@ impl MapViewImpl {
     }
 }
 
-impl Actor for MapViewImpl {
-    type Context = Context<Self>;
-}
+use self::storage::{*};
+
 
 pub enum MapMethodArgs {
     Render(glium::Frame),
@@ -103,7 +124,7 @@ impl Message for MapMethodArgs {
 impl Handler<MapMethodArgs> for MapViewImpl {
     type Result = ();
 
-    fn handle(&mut self, mut msg: MapMethodArgs, ctx: &mut Self::Context) -> <Self as Handler<MapMethodArgs>>::Result {
+    fn handle(&mut self, mut msg: MapMethodArgs, ctx: &mut Self::Context) -> () {
         match msg {
             MapMethodArgs::Render(mut frame) => {
                 self.render(&mut frame);

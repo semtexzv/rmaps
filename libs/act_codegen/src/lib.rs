@@ -29,15 +29,11 @@ use syn::parse;
 pub fn derive_actor(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
     actor::do_derive_actor(input)
 }
-
-/*
 #[proc_macro_attribute]
-pub fn actor_impls(attr: proc_macro::TokenStream, item: proc_macro::TokenStream) -> proc_macro::TokenStream {
-    let expected_id: proc_macro2::Ident = syn::parse(attr).unwrap();
-
-    //actor_fns::do_actor_mod(expected_id, item)
+pub fn actor_handle(attr: proc_macro::TokenStream, input: proc_macro::TokenStream) -> proc_macro::TokenStream {
+    actor::gen_actor_handle(input)
 }
-*/
+
 #[proc_macro_attribute]
 pub fn actor_impl(attr: proc_macro::TokenStream, item: proc_macro::TokenStream) -> proc_macro::TokenStream {
     //panic!("{:#?}", i);

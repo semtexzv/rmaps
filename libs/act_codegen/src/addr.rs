@@ -117,6 +117,14 @@ pub fn generate_actor_handle_impl_traited(item: &ItemImpl) -> ItemImpl {
     }
 
     let res = parse_quote! {
+      /*  impl ::std::convert::From<::actix::Addr<Syn,#actor_name>> for #handle_name {
+            fn from(v : ::actix::Addr<Syn,#actor_name>) ->  Self {
+                #handle_name {
+                    addr : v
+                }
+            }
+        }
+        */
         impl #trait_handle_name for #handle_name {
            // type ActorType = #actor_name;
             #(#handle_methods)*

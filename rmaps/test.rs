@@ -5,6 +5,8 @@
 #![feature(proc_macro)]
 #![feature(proc_macro_mod)]
 #![feature(never_type)]
+#![feature(associated_type_defaults)]
+#![feature(box_syntax)]
 #![allow(unused_imports)]
 #[prelude_import]
 use std::prelude::v1::*;
@@ -24,37 +26,9 @@ pub extern crate act_codegen;
 
 pub mod prelude {
 
-    /*
-    #[derive(Actor)]
-    pub struct A1 {
-        handle : A1Handle,
-        inbox : ::act::Inbox,
-
-    }
-
-    #[derive(Actor)]
-    pub struct A2 {
-        handle : A2Handle,
-        inbox : ::act::Inbox,
-    }
-
-    #[actor_impls]
-    impl A1 {
-        pub fn test(&mut self) {}
-        pub fn pong(&mut self, txt: String) {}
-    }
-
-    #[actor_impls]
-    impl A2 {
-        fn ping(&mut self, mut source: A1Handle, txt: String) {
-            source.pong(txt)
-        }
-    }
-    */
-
     //map::storage::actor_impls::setup();
     //map::storage::setup_FileSource();
-    pub use common::actix_derive::*;
+    pub use act_codegen::*;
     pub use common::export::*;
     pub fn start_in_thread<
         A: Actor<Context = Context<A>> + Send + 'static,
@@ -10889,8 +10863,8 @@ pub mod map {
                 }
             }
             pub struct Resource {
-                load_pref: LoadPreference,
-                data: ResourceData,
+                pub load_pref: LoadPreference,
+                pub data: ResourceData,
             }
             #[automatically_derived]
             #[allow(unused_qualifications)]
@@ -10926,7 +10900,7 @@ pub mod map {
                 }
             }
             impl Resource {
-                fn url<'a>(&'a self) -> &'a str {
+                pub fn url<'a>(&'a self) -> &'a str {
                     return match &self.data {
                         ResourceData::StyleJson { ref url } => &url,
                         ResourceData::SourceJson { ref url } => &url,
@@ -10940,13 +10914,13 @@ pub mod map {
                         }
                     };
                 }
-                fn style(url: String) -> Resource {
+                pub fn style(url: String) -> Resource {
                     Resource {
                         load_pref: LoadPreference::Any,
                         data: ResourceData::StyleJson { url: url },
                     }
                 }
-                fn source(url: String) -> Resource {
+                pub fn source(url: String) -> Resource {
                     Resource {
                         load_pref: LoadPreference::Any,
                         data: ResourceData::SourceJson { url: url },
@@ -10957,72 +10931,415 @@ pub mod map {
         pub mod response {
             use prelude::*;
             pub struct Response {
-                resource: super::resource::Resource,
-                data: Vec<u8>,
+                pub resource: super::resource::Resource,
+                pub data: Vec<u8>,
+            }
+            #[automatically_derived]
+            #[allow(unused_qualifications)]
+            impl ::std::fmt::Debug for Response {
+                fn fmt(&self, f: &mut ::std::fmt::Formatter) -> ::std::fmt::Result {
+                    match *self {
+                        Response {
+                            resource: ref __self_0_0,
+                            data: ref __self_0_1,
+                        } => {
+                            let mut debug_trait_builder = f.debug_struct("Response");
+                            let _ = debug_trait_builder.field("resource", &&(*__self_0_0));
+                            let _ = debug_trait_builder.field("data", &&(*__self_0_1));
+                            debug_trait_builder.finish()
+                        }
+                    }
+                }
             }
         }
         pub mod local {
+            use super::*;
             use prelude::*;
+            use std::io::Read;
             pub struct LocalFileSource {}
+            impl ::actix::Actor for LocalFileSource {
+                type Context = ::actix::Context<Self>;
+            }
+            pub struct LocalFileSourceAddr {
+                pub addr: ::actix::Addr<Syn, LocalFileSource>,
+            }
+            #[automatically_derived]
+            #[allow(unused_qualifications)]
+            impl ::std::clone::Clone for LocalFileSourceAddr {
+                #[inline]
+                fn clone(&self) -> LocalFileSourceAddr {
+                    match *self {
+                        LocalFileSourceAddr {
+                            addr: ref __self_0_0,
+                        } => LocalFileSourceAddr {
+                            addr: ::std::clone::Clone::clone(&(*__self_0_0)),
+                        },
+                    }
+                }
+            }
             impl LocalFileSource {
                 pub fn new() -> LocalFileSource {
                     LocalFileSource {}
                 }
+                pub fn spawn() -> LocalFileSourceAddr {
+                    LocalFileSourceAddr {
+                        addr: start_in_thread(|| Self::new()),
+                    }
+                }
             }
-            impl super::Source for LocalFileSource {
-                fn can_handle(&self, url: &str) -> bool {
-                    return url.starts_with("local://") || url.starts_with("file://");
+            impl FileSource for LocalFileSource {
+                fn can_handle(&self, res: Resource) -> bool {
+                    ::io::_print(::std::fmt::Arguments::new_v1_formatted(
+                        &["Local can handle ", "\n"],
+                        &match (&res.url(),) {
+                            (arg0,) => [::std::fmt::ArgumentV1::new(arg0, ::std::fmt::Debug::fmt)],
+                        },
+                        &[::std::fmt::rt::v1::Argument {
+                            position: ::std::fmt::rt::v1::Position::At(0usize),
+                            format: ::std::fmt::rt::v1::FormatSpec {
+                                fill: ' ',
+                                align: ::std::fmt::rt::v1::Alignment::Unknown,
+                                flags: 0u32,
+                                precision: ::std::fmt::rt::v1::Count::Implied,
+                                width: ::std::fmt::rt::v1::Count::Implied,
+                            },
+                        }],
+                    ));
+                    return res.url().starts_with("local://") || res.url().starts_with("file://");
+                }
+                fn get(&mut self, res: Resource) -> ResponseFuture<ResResponse, Error> {
+                    Box::new({
+                        ::rt::begin_panic(
+                            "not yet implemented",
+                            &("rmaps/src/map/storage/local.rs", 41u32, 1u32),
+                        )
+                    })
+                }
+            }
+            impl FileSourceAddr for LocalFileSourceAddr {
+                fn can_handle(
+                    &self,
+                    res: Resource,
+                ) -> Box<Future<Item = bool, Error = ::actix::MailboxError>> {
+                    let data = Msg_FileSource_can_handle(res);
+                    Box::new(self.addr.send(data))
+                }
+                fn can_handle_async(&self, res: Resource) {
+                    let data = Msg_FileSource_can_handle(res);
+                    self.addr.do_send(data)
+                }
+                fn get(
+                    &self,
+                    res: Resource,
+                ) -> Box<
+                    Future<
+                        Item = ResponseFuture<ResResponse, Error>,
+                        Error = ::actix::MailboxError,
+                    >,
+                > {
+                    let data = Msg_FileSource_get(res);
+                    Box::new(self.addr.send(data))
+                }
+                fn get_async(&self, res: Resource) {
+                    let data = Msg_FileSource_get(res);
+                    self.addr.do_send(data)
+                }
+            }
+            impl ::actix::Handler<Msg_FileSource_can_handle> for LocalFileSource {
+                type Result = bool;
+                fn handle(
+                    &mut self,
+                    msg: Msg_FileSource_can_handle,
+                    ctx: &mut Self::Context,
+                ) -> bool {
+                    self.can_handle(msg.0)
+                }
+            }
+            impl ::actix::Handler<Msg_FileSource_get> for LocalFileSource {
+                type Result = ResponseFuture<ResResponse, Error>;
+                fn handle(
+                    &mut self,
+                    msg: Msg_FileSource_get,
+                    ctx: &mut Self::Context,
+                ) -> ResponseFuture<ResResponse, Error> {
+                    self.get(msg.0)
+                }
+            }
+        }
+        pub mod network {
+            use super::*;
+            use actix_web::client;
+            use prelude::*;
+            pub struct NetworkFileSource {}
+            impl ::actix::Actor for NetworkFileSource {
+                type Context = ::actix::Context<Self>;
+            }
+            pub struct NetworkFileSourceAddr {
+                pub addr: ::actix::Addr<Syn, NetworkFileSource>,
+            }
+            #[automatically_derived]
+            #[allow(unused_qualifications)]
+            impl ::std::clone::Clone for NetworkFileSourceAddr {
+                #[inline]
+                fn clone(&self) -> NetworkFileSourceAddr {
+                    match *self {
+                        NetworkFileSourceAddr {
+                            addr: ref __self_0_0,
+                        } => NetworkFileSourceAddr {
+                            addr: ::std::clone::Clone::clone(&(*__self_0_0)),
+                        },
+                    }
+                }
+            }
+            impl FileSource for NetworkFileSource {
+                fn can_handle(&self, res: Resource) -> bool {
+                    let url = res.url();
+                    return url.starts_with("http://") || url.starts_with("https://");
+                }
+                fn get(
+                    &mut self,
+                    res: Resource,
+                ) -> Box<Future<Item = ResResponse, Error = ::common::prelude::Error>>
+                {
+                    let fut = client::get(res.url().clone())
+                        .finish()
+                        .unwrap()
+                        .send()
+                        .map_err(|x| {
+                            {
+                                ::rt::begin_panic_fmt(
+                                    &::std::fmt::Arguments::new_v1_formatted(
+                                        &["Retrieval failed "],
+                                        &match (&x,) {
+                                            (arg0,) => [::std::fmt::ArgumentV1::new(
+                                                arg0,
+                                                ::std::fmt::Display::fmt,
+                                            )],
+                                        },
+                                        &[::std::fmt::rt::v1::Argument {
+                                            position: ::std::fmt::rt::v1::Position::At(0usize),
+                                            format: ::std::fmt::rt::v1::FormatSpec {
+                                                fill: ' ',
+                                                align: ::std::fmt::rt::v1::Alignment::Unknown,
+                                                flags: 0u32,
+                                                precision: ::std::fmt::rt::v1::Count::Implied,
+                                                width: ::std::fmt::rt::v1::Count::Implied,
+                                            },
+                                        }],
+                                    ),
+                                    &("rmaps/src/map/storage/network.rs", 10u32, 1u32),
+                                )
+                            };
+                            ()
+                        })
+                        .map(move |data| {
+                            ::io::_print(::std::fmt::Arguments::new_v1_formatted(
+                                &["Response: ", "\n"],
+                                &match (&data,) {
+                                    (arg0,) => {
+                                        [::std::fmt::ArgumentV1::new(arg0, ::std::fmt::Debug::fmt)]
+                                    }
+                                },
+                                &[::std::fmt::rt::v1::Argument {
+                                    position: ::std::fmt::rt::v1::Position::At(0usize),
+                                    format: ::std::fmt::rt::v1::FormatSpec {
+                                        fill: ' ',
+                                        align: ::std::fmt::rt::v1::Alignment::Unknown,
+                                        flags: 0u32,
+                                        precision: ::std::fmt::rt::v1::Count::Implied,
+                                        width: ::std::fmt::rt::v1::Count::Implied,
+                                    },
+                                }],
+                            ));
+                            super::ResResponse {
+                                resource: res,
+                                data: <[_]>::into_vec(box []),
+                            }
+                        });
+                    Box::new(fut)
+                }
+            }
+            impl FileSourceAddr for NetworkFileSourceAddr {
+                fn can_handle(
+                    &self,
+                    res: Resource,
+                ) -> Box<Future<Item = bool, Error = ::actix::MailboxError>> {
+                    let data = Msg_FileSource_can_handle(res);
+                    Box::new(self.addr.send(data))
+                }
+                fn can_handle_async(&self, res: Resource) {
+                    let data = Msg_FileSource_can_handle(res);
+                    self.addr.do_send(data)
+                }
+                fn get(
+                    &self,
+                    res: Resource,
+                ) -> Box<
+                    Future<
+                        Item = Box<Future<Item = ResResponse, Error = ::common::prelude::Error>>,
+                        Error = ::actix::MailboxError,
+                    >,
+                > {
+                    let data = Msg_FileSource_get(res);
+                    Box::new(self.addr.send(data))
+                }
+                fn get_async(&self, res: Resource) {
+                    let data = Msg_FileSource_get(res);
+                    self.addr.do_send(data)
+                }
+            }
+            impl ::actix::Handler<Msg_FileSource_can_handle> for NetworkFileSource {
+                type Result = bool;
+                fn handle(
+                    &mut self,
+                    msg: Msg_FileSource_can_handle,
+                    ctx: &mut Self::Context,
+                ) -> bool {
+                    self.can_handle(msg.0)
+                }
+            }
+            impl ::actix::Handler<Msg_FileSource_get> for NetworkFileSource {
+                type Result = Box<Future<Item = ResResponse, Error = ::common::prelude::Error>>;
+                fn handle(
+                    &mut self,
+                    msg: Msg_FileSource_get,
+                    ctx: &mut Self::Context,
+                ) -> Box<Future<Item = ResResponse, Error = ::common::prelude::Error>>
+                {
+                    self.get(msg.0)
+                }
+            }
+            impl NetworkFileSource {
+                fn new() -> Self {
+                    return NetworkFileSource {};
+                }
+                pub fn spawn() -> NetworkFileSourceAddr {
+                    NetworkFileSourceAddr {
+                        addr: start_in_thread(|| NetworkFileSource::new()),
+                    }
                 }
             }
         }
         pub use self::resource::*;
-        pub trait Source {
-            fn can_handle(&self, url: &str) -> bool;
+        pub use self::response::Response as ResResponse;
+        pub trait FileSource {
+            fn can_handle(&self, res: Resource) -> bool;
+            fn get(&mut self, res: Resource) -> actix::ResponseFuture<ResResponse, Error>;
         }
-        pub struct ResourceRequest(resource::Resource);
-        mod _impl_act_resourcerequest {
-            extern crate actix;
-            impl actix::Message for ResourceRequest {
-                type Result = ();
-            }
+        pub trait FileSourceAddr {
+            fn can_handle(
+                &self,
+                res: Resource,
+            ) -> Box<Future<Item = bool, Error = ::actix::MailboxError>>;
+            fn can_handle_async(&self, res: Resource);
+            fn get(
+                &self,
+                res: Resource,
+            ) -> Box<
+                Future<
+                    Item = actix::ResponseFuture<ResResponse, Error>,
+                    Error = ::actix::MailboxError,
+                >,
+            >;
+            fn get_async(&self, res: Resource);
         }
-        pub struct FileSource {
-            sources: Vec<Box<Source + Send + 'static>>,
+        pub struct Msg_FileSource_can_handle(pub Resource);
+        pub struct Msg_FileSource_get(pub Resource);
+        impl ::actix::Message for Msg_FileSource_can_handle {
+            type Result = bool;
         }
-        impl FileSource {
-            pub fn new() -> Self {
-                FileSource {
-                    sources: <[_]>::into_vec(box [Box::new(local::LocalFileSource::new())]),
+        impl ::actix::Message for Msg_FileSource_get {
+            type Result = actix::ResponseFuture<ResResponse, Error>;
+        }
+        pub struct DefaultFileSource {
+            sources: Vec<Box<FileSourceAddr + Send + 'static>>,
+        }
+        impl ::actix::Actor for DefaultFileSource {
+            type Context = ::actix::Context<Self>;
+        }
+        pub struct DefaultFileSourceAddr {
+            pub addr: ::actix::Addr<Syn, DefaultFileSource>,
+        }
+        #[automatically_derived]
+        #[allow(unused_qualifications)]
+        impl ::std::clone::Clone for DefaultFileSourceAddr {
+            #[inline]
+            fn clone(&self) -> DefaultFileSourceAddr {
+                match *self {
+                    DefaultFileSourceAddr {
+                        addr: ref __self_0_0,
+                    } => DefaultFileSourceAddr {
+                        addr: ::std::clone::Clone::clone(&(*__self_0_0)),
+                    },
                 }
             }
         }
-        impl Actor for FileSource {
-            type Context = Context<Self>;
+        impl DefaultFileSource {
+            fn get(&mut self, res: Resource) -> Box<Future<Item = ResResponse, Error = Error>> {
+                for a in self.sources.iter() {
+                    ::io::_print(::std::fmt::Arguments::new_v1(
+                        &["Checking URL compatibility\n"],
+                        &match () {
+                            () => [],
+                        },
+                    ));
+                    if a.can_handle(res.clone()).wait().unwrap() {
+                        return a.get(res);
+                    }
+                }
+                {
+                    ::rt::begin_panic(
+                        "not yet implemented",
+                        &("rmaps/src/map/storage/mod.rs", 23u32, 1u32),
+                    )
+                }
+            }
         }
-        impl Handler<ResourceRequest> for FileSource {
-            type Result = ();
+        pub struct Msg_DefaultFileSource_get(pub Resource);
+        impl ::actix::Message for Msg_DefaultFileSource_get {
+            type Result = Box<Future<Item = ResResponse, Error = Error>>;
+        }
+        impl DefaultFileSourceAddr {
+            pub fn get(
+                &self,
+                res: Resource,
+            ) -> Box<
+                Future<
+                    Item = Box<Future<Item = ResResponse, Error = Error>>,
+                    Error = ::actix::MailboxError,
+                >,
+            > {
+                let data = Msg_DefaultFileSource_get(res);
+                Box::new(self.addr.send(data))
+            }
+            pub fn get_async(&self, res: Resource) {
+                let data = Msg_DefaultFileSource_get(res);
+                self.addr.do_send(data)
+            }
+        }
+        impl ::actix::Handler<Msg_DefaultFileSource_get> for DefaultFileSource {
+            type Result = Box<Future<Item = ResResponse, Error = Error>>;
             fn handle(
                 &mut self,
-                msg: ResourceRequest,
+                msg: Msg_DefaultFileSource_get,
                 ctx: &mut Self::Context,
-            ) -> <Self as Handler<ResourceRequest>>::Result {
-                ::io::_print(::std::fmt::Arguments::new_v1_formatted(
-                    &["Serving - ", "\n"],
-                    &match (&::std::thread::current().name(),) {
-                        (arg0,) => [::std::fmt::ArgumentV1::new(arg0, ::std::fmt::Debug::fmt)],
-                    },
-                    &[::std::fmt::rt::v1::Argument {
-                        position: ::std::fmt::rt::v1::Position::At(0usize),
-                        format: ::std::fmt::rt::v1::FormatSpec {
-                            fill: ' ',
-                            align: ::std::fmt::rt::v1::Alignment::Unknown,
-                            flags: 0u32,
-                            precision: ::std::fmt::rt::v1::Count::Implied,
-                            width: ::std::fmt::rt::v1::Count::Implied,
-                        },
-                    }],
-                ));
-                ()
+            ) -> Box<Future<Item = ResResponse, Error = Error>> {
+                self.get(msg.0)
+            }
+        }
+        impl DefaultFileSource {
+            pub fn new() -> Self {
+                DefaultFileSource {
+                    sources: <[_]>::into_vec(box [
+                        Box::new(local::LocalFileSource::spawn()),
+                        Box::new(network::NetworkFileSource::spawn()),
+                    ]),
+                }
+            }
+            pub fn spawn() -> DefaultFileSourceAddr {
+                DefaultFileSourceAddr {
+                    addr: start_in_thread::<DefaultFileSource, _>(|| DefaultFileSource::new()),
+                }
             }
         }
     }
@@ -11033,7 +11350,7 @@ pub mod map {
     }
     impl MapView {
         pub fn new<F: glium::backend::Facade + Clone + 'static>(f: &F) -> Self {
-            let mut sys = System::new("Test");
+            let mut sys = System::new("Map");
             let _impl = MapViewImpl::new(f);
             let addr = _impl.start();
             return MapView { sys, addr };
@@ -11047,22 +11364,53 @@ pub mod map {
             res.unwrap()
         }
         pub fn render(&mut self, surface: glium::Frame) {
-            self.do_run(|add| add.do_send(MapMethodArgs::Render(surface)));
+            self.do_run(|add| {
+                add.do_send(MapMethodArgs::Render(surface));
+            });
         }
         pub fn set_style_url(&mut self, url: &str) {
-            self.do_run(|add| add.do_send(MapMethodArgs::SetStyleUrl(url.into())));
+            self.do_run(|add| {
+                add.do_send(MapMethodArgs::SetStyleUrl(url.into()));
+            });
         }
     }
     pub struct MapViewImpl {
+        addr: Option<MapViewImplAddr>,
         facade: Box<glium::backend::Facade>,
         style: Option<style::Style>,
         layers: Vec<layers::LayerHolder>,
-        source: Addr<Syn, storage::FileSource>,
+        source: storage::DefaultFileSourceAddr,
+    }
+    pub struct MapViewImplAddr {
+        pub addr: ::actix::Addr<Syn, MapViewImpl>,
+    }
+    #[automatically_derived]
+    #[allow(unused_qualifications)]
+    impl ::std::clone::Clone for MapViewImplAddr {
+        #[inline]
+        fn clone(&self) -> MapViewImplAddr {
+            match *self {
+                MapViewImplAddr {
+                    addr: ref __self_0_0,
+                } => MapViewImplAddr {
+                    addr: ::std::clone::Clone::clone(&(*__self_0_0)),
+                },
+            }
+        }
+    }
+    impl Actor for MapViewImpl {
+        type Context = Context<MapViewImpl>;
+        fn started(&mut self, ctx: &mut <Self as Actor>::Context) {
+            self.addr = Some(MapViewImplAddr {
+                addr: ctx.address(),
+            })
+        }
     }
     impl MapViewImpl {
         pub fn new<F: glium::backend::Facade + Clone + 'static>(f: &F) -> Self {
-            let src_add = start_in_thread(|| storage::FileSource::new());
+            let src_add = storage::DefaultFileSource::spawn();
             let m = MapViewImpl {
+                addr: None,
                 facade: Box::new((*f).clone()),
                 style: None,
                 layers: <[_]>::into_vec(box []),
@@ -11075,7 +11423,7 @@ pub mod map {
             self.layers = layers::parse_style_layers(self.facade.deref(), &style);
             ::io::_print(::std::fmt::Arguments::new_v1_formatted(
                 &["Layers : ", "\n"],
-                &match (&self.layers,) {
+                &match (&style,) {
                     (arg0,) => [::std::fmt::ArgumentV1::new(arg0, ::std::fmt::Debug::fmt)],
                 },
                 &[::std::fmt::rt::v1::Argument {
@@ -11083,7 +11431,7 @@ pub mod map {
                     format: ::std::fmt::rt::v1::FormatSpec {
                         fill: ' ',
                         align: ::std::fmt::rt::v1::Alignment::Unknown,
-                        flags: 4u32,
+                        flags: 0u32,
                         precision: ::std::fmt::rt::v1::Count::Implied,
                         width: ::std::fmt::rt::v1::Count::Implied,
                     },
@@ -11091,16 +11439,34 @@ pub mod map {
             ));
             self.style = Some(style);
         }
-        pub fn set_style_url(&mut self, url: &str) {}
+        pub fn set_style_url(&mut self, url: &str) {
+            ::io::_print(::std::fmt::Arguments::new_v1_formatted(
+                &["Setting style url : ", "\n"],
+                &match (&url,) {
+                    (arg0,) => [::std::fmt::ArgumentV1::new(arg0, ::std::fmt::Debug::fmt)],
+                },
+                &[::std::fmt::rt::v1::Argument {
+                    position: ::std::fmt::rt::v1::Position::At(0usize),
+                    format: ::std::fmt::rt::v1::FormatSpec {
+                        fill: ' ',
+                        align: ::std::fmt::rt::v1::Alignment::Unknown,
+                        flags: 0u32,
+                        precision: ::std::fmt::rt::v1::Count::Implied,
+                        width: ::std::fmt::rt::v1::Count::Implied,
+                    },
+                }],
+            ));
+            let resource = storage::Resource::style(url.into());
+            self.source
+                .get_async(resource, Box::new(self.addr.clone().unwrap()));
+        }
         pub fn render(&mut self, target: &mut glium::Frame) {
             for l in self.layers.iter_mut() {
                 l.render(target);
             }
         }
     }
-    impl Actor for MapViewImpl {
-        type Context = Context<Self>;
-    }
+    use self::storage::*;
     pub enum MapMethodArgs {
         Render(glium::Frame),
         SetStyleUrl(String),
@@ -11124,92 +11490,8 @@ pub mod map {
             };
         }
     }
-    pub struct StyleReady(storage::response::Response);
-    impl Message for StyleReady {
-        type Result = ();
-    }
-    impl Handler<StyleReady> for MapViewImpl {
-        type Result = ();
-        fn handle(&mut self, msg: StyleReady, ctx: &mut Self::Context) {
-            {
-                ::rt::begin_panic(
-                    "not yet implemented",
-                    &("rmaps/src/map/mod.rs", 128u32, 9u32),
-                )
-            }
-        }
-    }
 }
 use prelude::*;
-pub struct A1 {}
-impl ::actix::Actor for A1 {
-    type Context = ::actix::Context<A1>;
-}
-pub struct A1Addr {
-    pub addr: ::actix::Addr<Syn, A1>,
-}
-#[automatically_derived]
-#[allow(unused_qualifications)]
-impl ::std::clone::Clone for A1Addr {
-    #[inline]
-    fn clone(&self) -> A1Addr {
-        match *self {
-            A1Addr {
-                addr: ref __self_0_0,
-            } => A1Addr {
-                addr: ::std::clone::Clone::clone(&(*__self_0_0)),
-            },
-        }
-    }
-}
-use act_codegen::*;
-impl A1 {
-    fn test(&mut self, a: usize) -> usize {
-        return a * 2;
-    }
-    fn cloner<T: Clone + 'static + Send>(&mut self, c: T) -> T {
-        c.clone()
-    }
-}
-struct Msg_A1_test(usize);
-struct Msg_A1_cloner<T>(T);
-impl ::actix::Message for Msg_A1_test {
-    type Result = usize;
-}
-impl<T: Clone + 'static + Send> ::actix::Message for Msg_A1_cloner<T> {
-    type Result = T;
-}
-impl A1Addr {
-    pub fn test(&self, a: usize) -> impl Future<Item = usize, Error = ::actix::MailboxError> {
-        let data = Msg_A1_test(a);
-        self.addr.send(data)
-    }
-    pub fn cloner<T: Clone + 'static + Send>(
-        &self,
-        c: T,
-    ) -> impl Future<Item = T, Error = ::actix::MailboxError> {
-        let data = Msg_A1_cloner(c);
-        self.addr.send(data)
-    }
-}
-impl ::actix::Handler<Msg_A1_test> for A1 {
-    type Result = usize;
-    fn handle(&mut self, msg: Msg_A1_test, ctx: &mut Self::Context) -> usize {
-        self.test(msg.0)
-    }
-}
-impl<T: Clone + 'static + Send> ::actix::Handler<Msg_A1_cloner<T>> for A1 {
-    type Result = T;
-    fn handle(&mut self, msg: Msg_A1_cloner<T>, ctx: &mut Self::Context) -> T {
-        self.cloner(msg.0)
-    }
-}
-fn test() {
-    let a = A1 {};
-    let add = a.start();
-    let add = A1Addr { addr: add };
-    add.test(0).wait();
-}
 pub fn init() {
     use common::prelude::*;
     ::std::thread::spawn(move || {

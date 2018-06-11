@@ -1,6 +1,7 @@
 use prelude::*;
 
+#[derive(Debug)]
 pub struct Response {
-    resource: super::resource::Resource,
-    data: Vec<u8>,
+    pub resource: super::resource::Resource,
+    pub data: Vec<u8>,
 }

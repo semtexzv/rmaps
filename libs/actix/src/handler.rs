@@ -94,6 +94,7 @@ where
     }
 }
 
+
 impl<A, M, I: 'static, E: 'static> MessageResponse<A, M> for Result<I, E>
 where
     A: Actor,
@@ -134,6 +135,7 @@ where
         }));
     }
 }
+
 
 impl<A, M, I: 'static, E: 'static> MessageResponse<A, M> for ResponseFuture<I, E>
 where
