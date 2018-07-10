@@ -1,12 +1,15 @@
-#version 100
+uniform mat4 u_matrix;
 
-uniform highp mat4 matrix;
-attribute highp vec2 position;
-attribute highp vec3 color;
+in vec2 pos;
+in vec4 col;
+in float opacity;
 
-varying highp vec3 vColor;
+out vec4 v_color;
+out float v_opacity;
 
 void main() {
-    gl_Position = vec4(position, 0.0, 1.0) * matrix;
-    vColor = color;
+    gl_Position = u_matrix *  vec4(pos, 0.0, 1.0);
+    v_color =  col;
+
+    v_opacity = 1.0;
 }

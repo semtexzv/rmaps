@@ -8,12 +8,13 @@ pub extern crate prost_types;
 pub extern crate bytes;
 
 
-pub mod vector_tile;
+pub use common::geometry::Value;
 
+pub mod vector_tile;
 pub use vector_tile::tile::GeomType;
 
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Tile {
     pub layers: Vec<Layer>,
 }
@@ -26,7 +27,7 @@ impl From<vector_tile::Tile> for Tile {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Layer {
     pub version: u32,
     pub name: String,
@@ -49,21 +50,12 @@ impl From<vector_tile::tile::Layer> for Layer {
 
 use std::collections::BTreeMap;
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Feature {
     pub id: u64,
     pub typ: GeomType,
     pub tags: BTreeMap<String, Value>,
-    pub geom: GeomData,
-}
-
-#[derive(Debug)]
-pub enum Value {
-    String(String),
-    Float(f64),
-    Int(i64),
-    Uint(u64),
-    Bool(bool),
+    pub geom: Vec<Vec<[i32; 2]>>,
 }
 
 impl From<vector_tile::tile::Value> for Value {
@@ -85,7 +77,7 @@ impl From<vector_tile::tile::Value> for Value {
         }
 
         if let Some(v) = v.uint_value {
-            return Value::Uint(v as _);
+            return Value::UInt(v as _);
         }
 
         if let Some(v) = v.bool_value {
@@ -95,76 +87,67 @@ impl From<vector_tile::tile::Value> for Value {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum GeomData {
     Points(Vec<[u32; 2]>),
     Lines(Vec<Vec<[u32; 2]>>),
     Polys(Vec<Vec<[u32; 2]>>),
 }
 
-fn parse_command_geometry(typ: GeomType, geo: &[u32]) -> GeomData {
+pub const COMMAND_MOVE_TO: u32 = 1;
+pub const COMMAND_LINE_TO: u32 = 2;
+pub const COMMAND_CLOSE_PATH: u32 = 7;
+
+pub fn decode_zigzag(v: u32) -> i32 {
+    (v >> 1) as i32 ^ (-((v & 1) as i32))
+}
+
+fn parse_geometry(typ: GeomType, data: &[u32]) -> Vec<Vec<[i32; 2]>> {
     let mut cursor = [0, 0];
-    let mut all_geoms = vec![];
-    let mut current_geom = vec![];
-    let mut data = &geo[..];
+    let mut pos = 0;
 
+    let mut geometry = vec![];
+    let mut ring = vec![];
 
-    if data.is_empty() {
-        panic!();
-    }
-    while data.len() >= 1 {
-        match (data[0] & 0x7, data[0] >> 3) {
-            // MoveTo command
-            (1, count) => {
-                match typ {
-                    GeomType::Linestring | GeomType::Polygon => {
-                        if !current_geom.is_empty() {
-                            all_geoms.push(::std::mem::replace(&mut current_geom, vec![]));
-                        }
+    while pos < data.len() {
+        match (data[pos] & 0x7, data[pos] >> 3, typ) {
+            (COMMAND_MOVE_TO, count, _) => {
+                for i in 0..count {
+                    let base = (pos + 1 + i as usize * 2) as usize;
+                    cursor[0] += decode_zigzag(data[base + 0]);
+                    cursor[1] += decode_zigzag(data[base + 1]);
+                    if !ring.is_empty() {
+                        geometry.push(::std::mem::replace(&mut ring, vec![]));
                     }
-                    _ => {}
+
+                    ring.push(cursor);
                 }
+                pos += (1 + 2 * count) as usize;
+            }
+            (COMMAND_LINE_TO, count, GeomType::Linestring) | (COMMAND_LINE_TO, count, GeomType::Polygon) => {
                 for i in 0..count {
-                    cursor[0] += data[1 + i as usize];
-                    cursor[1] += data[2 + i as usize];
-                    current_geom.push(cursor);
+                    let base = (pos + 1 + i as usize * 2) as usize;
+                    cursor[0] += decode_zigzag(data[base + 0]);
+                    cursor[1] += decode_zigzag(data[base + 1]);
+                    ring.push(cursor);
                 }
-                data = &data[1 + 2 * count as usize..];
+                pos += (1 + 2 * count) as usize;
             }
-            // LineTo command
-            (2, count) => {
-                for i in 0..count {
-                    cursor[0] += data[1 + i as usize];
-                    cursor[1] += data[2 + i as usize];
-                    current_geom.push(cursor);
-                }
-                data = &data[1 + 2 * count as usize..];
+            (COMMAND_CLOSE_PATH, 1, GeomType::Polygon) => {
+                pos += 1;
             }
-            (7, _) => {
-                data = &data[1..];
+            (command, count, typ) => {
+                panic!("Invalid comand : {:?}, count : {:?}, type : {:?}", command, count, typ);
             }
-            _ => {}
-        }
+        };
     }
 
-    if !current_geom.is_empty() {
-        all_geoms.push(::std::mem::replace(&mut current_geom, vec![]));
+    if !ring.is_empty() {
+        geometry.push(::std::mem::replace(&mut ring, vec![]));
     }
+    //geometry.reverse();
 
-    return match typ {
-        GeomType::Point => {
-            GeomData::Points(all_geoms.remove(0))
-        }
-        GeomType::Linestring => {
-            GeomData::Lines(all_geoms)
-        }
-        GeomType::Polygon => {
-            GeomData::Polys(all_geoms)
-        }
-        _ => {
-            panic!("Unknown geometry type");
-        }
-    };
+    return geometry;
 }
 
 impl Feature {
@@ -184,11 +167,10 @@ impl Feature {
             id: f.id.unwrap_or(0),
             tags,
             typ,
-            geom: parse_command_geometry(typ, &f.geometry),
+            geom: parse_geometry(typ, &f.geometry),
         };
     }
 }
-
 
 
 #[test]

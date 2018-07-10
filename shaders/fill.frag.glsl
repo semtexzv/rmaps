@@ -1,5 +1,6 @@
-#version 100
-varying highp vec3 vColor;
+in vec4 v_color;
+in float v_opacity;
+
 void main() {
-    gl_FragColor = vec4(vColor, 1.0);
+    gl_FragColor = v_color * v_opacity;
 }

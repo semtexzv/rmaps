@@ -1,21 +1,26 @@
 //#![feature(custom_attribute)]
+#![recursion_limit="512"]
 #![feature(slice_patterns)]
 #![feature(proc_macro)]
 #![feature(proc_macro_mod)]
 #![feature(never_type)]
 #![feature(associated_type_defaults)]
 #![feature(box_syntax)]
+#![feature(try_from)]
+#![feature(trace_macros)]
+#![feature(pattern_parentheses)]
+#![feature(macro_at_most_once_rep)]
 
-
-#![allow(unused_imports)]
+#![allow(unused_imports, unused_mut, unused_variables, unused_macros, unreachable_code, unreachable_patterns, unused_parens)]
 pub extern crate common;
 pub extern crate mapbox_tiles;
-pub extern crate css_color_parser;
+#[macro_use]
+pub extern crate rmaps_derive;
 
-pub extern crate act;
-pub extern crate act_codegen;
+pub extern crate image;
 
-
+pub extern crate tess2;
+extern crate serde;
 /*
 pub extern crate act;
 #[macro_use]

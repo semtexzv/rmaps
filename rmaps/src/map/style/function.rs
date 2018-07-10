@@ -7,7 +7,7 @@ use common::json;
 pub enum FunctionStop<T: DeserializeOwned + Clone> {
     Value(f32, T),
     ValueAndZoom {
-        value: f32,
+        value: json::Value,
         zoom: f32,
         res: T,
     },
@@ -33,7 +33,7 @@ impl<'de, T: DeserializeOwned + Clone> Deserialize<'de> for FunctionStop<T> {
 
                 return Ok(
                     FunctionStop::ValueAndZoom {
-                        value: from_jvalue(value).map_err(serde_err)?,
+                        value: from_bjvalue(value).map_err(serde_err)?,
                         zoom: from_jvalue(zoom).map_err(serde_err)?,
                         res: from_jvalue(&x).map_err(serde_err)?,
                     }
@@ -77,11 +77,59 @@ pub enum Function<T: DeserializeOwned + Clone> {
     },
 }
 
-impl<T: DeserializeOwned + Clone> Function<T> {
-    pub fn eval(&self) -> T {
-        match self {
-            Function::Raw(c) => c.clone(),
-            _ => panic!()
+
+pub struct FunctionEvaluationContext<'a> {
+    feature: Option<&'a ::mapbox_tiles::Feature>,
+    zoom: f64,
+}
+
+const FACTOR: f64 = 100000.0;
+
+
+
+
+impl<'a> FunctionEvaluationContext<'a> {
+    pub fn new_zoom(zoom: f64) -> Self {
+        return FunctionEvaluationContext {
+            feature: None,
+            zoom: zoom,
+        };
+    }
+    pub fn evaluate<T: DeserializeOwned + Clone>(&self, fun: &Function<T>) -> T {
+        struct FunctionZoomHelp<T> {
+            stops: BTreeMap<f64, T>,
+        }
+
+        struct FunctionPropHelp<T> {
+            stops: BTreeMap<json::Value, T>,
+        }
+
+        struct FunctionCombHelp<T> {
+            stops: BTreeMap<(f64, json::Value), T>,
+        }
+
+        match fun {
+            Function::Raw(v) => v.clone(),
+            Function::Interpolated { property: None, base, typ, default, stops, .. } => {
+                let mut help = BTreeMap::<i64, T>::new();
+                for s in stops.into_iter() {
+                    if let FunctionStop::Value(k, v) = s {
+                        help.insert((*k as f64 * FACTOR) as i64, v.clone());
+                    }
+                }
+                let factored_zoom = (self.zoom * FACTOR) as i64;
+                let upper_bound = help.range(&factored_zoom..);
+
+                if upper_bound.count() == 0 {
+                    return default.clone().unwrap().clone();
+                }
+
+
+                panic!()
+            }
+            Function::Interpolated { property: Some(prop), base, typ, default, stops, .. } => {
+                panic!()
+            }
         }
     }
 }

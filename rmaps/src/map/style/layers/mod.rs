@@ -13,7 +13,8 @@ pub use self::line::*;
 pub use self::raster::*;
 pub use self::symbol::*;
 
-use super::expr::Filter;
+use super::expr_old::Filter;
+
 
 #[derive(Deserialize, Debug, Clone)]
 pub struct LayerCommon {
@@ -35,6 +36,15 @@ pub enum Visibility {
     Invisible,
 }
 
+impl Into<bool> for Visibility {
+    fn into(self) -> bool {
+        match self {
+            Visibility::Visible => true,
+            _ => false,
+        }
+    }
+}
+
 impl Default for Visibility {
     fn default() -> Self {
         Visibility::Visible
@@ -44,8 +54,8 @@ impl Default for Visibility {
 
 #[derive(Deserialize, Debug, Clone)]
 pub struct BaseLayout {
-    #[serde(default = "Visibility::default")]
-    visibility: Visibility
+    #[serde(default = "Default::default")]
+    pub visibility: Function<Visibility>
 }
 
 impl Default for BaseLayout {
@@ -56,4 +66,24 @@ impl Default for BaseLayout {
     }
 }
 
+pub trait StyleLayer {
+    type PaintType;
+    type LayoutType;
 
+    fn get_paint(&self) -> &Self::PaintType;
+    fn get_layout(&self) -> &Self::LayoutType;
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(untagged)]
+pub enum Function<T: super::expr_test::TypeDesc> {
+    Value(T),
+    Expr(super::expr_test::TypedExpr<T>),
+}
+
+
+impl<T: Default + super::expr_test::TypeDesc> Default for Function<T> {
+    fn default() -> Self {
+        Function::Value(Default::default())
+    }
+}

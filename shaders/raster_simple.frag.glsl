@@ -1,5 +1,8 @@
 #version 100
-varying highp vec3 vColor;
+
+uniform sampler2D u_texture;
+in vec2 v_texture_pos;
+
 void main() {
-    gl_FragColor = vec4(vColor, 1.0);
+    gl_FragColor = vec4(texture2D(u_texture,v_texture_pos).rgb,0.5);
 }

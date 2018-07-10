@@ -2,12 +2,11 @@ use prelude::*;
 
 use super::{
     LayerCommon,
+    StyleLayer,
     BaseLayout,
     Visibility,
+    Function,
 };
-
-use super::super::function::Function;
-use super::super::color::Color;
 
 #[derive(Debug, Deserialize, Clone)]
 pub struct BackgroundLayer {
@@ -19,6 +18,18 @@ pub struct BackgroundLayer {
     pub paint: BackgroundPaint,
 }
 
+impl StyleLayer for BackgroundLayer {
+    type PaintType = BackgroundPaint;
+    type LayoutType = BaseLayout;
+
+    fn get_paint(&self) -> &<Self as StyleLayer>::PaintType {
+        &self.paint
+    }
+
+    fn get_layout(&self) -> &<Self as StyleLayer>::LayoutType {
+        &self.layout
+    }
+}
 
 #[derive(Deserialize, Debug, Clone)]
 pub struct BackgroundPaint {
@@ -35,11 +46,11 @@ pub struct BackgroundPaint {
 }
 
 fn default_background_color() -> Function<Color> {
-    return Function::Raw(Color(::css_color_parser::Color::from_str("#00000").unwrap()));
+    return Function::Value(Color([0., 0., 0., 1.]));
 }
 
 fn default_backround_opacity() -> Function<f32> {
-    return Function::Raw(1.0);
+    return Function::Value(1.0);
 }
 
 impl Default for BackgroundPaint {

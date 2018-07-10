@@ -22,9 +22,16 @@ pub use glium::{
         ProgramCreationInput,
     },
 };
+pub use num;
+
+pub use css_color_parser;
 
 pub use serde::{
-    self
+    self, Serialize, Deserialize, Serializer, Deserializer, ser, de,
+};
+
+pub use serde_derive::{
+    Serialize, Deserialize,
 };
 
 
@@ -33,11 +40,15 @@ pub use futures::prelude::*;
 pub use actix::{
     self,
     SystemRunner,
-    prelude::*
+    prelude::*,
 };
 
 
-pub use failure::{Error, Fail};
-pub type Result<T> = StdResult<T,Error>;
+pub use failure::{Error, Fail, bail};
 
-pub type BoxFuture<T,E> = Box<Future<Item=T,Error=E>>;
+pub type Result<T> = StdResult<T, Error>;
+
+pub type BoxFuture<T, E> = Box<Future<Item=T, Error=E>>;
+pub type SyncAddr<A> = Addr<Syn, A>;
+
+pub const EXTENT: f32 = 8192.0;

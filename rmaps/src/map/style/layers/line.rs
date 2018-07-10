@@ -1,13 +1,12 @@
 use prelude::*;
 
+
 use super::{
     LayerCommon,
     BaseLayout,
     Visibility,
+    Function,
 };
-
-use super::super::function::Function;
-use super::super::color::Color;
 
 
 #[derive(Deserialize, Debug, Clone)]
@@ -22,9 +21,9 @@ pub struct LineLayer {
 #[derive(Deserialize, Debug, Clone)]
 pub struct LineLayout {
     #[serde(rename = "line-cap")]
-    cap: Option<String>,
+    cap: Option<Function<String>>,
     #[serde(rename = "line-join")]
-    join: Option<String>,
+    join: Option<Function<String>>,
     #[serde(rename = "line-miter-limit")]
     miter_limit: Option<Function<f32>>,
     #[serde(rename = "line-round-limit")]

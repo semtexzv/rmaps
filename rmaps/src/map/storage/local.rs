@@ -3,50 +3,41 @@ use prelude::*;
 use super::*;
 use std::io::Read;
 
-#[derive(Actor)]
-pub struct LocalFileSource {}
+use common::actix_derive::*;
 
-impl LocalFileSource {
-    pub fn new() -> LocalFileSource {
-        LocalFileSource {}
-    }
-    pub fn spawn() -> LocalFileSourceAddr {
-        LocalFileSourceAddr {
-            addr: start_in_thread(|| Self::new())
-        }
-    }
-    /*
-    fn get_int(&mut self, res: Resource, accept_addr: Box<FileAcceptorAddr + Send + 'static>) -> Result<()> {
+pub struct LocalFileSource {}
+impl Actor for LocalFileSource{
+    type Context = Context<Self>;
+}
+
+impl Handler<super::ResourceRequest> for LocalFileSource {
+    type Result = ();
+
+    fn handle(&mut self, msg: ResourceRequest, _ctx: &mut Context<Self>) {
+        let req = &msg.0;
         let url = {
-            res.url().to_string()
+            req.url().to_string()
         };
         let pos = url.find("://");
         let path = url.split_at(pos.unwrap()+3).1;
 //        let path = format!("{}{}",url.domain(),url.path());
         println!("Local  Retrieving  {:?}", path);
-        let mut f = ::std::fs::File::open(path)?;
+        let mut f = ::std::fs::File::open(path).unwrap();
         let mut data = vec![];
-        f.read_to_end(&mut data)?;
-        let resp = ResResponse {
-            resource: res,
+        f.read_to_end(&mut data).unwrap();
+        let resp = Resource {
+            req:req.clone(),
             data,
         };
-        accept_addr.resource_ready_async(resp);
-        Ok(())
-    }
-    */
-}
-
-
-#[actor_impl]
-impl FileSource for LocalFileSource {
-    fn can_handle(&self, res: Resource) -> bool {
-        println!("Local can handle {:?}", res.url());
-        return res.url().starts_with("local://") || res.url().starts_with("file://");
-    }
-
-    fn get(&mut self, res: Resource) -> ResponseFuture<ResResponse,Error> {
-        Box::new(unimplemented!())
-
+        msg.1.do_send(super::ResourceCallback(Ok(resp))).unwrap();
     }
 }
+impl LocalFileSource {
+    pub fn new() -> LocalFileSource {
+        LocalFileSource {}
+    }
+    pub fn spawn() -> Addr<Syn,Self> {
+        start_in_thread(|| Self::new())
+    }
+}
+

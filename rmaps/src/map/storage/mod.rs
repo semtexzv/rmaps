@@ -1,73 +1,61 @@
 use prelude::*;
 
 pub mod resource;
-pub mod response;
 
-//pub mod local;
+pub mod local;
 pub mod network;
 
 pub use self::resource::*;
-pub use self::response::Response as ResResponse;
 
-#[derive_actor_trait]
-pub trait FileSource {
-    fn can_handle(&self, res: Resource) -> bool;
-    fn get(&mut self, res: Resource) ->::act::ProxyLocal<ResResponse, Error>;
+#[derive(Debug)]
+pub struct ResourceCallback(pub Result<Resource>);
+
+impl Message for ResourceCallback {
+    type Result = ();
 }
 
-#[derive(Actor)]
+pub struct ResourceRequest(pub Request, pub Recipient<Syn, ResourceCallback>);
+
+impl Message for ResourceRequest {
+    type Result = ();
+}
+
+//#[derive(Actor)]
 pub struct DefaultFileSource {
-    sources: Vec<Box<FileSourceAddr + Send + 'static>>
+    local: SyncAddr<local::LocalFileSource>,
+    network: SyncAddr<network::NetworkFileSource>,
 }
 
-#[actor_impl]
-impl FileSource for DefaultFileSource {
-    fn can_handle(&self, res: Resource) -> bool {
-        return true;
-    }
+impl Actor for DefaultFileSource {
+    type Context = Context<DefaultFileSource>;
+}
 
-    fn get(&mut self, res: Resource) -> ::act::ProxyLocal<ResResponse, Error> {
-        for a in self.sources.iter() {
-            println!("Checking URL compatibility");
-            if a.can_handle(res.clone()).wait().unwrap() {
-                return ProxyLocal::new(a.get(res).flatten());
-            }
+impl Handler<ResourceRequest> for DefaultFileSource {
+    type Result = ();
+
+    fn handle(&mut self, msg: ResourceRequest, _ctx: &mut Context<Self>)  {
+        let url = { msg.0.url().to_string() };
+        if url.starts_with("file://") || url.starts_with("local://") {
+            self.local.do_send(msg);
+        } else if url.starts_with("http://") || url.starts_with("https://")  {
+            self.network.do_send(msg);
+        } else {
+            panic!("No data source available for {:?}", url);
         }
-        panic!()
-    }
-
-}
-
-//#[actor_impl]
-/*
-impl DefaultFileSource {
-    fn get(&mut self, res: Resource) -> Box<Future<Item=ResResponse, Error=Error>> {
-        for a in self.sources.iter() {
-            println!("Checking URL compatibility");
-            if a.can_handle(res.clone()).wait().unwrap() {
-                let outer: Box<Future<Item=_, Error=MailboxError>> = a.get(res);
-                return Box::new(outer.flatten());
-            }
-        }
-        unimplemented!()
     }
 }
-*/
+
 
 impl DefaultFileSource {
     pub fn new() -> Self {
         DefaultFileSource {
-            sources: vec![
-                //  Box::new(local::LocalFileSource::spawn()),
-                 Box::new(network::NetworkFileSource::spawn()),
-            ]
+            local: local::LocalFileSource::spawn(),
+            network: network::NetworkFileSource::spawn(),
         }
     }
 
-    pub fn spawn() -> DefaultFileSourceAddr {
-        DefaultFileSourceAddr {
-            addr: start_in_thread::<DefaultFileSource, _>(|| DefaultFileSource::new())
-        }
+    pub fn spawn() -> Addr<Syn, Self> {
+        start_in_thread::<DefaultFileSource, _>(|| DefaultFileSource::new())
     }
 }
 

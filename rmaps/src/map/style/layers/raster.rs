@@ -4,11 +4,8 @@ use super::{
     LayerCommon,
     BaseLayout,
     Visibility,
+    Function,
 };
-
-use super::super::function::Function;
-use super::super::color::Color;
-
 
 #[derive(Deserialize, Debug, Clone)]
 pub struct RasterLayer {
@@ -18,7 +15,6 @@ pub struct RasterLayer {
     pub layout: BaseLayout,
     pub  paint: Option<RasterPaint>,
 }
-
 
 
 #[derive(Deserialize, Debug, Clone)]

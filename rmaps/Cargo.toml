@@ -6,9 +6,11 @@ authors = ["Michal Hornický <semtexzv@gmail.com>"]
 [dependencies]
 common = { path = "../common" }
 mapbox-tiles = { path = "../mapbox-tiles" }
+rmaps_derive = { path = "../libs/rmaps_derive"}
 
-css-color-parser = "0.1.2"
 serde="*"
 actix = {path ="../libs/actix"}
-act = { path = "../libs/act"}
-act_codegen = {path ="../libs/act_codegen"}
+image = "*"
+
+tess2 =  { path = "../libs/tess2" }
+earcut = { path = "../libs/earcut" }

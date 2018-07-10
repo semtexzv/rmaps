@@ -2,21 +2,16 @@ use prelude::*;
 
 use common::json;
 
-mod expr;
-mod function;
-mod color;
+pub mod expr;
+pub mod expr_test;
+
+mod expr_old;
 
 mod layers;
 
 pub use self::layers::*;
 
-
-use self::function::Function;
-
-use self::color::Color;
-
-
-#[derive(Debug,Deserialize,Clone)]
+#[derive(Debug, Deserialize, Clone)]
 pub struct TileJson {
     scheme: Option<String>,
     tiles: Option<Vec<String>>,
@@ -24,14 +19,14 @@ pub struct TileJson {
     maxzoom: Option<f32>,
     bounds: Option<[f32; 4]>,
     #[serde(rename = "tileSize")]
-    tile_size : Option<i32>,
-
+    tile_size: Option<i32>,
 }
-#[derive(Debug,Deserialize,Clone)]
-pub struct SourceData{
-    url : Option<String>,
+
+#[derive(Debug, Deserialize, Clone)]
+pub struct SourceData {
     #[serde(flatten)]
-    tilejson : TileJson,
+    tilejson: TileJson,
+    url: Option<String>,
 }
 
 #[derive(Deserialize, Debug, Clone)]
@@ -44,7 +39,7 @@ pub struct Style {
     pub sources: BTreeMap<String, StyleSource>,
     pub sprite: Option<String>,
     pub glyphs: Option<String>,
-    pub layers: Vec<StyleLayer>,
+    pub layers: Vec<BaseStyleLayer>,
 
 }
 
@@ -57,13 +52,22 @@ pub enum StyleSource {
     #[serde(rename = "raster")]
     Raster(SourceData),
     #[serde(rename = "image")]
-    Image(SourceData)
+    Image(SourceData),
 }
 
+impl StyleSource {
+    pub fn   url_template(&self) -> String {
+        match &self {
+            &StyleSource::Vector(ref v) => v,
+            &StyleSource::Raster(ref v) => v,
+            &StyleSource::Image(ref v) => v,
+        }.tilejson.tiles.as_ref().unwrap()[0].clone()
+    }
+}
 
 #[derive(Deserialize, Debug, Clone)]
 #[serde(tag = "type")]
-pub enum StyleLayer {
+pub enum BaseStyleLayer {
     #[serde(rename = "background")]
     Background(BackgroundLayer),
     #[serde(rename = "fill")]
@@ -74,6 +78,8 @@ pub enum StyleLayer {
     Symbols(SymbolLayer),
     #[serde(rename = "raster")]
     Raster(RasterLayer),
+    #[serde(rename = "fill-extrusion")]
+    FillExtrusion(json::Value)
 }
 
 

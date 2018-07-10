@@ -1,6 +1,7 @@
 #![feature(prelude_import)]
 #![no_std]
 //#![feature(custom_attribute)]
+#![recursion_limit = "256"]
 #![feature(slice_patterns)]
 #![feature(proc_macro)]
 #![feature(proc_macro_mod)]
@@ -13,11 +14,12 @@ use std::prelude::v1::*;
 #[macro_use]
 extern crate std;
 pub extern crate common;
-pub extern crate css_color_parser;
 pub extern crate mapbox_tiles;
 
-pub extern crate act_codegen;
+pub extern crate image;
 
+extern crate serde;
+pub extern crate tess2;
 /*
 pub extern crate act;
 #[macro_use]
@@ -28,7 +30,6 @@ pub mod prelude {
 
     //map::storage::actor_impls::setup();
     //map::storage::setup_FileSource();
-    pub use act_codegen::*;
     pub use common::export::*;
     pub fn start_in_thread<
         A: Actor<Context = Context<A>> + Send + 'static,
@@ -50,15 +51,286 @@ pub mod prelude {
 pub mod map {
     use prelude::*;
     pub mod render {
+        use map::layers;
+        use map::style;
+        use map::tiles::data;
         use prelude::*;
+        use std::hash;
+        pub struct RenderParams<'a> {
+            pub disp: &'a Display,
+            pub frame: &'a mut glium::Frame,
+            pub projection: cgmath::Matrix4<f32>,
+            pub view: cgmath::Matrix4<f32>,
+        }
+        pub struct LayerData {
+            pub layer: Box<layers::Layer>,
+            pub buckets: BTreeMap<TileCoords, RenderBucket>,
+        }
+        #[automatically_derived]
+        #[allow(unused_qualifications)]
+        impl ::std::fmt::Debug for LayerData {
+            fn fmt(&self, f: &mut ::std::fmt::Formatter) -> ::std::fmt::Result {
+                match *self {
+                    LayerData {
+                        layer: ref __self_0_0,
+                        buckets: ref __self_0_1,
+                    } => {
+                        let mut debug_trait_builder = f.debug_struct("LayerData");
+                        let _ = debug_trait_builder.field("layer", &&(*__self_0_0));
+                        let _ = debug_trait_builder.field("buckets", &&(*__self_0_1));
+                        debug_trait_builder.finish()
+                    }
+                }
+            }
+        }
+        pub struct Renderer {
+            pub display: Box<Display>,
+            pub layers: Vec<LayerData>,
+        }
+        impl Renderer {
+            pub fn new(display: &Display) -> Self {
+                Renderer {
+                    display: Box::new(display.clone()),
+                    layers: <[_]>::into_vec(box []),
+                }
+            }
+            pub fn style_changed(&mut self, style: &style::Style) -> Result<()> {
+                self.layers = layers::parse_style_layers(&self.display, style)
+                    .into_iter()
+                    .map(|l| LayerData {
+                        layer: l,
+                        buckets: BTreeMap::new(),
+                    })
+                    .collect();
+                Ok(())
+            }
+            pub fn tile_ready(&mut self, tile: data::TileData) {
+                for l in self.layers.iter_mut() {
+                    if l.layer.uses_source(&tile.source) {
+                        let bucket = l.layer.create_bucket(&self.display, &tile).unwrap();
+                        l.buckets.insert(tile.coord, bucket);
+                    }
+                }
+            }
+            pub fn render(&mut self, mut params: RenderParams) -> Result<()> {
+                for l in self.layers.iter_mut() {
+                    l.layer.render_begin(&mut params);
+                    for (c, b) in l.buckets.iter() {
+                        l.layer.render_tile(&mut params, *c, &b).unwrap();
+                    }
+                    l.layer.render_end(&mut params);
+                }
+                Ok(())
+            }
+        }
+        pub struct LineBucket {}
+        #[automatically_derived]
+        #[allow(unused_qualifications)]
+        impl ::std::fmt::Debug for LineBucket {
+            fn fmt(&self, f: &mut ::std::fmt::Formatter) -> ::std::fmt::Result {
+                match *self {
+                    LineBucket {} => {
+                        let mut debug_trait_builder = f.debug_struct("LineBucket");
+                        debug_trait_builder.finish()
+                    }
+                }
+            }
+        }
+        #[automatically_derived]
+        #[allow(unused_qualifications)]
+        impl ::std::clone::Clone for LineBucket {
+            #[inline]
+            fn clone(&self) -> LineBucket {
+                match *self {
+                    LineBucket {} => LineBucket {},
+                }
+            }
+        }
+        pub enum RenderBucket {
+            NoOp,
+            Raster(layers::raster::RasterBucket),
+            Fill(layers::fill::FillBucket),
+            Line(LineBucket),
+        }
+        #[automatically_derived]
+        #[allow(unused_qualifications)]
+        impl ::std::fmt::Debug for RenderBucket {
+            fn fmt(&self, f: &mut ::std::fmt::Formatter) -> ::std::fmt::Result {
+                match (&*self,) {
+                    (&RenderBucket::NoOp,) => {
+                        let mut debug_trait_builder = f.debug_tuple("NoOp");
+                        debug_trait_builder.finish()
+                    }
+                    (&RenderBucket::Raster(ref __self_0),) => {
+                        let mut debug_trait_builder = f.debug_tuple("Raster");
+                        let _ = debug_trait_builder.field(&&(*__self_0));
+                        debug_trait_builder.finish()
+                    }
+                    (&RenderBucket::Fill(ref __self_0),) => {
+                        let mut debug_trait_builder = f.debug_tuple("Fill");
+                        let _ = debug_trait_builder.field(&&(*__self_0));
+                        debug_trait_builder.finish()
+                    }
+                    (&RenderBucket::Line(ref __self_0),) => {
+                        let mut debug_trait_builder = f.debug_tuple("Line");
+                        let _ = debug_trait_builder.field(&&(*__self_0));
+                        debug_trait_builder.finish()
+                    }
+                }
+            }
+        }
     }
     pub mod layers {
+        use map::render;
+        use map::style;
+        use map::tiles::data;
         use prelude::*;
-        pub mod background {
-            use map::style;
+        pub mod property {
             use prelude::*;
+            pub struct Property<T: Debug + Clone> {
+                val: Option<T>,
+            }
+            #[automatically_derived]
+            #[allow(unused_qualifications)]
+            impl<T: ::std::fmt::Debug + Debug + Clone> ::std::fmt::Debug for Property<T> {
+                fn fmt(&self, f: &mut ::std::fmt::Formatter) -> ::std::fmt::Result {
+                    match *self {
+                        Property {
+                            val: ref __self_0_0,
+                        } => {
+                            let mut debug_trait_builder = f.debug_struct("Property");
+                            let _ = debug_trait_builder.field("val", &&(*__self_0_0));
+                            debug_trait_builder.finish()
+                        }
+                    }
+                }
+            }
+            #[automatically_derived]
+            #[allow(unused_qualifications)]
+            impl<T: ::std::clone::Clone + Debug + Clone> ::std::clone::Clone for Property<T> {
+                #[inline]
+                fn clone(&self) -> Property<T> {
+                    match *self {
+                        Property {
+                            val: ref __self_0_0,
+                        } => Property {
+                            val: ::std::clone::Clone::clone(&(*__self_0_0)),
+                        },
+                    }
+                }
+            }
+            impl<T: Debug + Clone> Default for Property<T> {
+                fn default() -> Self {
+                    Property { val: None }
+                }
+            }
+            impl<T: Debug + Clone> Property<T> {
+                pub fn get(&self) -> T {
+                    return self.val.clone().unwrap();
+                }
+            }
+        }
+        pub mod background {
+            use super::property::*;
+            use map::render::*;
+            use map::style;
+            use map::tiles::data::*;
+            use prelude::*;
+            pub struct BackgroundColor(pub Property<Color>);
+            impl ::std::ops::Deref for BackgroundColor {
+                type Target = Property<Color>;
+                fn deref(&self) -> &Self::Target {
+                    &self.0
+                }
+            }
+            impl ::std::borrow::Borrow<Property<Color>> for BackgroundColor {
+                fn borrow(&self) -> &Property<Color> {
+                    &self.0
+                }
+            }
+            impl ::std::convert::AsRef<Property<Color>> for BackgroundColor {
+                fn as_ref(&self) -> &Property<Color> {
+                    &self.0
+                }
+            }
+            #[allow(dead_code, non_camel_case_types)]
+            impl BackgroundColor {
+                #[doc = r" Map a function over the wrapped value, consuming it in the process."]
+                pub fn map<
+                    __SHRINKWRAP_T,
+                    __SHRINKWRAP_F: FnMut(Property<Color>) -> __SHRINKWRAP_T,
+                >(
+                    self,
+                    mut f: __SHRINKWRAP_F,
+                ) -> __SHRINKWRAP_T {
+                    f(self.0)
+                }
+                #[doc = r" Map a function over the wrapped value without consuming it."]
+                pub fn map_ref<
+                    __SHRINKWRAP_T,
+                    __SHRINKWRAP_F: FnMut(&Property<Color>) -> __SHRINKWRAP_T,
+                >(
+                    &self,
+                    mut f: __SHRINKWRAP_F,
+                ) -> __SHRINKWRAP_T {
+                    f(&self.0)
+                }
+                #[doc = r" Map a function over the wrapped value, potentially changing it in place."]
+                pub fn map_mut<__SHRINKWRAP_T, __SHRINKWRAP_F>(
+                    &mut self,
+                    mut f: __SHRINKWRAP_F,
+                ) -> __SHRINKWRAP_T
+                where
+                    __SHRINKWRAP_F: FnMut(&mut Property<Color>) -> __SHRINKWRAP_T,
+                {
+                    f(&mut self.0)
+                }
+            }
+            pub struct BackgroundProperties {
+                color: Property<Color>,
+            }
+            #[automatically_derived]
+            #[allow(unused_qualifications)]
+            impl ::std::fmt::Debug for BackgroundProperties {
+                fn fmt(&self, f: &mut ::std::fmt::Formatter) -> ::std::fmt::Result {
+                    match *self {
+                        BackgroundProperties {
+                            color: ref __self_0_0,
+                        } => {
+                            let mut debug_trait_builder = f.debug_struct("BackgroundProperties");
+                            let _ = debug_trait_builder.field("color", &&(*__self_0_0));
+                            debug_trait_builder.finish()
+                        }
+                    }
+                }
+            }
+            #[automatically_derived]
+            #[allow(unused_qualifications)]
+            impl ::std::clone::Clone for BackgroundProperties {
+                #[inline]
+                fn clone(&self) -> BackgroundProperties {
+                    match *self {
+                        BackgroundProperties {
+                            color: ref __self_0_0,
+                        } => BackgroundProperties {
+                            color: ::std::clone::Clone::clone(&(*__self_0_0)),
+                        },
+                    }
+                }
+            }
+            #[automatically_derived]
+            #[allow(unused_qualifications)]
+            impl ::std::default::Default for BackgroundProperties {
+                #[inline]
+                fn default() -> BackgroundProperties {
+                    BackgroundProperties {
+                        color: ::std::default::Default::default(),
+                    }
+                }
+            }
             pub struct BackgroundLayer {
                 style_layer: style::BackgroundLayer,
+                properties: BackgroundProperties,
             }
             #[automatically_derived]
             #[allow(unused_qualifications)]
@@ -67,33 +339,171 @@ pub mod map {
                     match *self {
                         BackgroundLayer {
                             style_layer: ref __self_0_0,
+                            properties: ref __self_0_1,
                         } => {
                             let mut debug_trait_builder = f.debug_struct("BackgroundLayer");
                             let _ = debug_trait_builder.field("style_layer", &&(*__self_0_0));
+                            let _ = debug_trait_builder.field("properties", &&(*__self_0_1));
                             debug_trait_builder.finish()
                         }
                     }
                 }
             }
             impl super::Layer for BackgroundLayer {
-                fn render<S: glium::Surface>(&mut self, surface: &mut S) -> Result<()> {
-                    let color = self.style_layer.paint.color.eval();
-                    let c = color.to_rgba();
-                    surface.clear_color(c[0], c[1], c[2], c[3]);
+                fn render_begin(&mut self, params: &mut RenderParams) {
+                    let c = Color::default().0;
+                    params.frame.clear_color(c[0], c[1], c[2], c[3]);
+                }
+                fn render_tile(
+                    &mut self,
+                    params: &mut RenderParams,
+                    tile: TileCoords,
+                    bucket: &RenderBucket,
+                ) -> Result<()> {
                     Ok(())
+                }
+                fn render_end(&mut self, params: &mut RenderParams) {}
+                fn uses_source(&mut self, source: &str) -> bool {
+                    false
+                }
+                fn create_bucket(
+                    &mut self,
+                    display: &Display,
+                    data: &TileData,
+                ) -> Result<RenderBucket> {
+                    return Ok(RenderBucket::NoOp);
                 }
             }
             impl BackgroundLayer {
                 pub fn parse(layer: style::BackgroundLayer) -> Self {
-                    return BackgroundLayer { style_layer: layer };
+                    return BackgroundLayer {
+                        style_layer: layer,
+                        properties: Default::default(),
+                    };
                 }
             }
         }
         pub mod raster {
+            use map::layers;
+            use map::render::*;
             use map::style;
+            use map::tiles::data;
             use prelude::*;
+            #[rustc_copy_clone_marker]
+            pub struct RasterVertex {
+                pub pos: [f32; 2],
+                pub tex: [f32; 2],
+            }
+            #[automatically_derived]
+            #[allow(unused_qualifications)]
+            impl ::std::fmt::Debug for RasterVertex {
+                fn fmt(&self, f: &mut ::std::fmt::Formatter) -> ::std::fmt::Result {
+                    match *self {
+                        RasterVertex {
+                            pos: ref __self_0_0,
+                            tex: ref __self_0_1,
+                        } => {
+                            let mut debug_trait_builder = f.debug_struct("RasterVertex");
+                            let _ = debug_trait_builder.field("pos", &&(*__self_0_0));
+                            let _ = debug_trait_builder.field("tex", &&(*__self_0_1));
+                            debug_trait_builder.finish()
+                        }
+                    }
+                }
+            }
+            #[automatically_derived]
+            #[allow(unused_qualifications)]
+            impl ::std::clone::Clone for RasterVertex {
+                #[inline]
+                fn clone(&self) -> RasterVertex {
+                    {
+                        let _: ::std::clone::AssertParamIsClone<[f32; 2]>;
+                        let _: ::std::clone::AssertParamIsClone<[f32; 2]>;
+                        *self
+                    }
+                }
+            }
+            #[automatically_derived]
+            #[allow(unused_qualifications)]
+            impl ::std::marker::Copy for RasterVertex {}
+            impl ::vertex::Vertex for RasterVertex {
+                #[inline]
+                fn build_bindings() -> ::vertex::VertexFormat {
+                    use std::borrow::Cow;
+                    Cow::Owned(<[_]>::into_vec(box [
+                        (
+                            Cow::Borrowed("pos"),
+                            {
+                                let dummy: RasterVertex = unsafe { ::std::mem::uninitialized() };
+                                let offset: usize = {
+                                    let dummy_ref = &dummy;
+                                    let field_ref = &dummy.pos;
+                                    (field_ref as *const _ as usize)
+                                        - (dummy_ref as *const _ as usize)
+                                };
+                                offset
+                            },
+                            {
+                                fn attr_type_of_val<T: ::vertex::Attribute>(
+                                    _: &T,
+                                ) -> ::vertex::AttributeType {
+                                    <T as ::vertex::Attribute>::get_type()
+                                }
+                                let dummy: &RasterVertex = unsafe { ::std::mem::transmute(0usize) };
+                                attr_type_of_val(&dummy.pos)
+                            },
+                            false,
+                        ),
+                        (
+                            Cow::Borrowed("tex"),
+                            {
+                                let dummy: RasterVertex = unsafe { ::std::mem::uninitialized() };
+                                let offset: usize = {
+                                    let dummy_ref = &dummy;
+                                    let field_ref = &dummy.tex;
+                                    (field_ref as *const _ as usize)
+                                        - (dummy_ref as *const _ as usize)
+                                };
+                                offset
+                            },
+                            {
+                                fn attr_type_of_val<T: ::vertex::Attribute>(
+                                    _: &T,
+                                ) -> ::vertex::AttributeType {
+                                    <T as ::vertex::Attribute>::get_type()
+                                }
+                                let dummy: &RasterVertex = unsafe { ::std::mem::transmute(0usize) };
+                                attr_type_of_val(&dummy.tex)
+                            },
+                            false,
+                        ),
+                    ]))
+                }
+            }
+            pub struct RasterBucket {
+                pub texture: glium::texture::Texture2d,
+                pub vbo: glium::VertexBuffer<RasterVertex>,
+            }
+            #[automatically_derived]
+            #[allow(unused_qualifications)]
+            impl ::std::fmt::Debug for RasterBucket {
+                fn fmt(&self, f: &mut ::std::fmt::Formatter) -> ::std::fmt::Result {
+                    match *self {
+                        RasterBucket {
+                            texture: ref __self_0_0,
+                            vbo: ref __self_0_1,
+                        } => {
+                            let mut debug_trait_builder = f.debug_struct("RasterBucket");
+                            let _ = debug_trait_builder.field("texture", &&(*__self_0_0));
+                            let _ = debug_trait_builder.field("vbo", &&(*__self_0_1));
+                            debug_trait_builder.finish()
+                        }
+                    }
+                }
+            }
             pub struct RasterLayer {
                 style_layer: style::RasterLayer,
+                shader_program: glium::Program,
             }
             #[automatically_derived]
             #[allow(unused_qualifications)]
@@ -102,28 +512,319 @@ pub mod map {
                     match *self {
                         RasterLayer {
                             style_layer: ref __self_0_0,
+                            shader_program: ref __self_0_1,
                         } => {
                             let mut debug_trait_builder = f.debug_struct("RasterLayer");
                             let _ = debug_trait_builder.field("style_layer", &&(*__self_0_0));
+                            let _ = debug_trait_builder.field("shader_program", &&(*__self_0_1));
                             debug_trait_builder.finish()
                         }
                     }
                 }
             }
-            impl super::Layer for RasterLayer {
-                fn render<S: glium::Surface>(&mut self, surface: &mut S) -> Result<()> {
+            impl layers::Layer for RasterLayer {
+                fn render_begin(&mut self, params: &mut RenderParams) {}
+                fn render_tile(
+                    &mut self,
+                    params: &mut RenderParams,
+                    coord: TileCoords,
+                    bucket: &RenderBucket,
+                ) -> Result<()> {
+                    if let RenderBucket::Raster(ref bucket) = bucket {
+                        let tile_matrix = Mercator::tile_to_internal_matrix(&coord);
+                        let matrix = params.projection * params.view * tile_matrix;
+                        let matrix: [[f32; 4]; 4] = matrix.into();
+                        let uniforms = {
+                            let uniforms = ::uniforms::UniformsStorage::new("u_matrix", matrix);
+                            let uniforms = uniforms.add("u_texture", &bucket.texture);
+                            uniforms
+                        };
+                        let draw_params = glium::DrawParameters {
+                            blend: glium::Blend::alpha_blending(),
+                            ..Default::default()
+                        };
+                        (params.frame).draw(
+                            &bucket.vbo,
+                            glium::index::NoIndices(glium::index::PrimitiveType::TriangleFan),
+                            &self.shader_program,
+                            &uniforms,
+                            &draw_params,
+                        )?;
+                    }
                     Ok(())
+                }
+                fn render_end(&mut self, params: &mut RenderParams) {}
+                fn uses_source(&mut self, source: &str) -> bool {
+                    Some(source) == self.style_layer.common.source.as_ref().map(|x| x.deref())
+                }
+                fn create_bucket(
+                    &mut self,
+                    display: &Display,
+                    tile: &data::TileData,
+                ) -> Result<RenderBucket> {
+                    match tile.data {
+                        data::DecodedTileData::Raster(data::RasterTileData { ref image, dims }) => {
+                            let raw =
+                                glium::texture::RawImage2d::from_raw_rgba_reversed(image, dims);
+                            let texture = glium::texture::Texture2d::new(display, raw).unwrap();
+                            let vertices = &[
+                                RasterVertex {
+                                    pos: [0., 0.],
+                                    tex: [0., 1.],
+                                },
+                                RasterVertex {
+                                    pos: [EXTENT, 0.],
+                                    tex: [1., 1.],
+                                },
+                                RasterVertex {
+                                    pos: [EXTENT, EXTENT],
+                                    tex: [1., 0.],
+                                },
+                                RasterVertex {
+                                    pos: [0., EXTENT],
+                                    tex: [0., 0.],
+                                },
+                            ];
+                            let vbo = glium::VertexBuffer::new(display, vertices).unwrap();
+                            return Ok(RenderBucket::Raster(RasterBucket { texture, vbo }));
+                        }
+                        _ => {}
+                    }
+                    {
+                        ::rt::begin_panic(
+                            "not yet implemented",
+                            &("rmaps/src/map/layers/raster.rs", 93u32, 9u32),
+                        )
+                    }
                 }
             }
             impl RasterLayer {
-                pub fn parse(layer: style::RasterLayer) -> Self {
-                    return RasterLayer { style_layer: layer };
+                pub fn parse(f: &glium::backend::Facade, layer: style::RasterLayer) -> Self {
+                    let shader_program = {
+                        let context = ::backend::Facade::get_context(f);
+                        let version = {
+                            let num: u32 = 100;
+                            ::Version(::Api::GlEs, (num / 100) as u8, ((num % 100) / 10) as u8)
+                        };
+                        if context.is_glsl_version_supported(&version) {
+                            let __vertex_shader: &str = "";
+                            let __tessellation_control_shader: Option<
+                                &str,
+                            > = None;
+                            let __tessellation_evaluation_shader:
+                                        Option<&str> = None;
+                            let __geometry_shader: Option<&str> = None;
+                            let __fragment_shader: &str = "";
+                            let __outputs_srgb: bool = false;
+                            let __uses_point_size: bool = false;
+                            let __vertex_shader =
+                                    "#version 100\n\nuniform highp mat4 u_matrix;\n\nattribute highp vec2 pos;\nattribute highp vec2 tex;\n\nvarying highp vec2 v_texture_pos;\n\nvoid main() {\n    gl_Position = u_matrix * vec4(pos, 0.0, 1.0);\n    v_texture_pos = tex;\n}";
+                            let __fragment_shader =
+                                    "#version 100\n\nuniform sampler2D u_texture;\n\nvarying highp vec2 v_texture_pos;\n\nvoid main() {\n    gl_FragColor = vec4(texture2D(u_texture,v_texture_pos).rgb,0.5);\n}";
+                            let input = ::program::ProgramCreationInput::SourceCode {
+                                vertex_shader: __vertex_shader,
+                                tessellation_control_shader: __tessellation_control_shader,
+                                tessellation_evaluation_shader: __tessellation_evaluation_shader,
+                                geometry_shader: __geometry_shader,
+                                fragment_shader: __fragment_shader,
+                                transform_feedback_varyings: None,
+                                outputs_srgb: __outputs_srgb,
+                                uses_point_size: __uses_point_size,
+                            };
+                            ::program::Program::new(context, input)
+                                .map_err(|err| ::program::ProgramChooserCreationError::from(err))
+                        } else {
+                            Err(::program::ProgramChooserCreationError::NoVersion)
+                        }
+                    }.unwrap();
+                    return RasterLayer {
+                        style_layer: layer,
+                        shader_program,
+                    };
                 }
             }
         }
         pub mod fill {
+            use map::layers;
+            use map::render;
             use map::style;
+            use map::tiles::data;
             use prelude::*;
+            use std::ops::Range;
+            pub struct Property<T>(pub T);
+            pub struct FillProperties {
+                color: Property<Color>,
+            }
+            #[repr(C)]
+            #[rustc_copy_clone_marker]
+            pub struct Vertex {
+                #[glium(attr = "pos")]
+                pos: [f32; 2],
+            }
+            #[automatically_derived]
+            #[allow(unused_qualifications)]
+            impl ::std::fmt::Debug for Vertex {
+                fn fmt(&self, f: &mut ::std::fmt::Formatter) -> ::std::fmt::Result {
+                    match *self {
+                        Vertex {
+                            pos: ref __self_0_0,
+                        } => {
+                            let mut debug_trait_builder = f.debug_struct("Vertex");
+                            let _ = debug_trait_builder.field("pos", &&(*__self_0_0));
+                            debug_trait_builder.finish()
+                        }
+                    }
+                }
+            }
+            #[automatically_derived]
+            #[allow(unused_qualifications)]
+            impl ::std::clone::Clone for Vertex {
+                #[inline]
+                fn clone(&self) -> Vertex {
+                    {
+                        let _: ::std::clone::AssertParamIsClone<[f32; 2]>;
+                        *self
+                    }
+                }
+            }
+            #[automatically_derived]
+            #[allow(unused_qualifications)]
+            impl ::std::marker::Copy for Vertex {}
+            impl ::glium::vertex::Vertex for Vertex {
+                #[inline]
+                fn build_bindings() -> ::glium::vertex::VertexFormat {
+                    use std::borrow::Cow;
+                    Cow::Owned(<[_]>::into_vec(box [(
+                        Cow::Borrowed("pos"),
+                        {
+                            let dummy: Vertex = unsafe { ::std::mem::uninitialized() };
+                            let offset: usize = {
+                                let dummy_ref = &dummy;
+                                let field_ref = &dummy.pos;
+                                (field_ref as *const _ as usize) - (dummy_ref as *const _ as usize)
+                            };
+                            offset
+                        },
+                        {
+                            fn attr_type_of_val<T: ::glium::vertex::Attribute>(
+                                _: &T,
+                            ) -> ::glium::vertex::AttributeType {
+                                <T as ::glium::vertex::Attribute>::get_type()
+                            }
+                            let dummy: &Vertex = unsafe { ::std::mem::transmute(0usize) };
+                            attr_type_of_val(&dummy.pos)
+                        },
+                        false,
+                    )]))
+                }
+            }
+            #[repr(C)]
+            #[rustc_copy_clone_marker]
+            pub struct FillFeatureProperties {
+                col: Color,
+            }
+            #[automatically_derived]
+            #[allow(unused_qualifications)]
+            impl ::std::fmt::Debug for FillFeatureProperties {
+                fn fmt(&self, f: &mut ::std::fmt::Formatter) -> ::std::fmt::Result {
+                    match *self {
+                        FillFeatureProperties {
+                            col: ref __self_0_0,
+                        } => {
+                            let mut debug_trait_builder = f.debug_struct("FillFeatureProperties");
+                            let _ = debug_trait_builder.field("col", &&(*__self_0_0));
+                            debug_trait_builder.finish()
+                        }
+                    }
+                }
+            }
+            #[automatically_derived]
+            #[allow(unused_qualifications)]
+            impl ::std::clone::Clone for FillFeatureProperties {
+                #[inline]
+                fn clone(&self) -> FillFeatureProperties {
+                    {
+                        let _: ::std::clone::AssertParamIsClone<Color>;
+                        *self
+                    }
+                }
+            }
+            #[automatically_derived]
+            #[allow(unused_qualifications)]
+            impl ::std::marker::Copy for FillFeatureProperties {}
+            impl ::glium::vertex::Vertex for FillFeatureProperties {
+                #[inline]
+                fn build_bindings() -> ::glium::vertex::VertexFormat {
+                    use std::borrow::Cow;
+                    Cow::Owned(<[_]>::into_vec(box [(
+                        Cow::Borrowed("\"col\""),
+                        {
+                            let dummy: FillFeatureProperties =
+                                unsafe { ::std::mem::uninitialized() };
+                            let offset: usize = {
+                                let dummy_ref = &dummy;
+                                let field_ref = &dummy.col;
+                                (field_ref as *const _ as usize) - (dummy_ref as *const _ as usize)
+                            };
+                            offset
+                        },
+                        {
+                            fn attr_type_of_val<T: ::glium::vertex::Attribute>(
+                                _: &T,
+                            ) -> ::glium::vertex::AttributeType {
+                                <T as ::glium::vertex::Attribute>::get_type()
+                            }
+                            let dummy: &FillFeatureProperties =
+                                unsafe { ::std::mem::transmute(0usize) };
+                            attr_type_of_val(&dummy.col)
+                        },
+                        false,
+                    )]))
+                }
+            }
+            #[automatically_derived]
+            #[allow(unused_qualifications)]
+            impl ::std::default::Default for FillFeatureProperties {
+                #[inline]
+                fn default() -> FillFeatureProperties {
+                    FillFeatureProperties {
+                        col: ::std::default::Default::default(),
+                    }
+                }
+            }
+            pub struct FillBucket {
+                pub features: BTreeMap<u64, (usize, usize)>,
+                pub vertices: Vec<Vertex>,
+                pub properties: Vec<FillFeatureProperties>,
+                pub pos_vbo: VertexBuffer<Vertex>,
+                pub prop_vbo: VertexBuffer<FillFeatureProperties>,
+                pub last_ibo: IndexBuffer<u16>,
+            }
+            #[automatically_derived]
+            #[allow(unused_qualifications)]
+            impl ::std::fmt::Debug for FillBucket {
+                fn fmt(&self, f: &mut ::std::fmt::Formatter) -> ::std::fmt::Result {
+                    match *self {
+                        FillBucket {
+                            features: ref __self_0_0,
+                            vertices: ref __self_0_1,
+                            properties: ref __self_0_2,
+                            pos_vbo: ref __self_0_3,
+                            prop_vbo: ref __self_0_4,
+                            last_ibo: ref __self_0_5,
+                        } => {
+                            let mut debug_trait_builder = f.debug_struct("FillBucket");
+                            let _ = debug_trait_builder.field("features", &&(*__self_0_0));
+                            let _ = debug_trait_builder.field("vertices", &&(*__self_0_1));
+                            let _ = debug_trait_builder.field("properties", &&(*__self_0_2));
+                            let _ = debug_trait_builder.field("pos_vbo", &&(*__self_0_3));
+                            let _ = debug_trait_builder.field("prop_vbo", &&(*__self_0_4));
+                            let _ = debug_trait_builder.field("last_ibo", &&(*__self_0_5));
+                            debug_trait_builder.finish()
+                        }
+                    }
+                }
+            }
             pub struct FillLayer {
                 style_layer: style::FillLayer,
                 shader_program: glium::Program,
@@ -145,19 +846,99 @@ pub mod map {
                     }
                 }
             }
-            impl super::Layer for FillLayer {
-                fn render<S: glium::Surface>(&mut self, surface: &mut S) -> Result<()> {
-                    {
-                        ::rt::begin_panic(
-                            "not yet implemented",
-                            &("rmaps/src/map/layers/fill.rs", 13u32, 9u32),
-                        )
+            impl layers::Layer for FillLayer {
+                fn render_begin(&mut self, params: &mut render::RenderParams) {}
+                fn render_tile(
+                    &mut self,
+                    params: &mut render::RenderParams,
+                    coord: TileCoords,
+                    bucket: &render::RenderBucket,
+                ) -> Result<()> {
+                    if let render::RenderBucket::Fill(ref bucket) = bucket {
+                        let tile_matrix = Mercator::tile_to_internal_matrix(&coord);
+                        let matrix = params.projection * params.view * tile_matrix;
+                        let matrix: [[f32; 4]; 4] = matrix.into();
+                        let uniforms = ::uniforms::UniformsStorage::new("u_matrix", matrix);
+                        let draw_params = glium::DrawParameters {
+                            blend: glium::Blend::alpha_blending(),
+                            ..Default::default()
+                        };
+                        (params.frame).draw(
+                            (&bucket.pos_vbo, &bucket.prop_vbo),
+                            &bucket.last_ibo,
+                            &self.shader_program,
+                            &uniforms,
+                            &draw_params,
+                        )?;
                     }
+                    Ok(())
+                }
+                fn render_end(&mut self, params: &mut render::RenderParams) {}
+                fn uses_source(&mut self, source: &str) -> bool {
+                    Some(source) == self.style_layer.common.source.as_ref().map(|x| x.deref())
+                }
+                fn create_bucket(
+                    &mut self,
+                    display: &Display,
+                    data: &data::TileData,
+                ) -> Result<render::RenderBucket> {
+                    let mut vertices: Vec<Vertex> = <[_]>::into_vec(box []);
+                    let mut indices = <[_]>::into_vec(box []);
+                    let mut index_ranges: BTreeMap<u64, (usize, usize)> = BTreeMap::new();
+                    if let data::DecodedTileData::Vector(ref vec) = data.data {
+                        if let Some(layer) = vec.layers.iter().find(|x| {
+                            Some(&x.name) == self.style_layer.common.source_layer.as_ref()
+                        }) {
+                            let mult = EXTENT as f32 / layer.extent as f32;
+                            for f in layer.features.iter() {
+                                let mut tess = ::tess2::Tessellator::new();
+                                if f.typ == ::mapbox_tiles::GeomType::Polygon {
+                                    let polys = &f.geom;
+                                    for ring in polys.iter() {
+                                        tess.add_poly(ring.iter());
+                                    }
+                                    if let Ok(res) = tess.tessellate_nonzero() {
+                                        let vertices_begin = vertices.len();
+                                        let indices_begin = indices.len();
+                                        for v in res.vertices.iter() {
+                                            vertices.push(Vertex {
+                                                pos: [v[0] * mult, v[1] * mult],
+                                            })
+                                        }
+                                        for i in res.indices.iter() {
+                                            indices.push(vertices_begin as u16 + *i as u16);
+                                        }
+                                        index_ranges
+                                            .insert(f.id, (indices_begin, res.indices.len()));
+                                    }
+                                }
+                            }
+                            let mut properties: Vec<
+                                FillFeatureProperties,
+                            > = vertices
+                                .iter()
+                                .map(|v| FillFeatureProperties::default())
+                                .collect();
+                            return Ok(render::RenderBucket::Fill(FillBucket {
+                                features: index_ranges,
+                                pos_vbo: glium::VertexBuffer::new(display, &vertices).unwrap(),
+                                prop_vbo: glium::VertexBuffer::new(display, &properties).unwrap(),
+                                vertices,
+                                properties,
+                                last_ibo: glium::IndexBuffer::new(
+                                    display,
+                                    glium::index::PrimitiveType::TrianglesList,
+                                    &indices,
+                                ).unwrap(),
+                            }));
+                        }
+                    }
+                    return Ok(render::RenderBucket::NoOp);
                 }
             }
             impl FillLayer {
                 pub fn parse(f: &glium::backend::Facade, layer: style::FillLayer) -> Self {
-                    let mut shader_program = {
+                    let shader_program = {
                         let context = ::backend::Facade::get_context(f);
                         let version = {
                             let num: u32 = 100;
@@ -175,9 +956,9 @@ pub mod map {
                             let __outputs_srgb: bool = false;
                             let __uses_point_size: bool = false;
                             let __vertex_shader =
-                                    "#version 100\n\nuniform highp mat4 matrix;\nattribute highp vec2 position;\nattribute highp vec3 color;\n\nvarying highp vec3 vColor;\n\nvoid main() {\n    gl_Position = vec4(position, 0.0, 1.0) * matrix;\n    vColor = color;\n}";
+                                    "#version 100\n\nuniform highp mat4 u_matrix;\n\nattribute highp vec2 pos;\nattribute highp vec4 col;\n//attribute highp float opacity;\n\nvarying highp vec4 v_color;\nvarying highp float v_opacity;\n\nvoid main() {\n    gl_Position = u_matrix *  vec4(pos, 0.0, 1.0);\n    v_color =  col;\n\n    v_opacity = 1.0; //opacity;\n}";
                             let __fragment_shader =
-                                    "#version 100\nvarying highp vec3 vColor;\nvoid main() {\n    gl_FragColor = vec4(vColor, 1.0);\n}";
+                                    "#version 100\nvarying highp vec4 v_color;\nvarying lowp float v_opacity;\n\nvoid main() {\n    gl_FragColor = v_color * v_opacity;\n}";
                             let input = ::program::ProgramCreationInput::SourceCode {
                                 vertex_shader: __vertex_shader,
                                 tessellation_control_shader: __tessellation_control_shader,
@@ -201,62 +982,34 @@ pub mod map {
                 }
             }
         }
-        pub trait Layer: Sized + Debug {
-            fn render<S: glium::Surface>(&mut self, surface: &mut S) -> Result<()>;
+        pub trait Layer: Debug {
+            fn render_begin(&mut self, params: &mut render::RenderParams);
+            fn render_tile(
+                &mut self,
+                params: &mut render::RenderParams,
+                tile: TileCoords,
+                bucket: &render::RenderBucket,
+            ) -> Result<()>;
+            fn render_end(&mut self, params: &mut render::RenderParams);
+            fn uses_source(&mut self, source: &str) -> bool;
+            fn create_bucket(
+                &mut self,
+                display: &Display,
+                data: &data::TileData,
+            ) -> Result<render::RenderBucket>;
         }
-        pub enum LayerHolder {
-            Background(background::BackgroundLayer),
-            Raster(raster::RasterLayer),
-            Fill(fill::FillLayer),
-        }
-        #[automatically_derived]
-        #[allow(unused_qualifications)]
-        impl ::std::fmt::Debug for LayerHolder {
-            fn fmt(&self, f: &mut ::std::fmt::Formatter) -> ::std::fmt::Result {
-                match (&*self,) {
-                    (&LayerHolder::Background(ref __self_0),) => {
-                        let mut debug_trait_builder = f.debug_tuple("Background");
-                        let _ = debug_trait_builder.field(&&(*__self_0));
-                        debug_trait_builder.finish()
-                    }
-                    (&LayerHolder::Raster(ref __self_0),) => {
-                        let mut debug_trait_builder = f.debug_tuple("Raster");
-                        let _ = debug_trait_builder.field(&&(*__self_0));
-                        debug_trait_builder.finish()
-                    }
-                    (&LayerHolder::Fill(ref __self_0),) => {
-                        let mut debug_trait_builder = f.debug_tuple("Fill");
-                        let _ = debug_trait_builder.field(&&(*__self_0));
-                        debug_trait_builder.finish()
-                    }
-                }
-            }
-        }
-        impl Layer for LayerHolder {
-            fn render<S: glium::Surface>(&mut self, surface: &mut S) -> Result<()> {
-                match self {
-                    LayerHolder::Background(b) => b.render(surface),
-                    LayerHolder::Raster(r) => r.render(surface),
-                    _ => Ok(()),
-                }
-            }
-        }
-        use super::style::*;
-        pub fn parse_style_layers(
-            facade: &glium::backend::Facade,
-            style: &super::style::Style,
-        ) -> Vec<LayerHolder> {
-            let mut res = <[_]>::into_vec(box []);
+        pub fn parse_style_layers(facade: &Display, style: &style::Style) -> Vec<Box<Layer>> {
+            let mut res: Vec<Box<Layer>> = <[_]>::into_vec(box []);
             for l in style.layers.iter() {
                 match l {
-                    StyleLayer::Background(l) => res.push(LayerHolder::Background(
-                        background::BackgroundLayer::parse(l.clone()),
-                    )),
-                    StyleLayer::Fill(l) => {
-                        res.push(LayerHolder::Fill(fill::FillLayer::parse(facade, l.clone())))
+                    style::StyleLayer::Background(l) => {
+                        res.push(Box::new(background::BackgroundLayer::parse(l.clone())))
                     }
-                    StyleLayer::Raster(l) => {
-                        res.push(LayerHolder::Raster(raster::RasterLayer::parse(l.clone())))
+                    style::StyleLayer::Fill(l) => {
+                        res.push(Box::new(fill::FillLayer::parse(facade, l.clone())))
+                    }
+                    style::StyleLayer::Raster(l) => {
+                        res.push(Box::new(raster::RasterLayer::parse(facade, l.clone())))
                     }
                     _ => {}
                 }
@@ -267,31 +1020,9000 @@ pub mod map {
     pub mod style {
         use common::json;
         use prelude::*;
-        mod expr {
+        pub mod expr {
             use prelude::*;
+            pub use serde::{de::DeserializeOwned, Deserialize, Deserializer};
+            pub use std::cell::RefCell;
+            pub fn parse_basics<'de, D: Deserializer<'de>>(
+                name: &'static str,
+                min_args: usize,
+                deserializer: D,
+            ) -> StdResult<Vec<json::Value>, D::Error> {
+                use serde::de::Error;
+                let mut arr: Vec<json::Value> = Deserialize::deserialize(deserializer)?;
+                if arr.len() < min_args + 1 {
+                    return Err(D::Error::custom(::fmt::format(
+                        ::std::fmt::Arguments::new_v1_formatted(
+                            &["Array too short for ", " expression"],
+                            &match (&name,) {
+                                (arg0,) => {
+                                    [::std::fmt::ArgumentV1::new(arg0, ::std::fmt::Display::fmt)]
+                                }
+                            },
+                            &[::std::fmt::rt::v1::Argument {
+                                position: ::std::fmt::rt::v1::Position::At(0usize),
+                                format: ::std::fmt::rt::v1::FormatSpec {
+                                    fill: ' ',
+                                    align: ::std::fmt::rt::v1::Alignment::Unknown,
+                                    flags: 0u32,
+                                    precision: ::std::fmt::rt::v1::Count::Implied,
+                                    width: ::std::fmt::rt::v1::Count::Implied,
+                                },
+                            }],
+                        ),
+                    )));
+                }
+                let parsed_name = arr.remove(0);
+                if parsed_name.as_str() != Some(name) {
+                    return Err(D::Error::invalid_value(
+                        serde::de::Unexpected::Option,
+                        &"Basics",
+                    ));
+                }
+                return Ok(arr);
+            }
+            pub struct PrefixHelper<H: DeserializeOwned, T: DeserializeOwned>(H, Vec<T>);
+            impl<'de, H: DeserializeOwned, T: DeserializeOwned> Deserialize<'de> for PrefixHelper<H, T> {
+                fn deserialize<D>(deserializer: D) -> StdResult<Self, D::Error>
+                where
+                    D: Deserializer<'de>,
+                {
+                    use serde::de::Error;
+                    let mut arr: Vec<json::Value> = Deserialize::deserialize(deserializer)?;
+                    if arr.len() == 0 {
+                        return Err(D::Error::custom("Array too short"));
+                    }
+                    let head = json::from_value(arr.remove(0)).map_err(|e| {
+                        D::Error::custom(::fmt::format(::std::fmt::Arguments::new_v1_formatted(
+                            &["Could not parse head : "],
+                            &match (&e,) {
+                                (arg0,) => {
+                                    [::std::fmt::ArgumentV1::new(arg0, ::std::fmt::Debug::fmt)]
+                                }
+                            },
+                            &[::std::fmt::rt::v1::Argument {
+                                position: ::std::fmt::rt::v1::Position::At(0usize),
+                                format: ::std::fmt::rt::v1::FormatSpec {
+                                    fill: ' ',
+                                    align: ::std::fmt::rt::v1::Alignment::Unknown,
+                                    flags: 0u32,
+                                    precision: ::std::fmt::rt::v1::Count::Implied,
+                                    width: ::std::fmt::rt::v1::Count::Implied,
+                                },
+                            }],
+                        )))
+                    })?;
+                    let tail: StdResult<Vec<T>, _> =
+                        arr.into_iter().map(json::from_value).collect();
+                    let tail = tail.map_err(|e| {
+                        D::Error::custom(::fmt::format(::std::fmt::Arguments::new_v1_formatted(
+                            &["Could not parse tail : "],
+                            &match (&e,) {
+                                (arg0,) => {
+                                    [::std::fmt::ArgumentV1::new(arg0, ::std::fmt::Debug::fmt)]
+                                }
+                            },
+                            &[::std::fmt::rt::v1::Argument {
+                                position: ::std::fmt::rt::v1::Position::At(0usize),
+                                format: ::std::fmt::rt::v1::FormatSpec {
+                                    fill: ' ',
+                                    align: ::std::fmt::rt::v1::Alignment::Unknown,
+                                    flags: 0u32,
+                                    precision: ::std::fmt::rt::v1::Count::Implied,
+                                    width: ::std::fmt::rt::v1::Count::Implied,
+                                },
+                            }],
+                        )))
+                    })?;
+                    Ok(PrefixHelper(head, tail))
+                }
+            }
+            macro_rules! expr(( $ e : tt ) => {
+                              :: json :: from_value :: < BaseExpr > (
+                              json ! ( $ e ) ) } ;);
+            pub mod assert {
+                use super::*;
+                use prelude::*;
+                use serde::Deserialize;
+                #[structural_match]
+                pub enum ArrayMarker {
+                    #[serde(rename = "array")]
+                    _Marker,
+                }
+                #[automatically_derived]
+                #[allow(unused_qualifications)]
+                impl ::std::fmt::Debug for ArrayMarker {
+                    fn fmt(&self, f: &mut ::std::fmt::Formatter) -> ::std::fmt::Result {
+                        match (&*self,) {
+                            (&ArrayMarker::_Marker,) => {
+                                let mut debug_trait_builder = f.debug_tuple("_Marker");
+                                debug_trait_builder.finish()
+                            }
+                        }
+                    }
+                }
+                #[automatically_derived]
+                #[allow(unused_qualifications)]
+                impl ::std::clone::Clone for ArrayMarker {
+                    #[inline]
+                    fn clone(&self) -> ArrayMarker {
+                        match (&*self,) {
+                            (&ArrayMarker::_Marker,) => ArrayMarker::_Marker,
+                        }
+                    }
+                }
+                #[allow(non_upper_case_globals, unused_attributes, unused_qualifications)]
+                const _IMPL_DESERIALIZE_FOR_ArrayMarker: () = {
+                    extern crate serde as _serde;
+                    #[allow(unused_macros)]
+                    macro_rules! try(( $ __expr : expr ) => {
+                                         match $ __expr {
+                                         _serde :: export :: Ok ( __val ) =>
+                                         __val , _serde :: export :: Err (
+                                         __err ) => {
+                                         return _serde :: export :: Err (
+                                         __err ) ; } } });
+                    #[automatically_derived]
+                    impl<'de> _serde::Deserialize<'de> for ArrayMarker {
+                        fn deserialize<__D>(
+                            __deserializer: __D,
+                        ) -> _serde::export::Result<Self, __D::Error>
+                        where
+                            __D: _serde::Deserializer<'de>,
+                        {
+                            #[allow(non_camel_case_types)]
+                            enum __Field {
+                                __field0,
+                            }
+                            struct __FieldVisitor;
+                            impl<'de> _serde::de::Visitor<'de> for __FieldVisitor {
+                                type Value = __Field;
+                                fn expecting(
+                                    &self,
+                                    __formatter: &mut _serde::export::Formatter,
+                                ) -> _serde::export::fmt::Result {
+                                    _serde::export::Formatter::write_str(
+                                        __formatter,
+                                        "variant identifier",
+                                    )
+                                }
+                                fn visit_u64<__E>(
+                                    self,
+                                    __value: u64,
+                                ) -> _serde::export::Result<Self::Value, __E>
+                                where
+                                    __E: _serde::de::Error,
+                                {
+                                    match __value {
+                                        0u64 => _serde::export::Ok(__Field::__field0),
+                                        _ => _serde::export::Err(_serde::de::Error::invalid_value(
+                                            _serde::de::Unexpected::Unsigned(__value),
+                                            &"variant index 0 <= i < 1",
+                                        )),
+                                    }
+                                }
+                                fn visit_str<__E>(
+                                    self,
+                                    __value: &str,
+                                ) -> _serde::export::Result<Self::Value, __E>
+                                where
+                                    __E: _serde::de::Error,
+                                {
+                                    match __value {
+                                        "array" => _serde::export::Ok(__Field::__field0),
+                                        _ => _serde::export::Err(
+                                            _serde::de::Error::unknown_variant(__value, VARIANTS),
+                                        ),
+                                    }
+                                }
+                                fn visit_bytes<__E>(
+                                    self,
+                                    __value: &[u8],
+                                ) -> _serde::export::Result<Self::Value, __E>
+                                where
+                                    __E: _serde::de::Error,
+                                {
+                                    match __value {
+                                        b"array" => _serde::export::Ok(__Field::__field0),
+                                        _ => {
+                                            let __value = &_serde::export::from_utf8_lossy(__value);
+                                            _serde::export::Err(_serde::de::Error::unknown_variant(
+                                                __value, VARIANTS,
+                                            ))
+                                        }
+                                    }
+                                }
+                            }
+                            impl<'de> _serde::Deserialize<'de> for __Field {
+                                #[inline]
+                                fn deserialize<__D>(
+                                    __deserializer: __D,
+                                ) -> _serde::export::Result<Self, __D::Error>
+                                where
+                                    __D: _serde::Deserializer<'de>,
+                                {
+                                    _serde::Deserializer::deserialize_identifier(
+                                        __deserializer,
+                                        __FieldVisitor,
+                                    )
+                                }
+                            }
+                            struct __Visitor<'de> {
+                                marker: _serde::export::PhantomData<ArrayMarker>,
+                                lifetime: _serde::export::PhantomData<&'de ()>,
+                            }
+                            impl<'de> _serde::de::Visitor<'de> for __Visitor<'de> {
+                                type Value = ArrayMarker;
+                                fn expecting(
+                                    &self,
+                                    __formatter: &mut _serde::export::Formatter,
+                                ) -> _serde::export::fmt::Result {
+                                    _serde::export::Formatter::write_str(
+                                        __formatter,
+                                        "enum ArrayMarker",
+                                    )
+                                }
+                                fn visit_enum<__A>(
+                                    self,
+                                    __data: __A,
+                                ) -> _serde::export::Result<Self::Value, __A::Error>
+                                where
+                                    __A: _serde::de::EnumAccess<'de>,
+                                {
+                                    match match _serde::de::EnumAccess::variant(__data) {
+                                        _serde::export::Ok(__val) => __val,
+                                        _serde::export::Err(__err) => {
+                                            return _serde::export::Err(__err);
+                                        }
+                                    } {
+                                        (__Field::__field0, __variant) => {
+                                            match _serde::de::VariantAccess::unit_variant(__variant)
+                                            {
+                                                _serde::export::Ok(__val) => __val,
+                                                _serde::export::Err(__err) => {
+                                                    return _serde::export::Err(__err);
+                                                }
+                                            };
+                                            _serde::export::Ok(ArrayMarker::_Marker)
+                                        }
+                                    }
+                                }
+                            }
+                            const VARIANTS: &'static [&'static str] = &["array"];
+                            _serde::Deserializer::deserialize_enum(
+                                __deserializer,
+                                "ArrayMarker",
+                                VARIANTS,
+                                __Visitor {
+                                    marker: _serde::export::PhantomData::<ArrayMarker>,
+                                    lifetime: _serde::export::PhantomData,
+                                },
+                            )
+                        }
+                    }
+                };
+                #[automatically_derived]
+                #[allow(unused_qualifications)]
+                impl ::std::cmp::PartialOrd for ArrayMarker {
+                    #[inline]
+                    fn partial_cmp(
+                        &self,
+                        other: &ArrayMarker,
+                    ) -> ::std::option::Option<::std::cmp::Ordering> {
+                        match (&*self, &*other) {
+                            _ => ::std::option::Option::Some(::std::cmp::Ordering::Equal),
+                        }
+                    }
+                }
+                #[automatically_derived]
+                #[allow(unused_qualifications)]
+                impl ::std::cmp::PartialEq for ArrayMarker {
+                    #[inline]
+                    fn eq(&self, other: &ArrayMarker) -> bool {
+                        match (&*self, &*other) {
+                            _ => true,
+                        }
+                    }
+                }
+                #[automatically_derived]
+                #[allow(unused_qualifications)]
+                impl ::std::cmp::Ord for ArrayMarker {
+                    #[inline]
+                    fn cmp(&self, other: &ArrayMarker) -> ::std::cmp::Ordering {
+                        match (&*self, &*other) {
+                            _ => ::std::cmp::Ordering::Equal,
+                        }
+                    }
+                }
+                #[automatically_derived]
+                #[allow(unused_qualifications)]
+                impl ::std::cmp::Eq for ArrayMarker {
+                    #[inline]
+                    #[doc(hidden)]
+                    fn assert_receiver_is_total_eq(&self) -> () {
+                        {}
+                    }
+                }
+                #[serde(untagged)]
+                pub enum ArrayAssert {
+                    Check(ArrayMarker, BaseExpr),
+                    CheckType(ArrayMarker, Type, BaseExpr),
+                }
+                #[automatically_derived]
+                #[allow(unused_qualifications)]
+                impl ::std::fmt::Debug for ArrayAssert {
+                    fn fmt(&self, f: &mut ::std::fmt::Formatter) -> ::std::fmt::Result {
+                        match (&*self,) {
+                            (&ArrayAssert::Check(ref __self_0, ref __self_1),) => {
+                                let mut debug_trait_builder = f.debug_tuple("Check");
+                                let _ = debug_trait_builder.field(&&(*__self_0));
+                                let _ = debug_trait_builder.field(&&(*__self_1));
+                                debug_trait_builder.finish()
+                            }
+                            (&ArrayAssert::CheckType(ref __self_0, ref __self_1, ref __self_2),) => {
+                                let mut debug_trait_builder = f.debug_tuple("CheckType");
+                                let _ = debug_trait_builder.field(&&(*__self_0));
+                                let _ = debug_trait_builder.field(&&(*__self_1));
+                                let _ = debug_trait_builder.field(&&(*__self_2));
+                                debug_trait_builder.finish()
+                            }
+                        }
+                    }
+                }
+                #[automatically_derived]
+                #[allow(unused_qualifications)]
+                impl ::std::clone::Clone for ArrayAssert {
+                    #[inline]
+                    fn clone(&self) -> ArrayAssert {
+                        match (&*self,) {
+                            (&ArrayAssert::Check(ref __self_0, ref __self_1),) => {
+                                ArrayAssert::Check(
+                                    ::std::clone::Clone::clone(&(*__self_0)),
+                                    ::std::clone::Clone::clone(&(*__self_1)),
+                                )
+                            }
+                            (&ArrayAssert::CheckType(ref __self_0, ref __self_1, ref __self_2),) => {
+                                ArrayAssert::CheckType(
+                                    ::std::clone::Clone::clone(&(*__self_0)),
+                                    ::std::clone::Clone::clone(&(*__self_1)),
+                                    ::std::clone::Clone::clone(&(*__self_2)),
+                                )
+                            }
+                        }
+                    }
+                }
+                #[allow(non_upper_case_globals, unused_attributes, unused_qualifications)]
+                const _IMPL_DESERIALIZE_FOR_ArrayAssert: () = {
+                    extern crate serde as _serde;
+                    #[allow(unused_macros)]
+                    macro_rules! try(( $ __expr : expr ) => {
+                                         match $ __expr {
+                                         _serde :: export :: Ok ( __val ) =>
+                                         __val , _serde :: export :: Err (
+                                         __err ) => {
+                                         return _serde :: export :: Err (
+                                         __err ) ; } } });
+                    #[automatically_derived]
+                    impl<'de> _serde::Deserialize<'de> for ArrayAssert {
+                        fn deserialize<__D>(
+                            __deserializer: __D,
+                        ) -> _serde::export::Result<Self, __D::Error>
+                        where
+                            __D: _serde::Deserializer<'de>,
+                        {
+                            let __content =
+                                    match <_serde::private::de::Content as
+                                              _serde::Deserialize>::deserialize(__deserializer)
+                                        {
+                                        _serde::export::Ok(__val) => __val,
+                                        _serde::export::Err(__err) => {
+                                            return _serde::export::Err(__err);
+                                        }
+                                    };
+                            if let _serde::export::Ok(__ok) = {
+                                struct __Visitor<'de> {
+                                    marker: _serde::export::PhantomData<ArrayAssert>,
+                                    lifetime: _serde::export::PhantomData<&'de ()>,
+                                }
+                                impl<'de> _serde::de::Visitor<'de> for __Visitor<'de> {
+                                    type Value = ArrayAssert;
+                                    fn expecting(
+                                        &self,
+                                        __formatter: &mut _serde::export::Formatter,
+                                    ) -> _serde::export::fmt::Result
+                                    {
+                                        _serde::export::Formatter::write_str(
+                                            __formatter,
+                                            "tuple variant ArrayAssert::Check",
+                                        )
+                                    }
+                                    #[inline]
+                                    fn visit_seq<__A>(
+                                        self,
+                                        mut __seq: __A,
+                                    ) -> _serde::export::Result<Self::Value, __A::Error>
+                                    where
+                                        __A: _serde::de::SeqAccess<'de>,
+                                    {
+                                        let __field0 =
+                                            match match _serde::de::SeqAccess::next_element::<
+                                                ArrayMarker,
+                                            >(
+                                                &mut __seq
+                                            ) {
+                                                _serde::export::Ok(__val) => __val,
+                                                _serde::export::Err(__err) => {
+                                                    return _serde::export::Err(__err);
+                                                }
+                                            } {
+                                                _serde::export::Some(__value) => __value,
+                                                _serde::export::None => {
+                                                    return _serde::export::Err(_serde::de::Error::invalid_length(0usize,
+                                                                                                                            &"tuple variant ArrayAssert::Check with 2 elements"));
+                                                }
+                                            };
+                                        let __field1 =
+                                            match match _serde::de::SeqAccess::next_element::<
+                                                BaseExpr,
+                                            >(
+                                                &mut __seq
+                                            ) {
+                                                _serde::export::Ok(__val) => __val,
+                                                _serde::export::Err(__err) => {
+                                                    return _serde::export::Err(__err);
+                                                }
+                                            } {
+                                                _serde::export::Some(__value) => __value,
+                                                _serde::export::None => {
+                                                    return _serde::export::Err(_serde::de::Error::invalid_length(1usize,
+                                                                                                                            &"tuple variant ArrayAssert::Check with 2 elements"));
+                                                }
+                                            };
+                                        _serde::export::Ok(ArrayAssert::Check(__field0, __field1))
+                                    }
+                                }
+                                _serde::Deserializer::deserialize_tuple(
+                                    _serde::private::de::ContentRefDeserializer::<__D::Error>::new(
+                                        &__content,
+                                    ),
+                                    2usize,
+                                    __Visitor {
+                                        marker: _serde::export::PhantomData::<ArrayAssert>,
+                                        lifetime: _serde::export::PhantomData,
+                                    },
+                                )
+                            } {
+                                return _serde::export::Ok(__ok);
+                            }
+                            if let _serde::export::Ok(__ok) = {
+                                struct __Visitor<'de> {
+                                    marker: _serde::export::PhantomData<ArrayAssert>,
+                                    lifetime: _serde::export::PhantomData<&'de ()>,
+                                }
+                                impl<'de> _serde::de::Visitor<'de> for __Visitor<'de> {
+                                    type Value = ArrayAssert;
+                                    fn expecting(
+                                        &self,
+                                        __formatter: &mut _serde::export::Formatter,
+                                    ) -> _serde::export::fmt::Result
+                                    {
+                                        _serde::export::Formatter::write_str(
+                                            __formatter,
+                                            "tuple variant ArrayAssert::CheckType",
+                                        )
+                                    }
+                                    #[inline]
+                                    fn visit_seq<__A>(
+                                        self,
+                                        mut __seq: __A,
+                                    ) -> _serde::export::Result<Self::Value, __A::Error>
+                                    where
+                                        __A: _serde::de::SeqAccess<'de>,
+                                    {
+                                        let __field0 =
+                                            match match _serde::de::SeqAccess::next_element::<
+                                                ArrayMarker,
+                                            >(
+                                                &mut __seq
+                                            ) {
+                                                _serde::export::Ok(__val) => __val,
+                                                _serde::export::Err(__err) => {
+                                                    return _serde::export::Err(__err);
+                                                }
+                                            } {
+                                                _serde::export::Some(__value) => __value,
+                                                _serde::export::None => {
+                                                    return _serde::export::Err(_serde::de::Error::invalid_length(0usize,
+                                                                                                                            &"tuple variant ArrayAssert::CheckType with 3 elements"));
+                                                }
+                                            };
+                                        let __field1 =
+                                            match match _serde::de::SeqAccess::next_element::<Type>(
+                                                &mut __seq,
+                                            ) {
+                                                _serde::export::Ok(__val) => __val,
+                                                _serde::export::Err(__err) => {
+                                                    return _serde::export::Err(__err);
+                                                }
+                                            } {
+                                                _serde::export::Some(__value) => __value,
+                                                _serde::export::None => {
+                                                    return _serde::export::Err(_serde::de::Error::invalid_length(1usize,
+                                                                                                                            &"tuple variant ArrayAssert::CheckType with 3 elements"));
+                                                }
+                                            };
+                                        let __field2 =
+                                            match match _serde::de::SeqAccess::next_element::<
+                                                BaseExpr,
+                                            >(
+                                                &mut __seq
+                                            ) {
+                                                _serde::export::Ok(__val) => __val,
+                                                _serde::export::Err(__err) => {
+                                                    return _serde::export::Err(__err);
+                                                }
+                                            } {
+                                                _serde::export::Some(__value) => __value,
+                                                _serde::export::None => {
+                                                    return _serde::export::Err(_serde::de::Error::invalid_length(2usize,
+                                                                                                                            &"tuple variant ArrayAssert::CheckType with 3 elements"));
+                                                }
+                                            };
+                                        _serde::export::Ok(ArrayAssert::CheckType(
+                                            __field0, __field1, __field2,
+                                        ))
+                                    }
+                                }
+                                _serde::Deserializer::deserialize_tuple(
+                                    _serde::private::de::ContentRefDeserializer::<__D::Error>::new(
+                                        &__content,
+                                    ),
+                                    3usize,
+                                    __Visitor {
+                                        marker: _serde::export::PhantomData::<ArrayAssert>,
+                                        lifetime: _serde::export::PhantomData,
+                                    },
+                                )
+                            } {
+                                return _serde::export::Ok(__ok);
+                            }
+                            _serde::export::Err(_serde::de::Error::custom(
+                                "data did not match any variant of untagged enum ArrayAssert",
+                            ))
+                        }
+                    }
+                };
+                #[automatically_derived]
+                #[allow(unused_qualifications)]
+                impl ::std::cmp::PartialEq for ArrayAssert {
+                    #[inline]
+                    fn eq(&self, other: &ArrayAssert) -> bool {
+                        {
+                            let __self_vi =
+                                unsafe { ::std::intrinsics::discriminant_value(&*self) } as isize;
+                            let __arg_1_vi =
+                                unsafe { ::std::intrinsics::discriminant_value(&*other) } as isize;
+                            if true && __self_vi == __arg_1_vi {
+                                match (&*self, &*other) {
+                                    (
+                                        &ArrayAssert::Check(ref __self_0, ref __self_1),
+                                        &ArrayAssert::Check(ref __arg_1_0, ref __arg_1_1),
+                                    ) => (*__self_0) == (*__arg_1_0) && (*__self_1) == (*__arg_1_1),
+                                    (
+                                        &ArrayAssert::CheckType(
+                                            ref __self_0,
+                                            ref __self_1,
+                                            ref __self_2,
+                                        ),
+                                        &ArrayAssert::CheckType(
+                                            ref __arg_1_0,
+                                            ref __arg_1_1,
+                                            ref __arg_1_2,
+                                        ),
+                                    ) => {
+                                        (*__self_0) == (*__arg_1_0)
+                                            && (*__self_1) == (*__arg_1_1)
+                                            && (*__self_2) == (*__arg_1_2)
+                                    }
+                                    _ => unsafe { ::std::intrinsics::unreachable() },
+                                }
+                            } else {
+                                false
+                            }
+                        }
+                    }
+                    #[inline]
+                    fn ne(&self, other: &ArrayAssert) -> bool {
+                        {
+                            let __self_vi =
+                                unsafe { ::std::intrinsics::discriminant_value(&*self) } as isize;
+                            let __arg_1_vi =
+                                unsafe { ::std::intrinsics::discriminant_value(&*other) } as isize;
+                            if true && __self_vi == __arg_1_vi {
+                                match (&*self, &*other) {
+                                    (
+                                        &ArrayAssert::Check(ref __self_0, ref __self_1),
+                                        &ArrayAssert::Check(ref __arg_1_0, ref __arg_1_1),
+                                    ) => (*__self_0) != (*__arg_1_0) || (*__self_1) != (*__arg_1_1),
+                                    (
+                                        &ArrayAssert::CheckType(
+                                            ref __self_0,
+                                            ref __self_1,
+                                            ref __self_2,
+                                        ),
+                                        &ArrayAssert::CheckType(
+                                            ref __arg_1_0,
+                                            ref __arg_1_1,
+                                            ref __arg_1_2,
+                                        ),
+                                    ) => {
+                                        (*__self_0) != (*__arg_1_0)
+                                            || (*__self_1) != (*__arg_1_1)
+                                            || (*__self_2) != (*__arg_1_2)
+                                    }
+                                    _ => unsafe { ::std::intrinsics::unreachable() },
+                                }
+                            } else {
+                                true
+                            }
+                        }
+                    }
+                }
+                impl Expr for ArrayAssert {
+                    fn is_zoom(&self) -> bool {
+                        match self {
+                            ArrayAssert::Check(_, e) => e.is_zoom(),
+                            ArrayAssert::CheckType(_, _, e) => e.is_zoom(),
+                        }
+                    }
+                    fn is_feature(&self) -> bool {
+                        match self {
+                            ArrayAssert::Check(_, e) => e.is_feature(),
+                            ArrayAssert::CheckType(_, _, e) => e.is_feature(),
+                        }
+                    }
+                    fn eval(&self, ctx: &EvaluationContext) -> ExprResult {
+                        match self {
+                            ArrayAssert::Check(_, e) => {
+                                return Ok(if let ExprVal::List(_) = e.eval(ctx)? {
+                                    ExprVal::Bool(true)
+                                } else {
+                                    ExprVal::Bool(false)
+                                });
+                            }
+                            ArrayAssert::CheckType(_, typ, e) => {
+                                return Ok(if let ExprVal::List(l) = e.eval(ctx)? {
+                                    return Ok(l.iter().all(|v| v.typ() == *typ).into());
+                                } else {
+                                    ExprVal::Bool(false)
+                                });
+                            }
+                        }
+                    }
+                }
+                pub struct Assert(Type, Vec<BaseExpr>);
+                #[automatically_derived]
+                #[allow(unused_qualifications)]
+                impl ::std::fmt::Debug for Assert {
+                    fn fmt(&self, f: &mut ::std::fmt::Formatter) -> ::std::fmt::Result {
+                        match *self {
+                            Assert(ref __self_0_0, ref __self_0_1) => {
+                                let mut debug_trait_builder = f.debug_tuple("Assert");
+                                let _ = debug_trait_builder.field(&&(*__self_0_0));
+                                let _ = debug_trait_builder.field(&&(*__self_0_1));
+                                debug_trait_builder.finish()
+                            }
+                        }
+                    }
+                }
+                #[automatically_derived]
+                #[allow(unused_qualifications)]
+                impl ::std::clone::Clone for Assert {
+                    #[inline]
+                    fn clone(&self) -> Assert {
+                        match *self {
+                            Assert(ref __self_0_0, ref __self_0_1) => Assert(
+                                ::std::clone::Clone::clone(&(*__self_0_0)),
+                                ::std::clone::Clone::clone(&(*__self_0_1)),
+                            ),
+                        }
+                    }
+                }
+                #[automatically_derived]
+                #[allow(unused_qualifications)]
+                impl ::std::cmp::PartialEq for Assert {
+                    #[inline]
+                    fn eq(&self, other: &Assert) -> bool {
+                        match *other {
+                            Assert(ref __self_1_0, ref __self_1_1) => match *self {
+                                Assert(ref __self_0_0, ref __self_0_1) => {
+                                    (*__self_0_0) == (*__self_1_0) && (*__self_0_1) == (*__self_1_1)
+                                }
+                            },
+                        }
+                    }
+                    #[inline]
+                    fn ne(&self, other: &Assert) -> bool {
+                        match *other {
+                            Assert(ref __self_1_0, ref __self_1_1) => match *self {
+                                Assert(ref __self_0_0, ref __self_0_1) => {
+                                    (*__self_0_0) != (*__self_1_0) || (*__self_0_1) != (*__self_1_1)
+                                }
+                            },
+                        }
+                    }
+                }
+                impl<'de> Deserialize<'de> for Assert {
+                    fn deserialize<D>(deserializer: D) -> StdResult<Self, D::Error>
+                    where
+                        D: Deserializer<'de>,
+                    {
+                        use serde::de::Error;
+                        let PrefixHelper(typ, rest) = Deserialize::deserialize(deserializer)?;
+                        return Ok(Assert(typ, rest));
+                    }
+                }
+                impl Expr for Assert {
+                    fn is_zoom(&self) -> bool {
+                        return self.1.iter().any(|v| v.is_zoom());
+                    }
+                    fn is_feature(&self) -> bool {
+                        return self.1.iter().any(|v| v.is_feature());
+                    }
+                    fn eval(&self, ctx: &EvaluationContext) -> ExprResult {
+                        for e in self.1.iter() {
+                            let v = e.eval(ctx)?;
+                            if v.typ() == self.0 {
+                                return Ok(v);
+                            }
+                        }
+                        return Ok(ExprVal::Null);
+                    }
+                }
+            }
+            pub mod convert {
+                use super::*;
+                use prelude::*;
+                use serde::Deserialize;
+                pub struct Convert(Type, Vec<BaseExpr>);
+                #[automatically_derived]
+                #[allow(unused_qualifications)]
+                impl ::std::fmt::Debug for Convert {
+                    fn fmt(&self, f: &mut ::std::fmt::Formatter) -> ::std::fmt::Result {
+                        match *self {
+                            Convert(ref __self_0_0, ref __self_0_1) => {
+                                let mut debug_trait_builder = f.debug_tuple("Convert");
+                                let _ = debug_trait_builder.field(&&(*__self_0_0));
+                                let _ = debug_trait_builder.field(&&(*__self_0_1));
+                                debug_trait_builder.finish()
+                            }
+                        }
+                    }
+                }
+                #[automatically_derived]
+                #[allow(unused_qualifications)]
+                impl ::std::clone::Clone for Convert {
+                    #[inline]
+                    fn clone(&self) -> Convert {
+                        match *self {
+                            Convert(ref __self_0_0, ref __self_0_1) => Convert(
+                                ::std::clone::Clone::clone(&(*__self_0_0)),
+                                ::std::clone::Clone::clone(&(*__self_0_1)),
+                            ),
+                        }
+                    }
+                }
+                #[automatically_derived]
+                #[allow(unused_qualifications)]
+                impl ::std::cmp::PartialEq for Convert {
+                    #[inline]
+                    fn eq(&self, other: &Convert) -> bool {
+                        match *other {
+                            Convert(ref __self_1_0, ref __self_1_1) => match *self {
+                                Convert(ref __self_0_0, ref __self_0_1) => {
+                                    (*__self_0_0) == (*__self_1_0) && (*__self_0_1) == (*__self_1_1)
+                                }
+                            },
+                        }
+                    }
+                    #[inline]
+                    fn ne(&self, other: &Convert) -> bool {
+                        match *other {
+                            Convert(ref __self_1_0, ref __self_1_1) => match *self {
+                                Convert(ref __self_0_0, ref __self_0_1) => {
+                                    (*__self_0_0) != (*__self_1_0) || (*__self_0_1) != (*__self_1_1)
+                                }
+                            },
+                        }
+                    }
+                }
+                impl<'de> Deserialize<'de> for Convert {
+                    fn deserialize<D>(
+                        deserializer: D,
+                    ) -> StdResult<Self, <D as Deserializer<'de>>::Error>
+                    where
+                        D: Deserializer<'de>,
+                    {
+                        use serde::de::Error;
+                        let PrefixHelper(typ, tail): PrefixHelper<
+                            String,
+                            _,
+                        > = Deserialize::deserialize(deserializer)?;
+                        let typ = match typ.deref() {
+                            "to-boolean" => Type::Boolean,
+                            "to-color" => Type::Color,
+                            "to-number" => Type::Number,
+                            "to-string" => Type::String,
+                            _ => {
+                                return Err(D::Error::custom("unknown destination type"));
+                            }
+                        };
+                        return Ok(Convert(typ, tail));
+                    }
+                }
+                impl Expr for Convert {
+                    fn is_zoom(&self) -> bool {
+                        self.1.iter().any(|e| e.is_zoom())
+                    }
+                    fn is_feature(&self) -> bool {
+                        self.1.iter().any(|e| e.is_feature())
+                    }
+                    fn eval(&self, ctx: &EvaluationContext) -> ExprResult {
+                        {
+                            ::rt::begin_panic(
+                                "not yet implemented",
+                                &("rmaps/src/map/style/expr/convert.rs", 40u32, 9u32),
+                            )
+                        }
+                    }
+                }
+                pub enum _TypeOfMarker {
+                    #[serde(rename = "typeof")]
+                    _Mark,
+                }
+                #[automatically_derived]
+                #[allow(unused_qualifications)]
+                impl ::std::fmt::Debug for _TypeOfMarker {
+                    fn fmt(&self, f: &mut ::std::fmt::Formatter) -> ::std::fmt::Result {
+                        match (&*self,) {
+                            (&_TypeOfMarker::_Mark,) => {
+                                let mut debug_trait_builder = f.debug_tuple("_Mark");
+                                debug_trait_builder.finish()
+                            }
+                        }
+                    }
+                }
+                #[automatically_derived]
+                #[allow(unused_qualifications)]
+                impl ::std::clone::Clone for _TypeOfMarker {
+                    #[inline]
+                    fn clone(&self) -> _TypeOfMarker {
+                        match (&*self,) {
+                            (&_TypeOfMarker::_Mark,) => _TypeOfMarker::_Mark,
+                        }
+                    }
+                }
+                #[automatically_derived]
+                #[allow(unused_qualifications)]
+                impl ::std::cmp::PartialEq for _TypeOfMarker {
+                    #[inline]
+                    fn eq(&self, other: &_TypeOfMarker) -> bool {
+                        match (&*self, &*other) {
+                            _ => true,
+                        }
+                    }
+                }
+                #[allow(non_upper_case_globals, unused_attributes, unused_qualifications)]
+                const _IMPL_DESERIALIZE_FOR__TypeOfMarker: () = {
+                    extern crate serde as _serde;
+                    #[allow(unused_macros)]
+                    macro_rules! try(( $ __expr : expr ) => {
+                                         match $ __expr {
+                                         _serde :: export :: Ok ( __val ) =>
+                                         __val , _serde :: export :: Err (
+                                         __err ) => {
+                                         return _serde :: export :: Err (
+                                         __err ) ; } } });
+                    #[automatically_derived]
+                    impl<'de> _serde::Deserialize<'de> for _TypeOfMarker {
+                        fn deserialize<__D>(
+                            __deserializer: __D,
+                        ) -> _serde::export::Result<Self, __D::Error>
+                        where
+                            __D: _serde::Deserializer<'de>,
+                        {
+                            #[allow(non_camel_case_types)]
+                            enum __Field {
+                                __field0,
+                            }
+                            struct __FieldVisitor;
+                            impl<'de> _serde::de::Visitor<'de> for __FieldVisitor {
+                                type Value = __Field;
+                                fn expecting(
+                                    &self,
+                                    __formatter: &mut _serde::export::Formatter,
+                                ) -> _serde::export::fmt::Result {
+                                    _serde::export::Formatter::write_str(
+                                        __formatter,
+                                        "variant identifier",
+                                    )
+                                }
+                                fn visit_u64<__E>(
+                                    self,
+                                    __value: u64,
+                                ) -> _serde::export::Result<Self::Value, __E>
+                                where
+                                    __E: _serde::de::Error,
+                                {
+                                    match __value {
+                                        0u64 => _serde::export::Ok(__Field::__field0),
+                                        _ => _serde::export::Err(_serde::de::Error::invalid_value(
+                                            _serde::de::Unexpected::Unsigned(__value),
+                                            &"variant index 0 <= i < 1",
+                                        )),
+                                    }
+                                }
+                                fn visit_str<__E>(
+                                    self,
+                                    __value: &str,
+                                ) -> _serde::export::Result<Self::Value, __E>
+                                where
+                                    __E: _serde::de::Error,
+                                {
+                                    match __value {
+                                        "typeof" => _serde::export::Ok(__Field::__field0),
+                                        _ => _serde::export::Err(
+                                            _serde::de::Error::unknown_variant(__value, VARIANTS),
+                                        ),
+                                    }
+                                }
+                                fn visit_bytes<__E>(
+                                    self,
+                                    __value: &[u8],
+                                ) -> _serde::export::Result<Self::Value, __E>
+                                where
+                                    __E: _serde::de::Error,
+                                {
+                                    match __value {
+                                        b"typeof" => _serde::export::Ok(__Field::__field0),
+                                        _ => {
+                                            let __value = &_serde::export::from_utf8_lossy(__value);
+                                            _serde::export::Err(_serde::de::Error::unknown_variant(
+                                                __value, VARIANTS,
+                                            ))
+                                        }
+                                    }
+                                }
+                            }
+                            impl<'de> _serde::Deserialize<'de> for __Field {
+                                #[inline]
+                                fn deserialize<__D>(
+                                    __deserializer: __D,
+                                ) -> _serde::export::Result<Self, __D::Error>
+                                where
+                                    __D: _serde::Deserializer<'de>,
+                                {
+                                    _serde::Deserializer::deserialize_identifier(
+                                        __deserializer,
+                                        __FieldVisitor,
+                                    )
+                                }
+                            }
+                            struct __Visitor<'de> {
+                                marker: _serde::export::PhantomData<_TypeOfMarker>,
+                                lifetime: _serde::export::PhantomData<&'de ()>,
+                            }
+                            impl<'de> _serde::de::Visitor<'de> for __Visitor<'de> {
+                                type Value = _TypeOfMarker;
+                                fn expecting(
+                                    &self,
+                                    __formatter: &mut _serde::export::Formatter,
+                                ) -> _serde::export::fmt::Result {
+                                    _serde::export::Formatter::write_str(
+                                        __formatter,
+                                        "enum _TypeOfMarker",
+                                    )
+                                }
+                                fn visit_enum<__A>(
+                                    self,
+                                    __data: __A,
+                                ) -> _serde::export::Result<Self::Value, __A::Error>
+                                where
+                                    __A: _serde::de::EnumAccess<'de>,
+                                {
+                                    match match _serde::de::EnumAccess::variant(__data) {
+                                        _serde::export::Ok(__val) => __val,
+                                        _serde::export::Err(__err) => {
+                                            return _serde::export::Err(__err);
+                                        }
+                                    } {
+                                        (__Field::__field0, __variant) => {
+                                            match _serde::de::VariantAccess::unit_variant(__variant)
+                                            {
+                                                _serde::export::Ok(__val) => __val,
+                                                _serde::export::Err(__err) => {
+                                                    return _serde::export::Err(__err);
+                                                }
+                                            };
+                                            _serde::export::Ok(_TypeOfMarker::_Mark)
+                                        }
+                                    }
+                                }
+                            }
+                            const VARIANTS: &'static [&'static str] = &["typeof"];
+                            _serde::Deserializer::deserialize_enum(
+                                __deserializer,
+                                "_TypeOfMarker",
+                                VARIANTS,
+                                __Visitor {
+                                    marker: _serde::export::PhantomData::<_TypeOfMarker>,
+                                    lifetime: _serde::export::PhantomData,
+                                },
+                            )
+                        }
+                    }
+                };
+                pub struct TypeOf(_TypeOfMarker, BaseExpr);
+                #[automatically_derived]
+                #[allow(unused_qualifications)]
+                impl ::std::fmt::Debug for TypeOf {
+                    fn fmt(&self, f: &mut ::std::fmt::Formatter) -> ::std::fmt::Result {
+                        match *self {
+                            TypeOf(ref __self_0_0, ref __self_0_1) => {
+                                let mut debug_trait_builder = f.debug_tuple("TypeOf");
+                                let _ = debug_trait_builder.field(&&(*__self_0_0));
+                                let _ = debug_trait_builder.field(&&(*__self_0_1));
+                                debug_trait_builder.finish()
+                            }
+                        }
+                    }
+                }
+                #[automatically_derived]
+                #[allow(unused_qualifications)]
+                impl ::std::clone::Clone for TypeOf {
+                    #[inline]
+                    fn clone(&self) -> TypeOf {
+                        match *self {
+                            TypeOf(ref __self_0_0, ref __self_0_1) => TypeOf(
+                                ::std::clone::Clone::clone(&(*__self_0_0)),
+                                ::std::clone::Clone::clone(&(*__self_0_1)),
+                            ),
+                        }
+                    }
+                }
+                #[automatically_derived]
+                #[allow(unused_qualifications)]
+                impl ::std::cmp::PartialEq for TypeOf {
+                    #[inline]
+                    fn eq(&self, other: &TypeOf) -> bool {
+                        match *other {
+                            TypeOf(ref __self_1_0, ref __self_1_1) => match *self {
+                                TypeOf(ref __self_0_0, ref __self_0_1) => {
+                                    (*__self_0_0) == (*__self_1_0) && (*__self_0_1) == (*__self_1_1)
+                                }
+                            },
+                        }
+                    }
+                    #[inline]
+                    fn ne(&self, other: &TypeOf) -> bool {
+                        match *other {
+                            TypeOf(ref __self_1_0, ref __self_1_1) => match *self {
+                                TypeOf(ref __self_0_0, ref __self_0_1) => {
+                                    (*__self_0_0) != (*__self_1_0) || (*__self_0_1) != (*__self_1_1)
+                                }
+                            },
+                        }
+                    }
+                }
+                #[allow(non_upper_case_globals, unused_attributes, unused_qualifications)]
+                const _IMPL_DESERIALIZE_FOR_TypeOf: () = {
+                    extern crate serde as _serde;
+                    #[allow(unused_macros)]
+                    macro_rules! try(( $ __expr : expr ) => {
+                                         match $ __expr {
+                                         _serde :: export :: Ok ( __val ) =>
+                                         __val , _serde :: export :: Err (
+                                         __err ) => {
+                                         return _serde :: export :: Err (
+                                         __err ) ; } } });
+                    #[automatically_derived]
+                    impl<'de> _serde::Deserialize<'de> for TypeOf {
+                        fn deserialize<__D>(
+                            __deserializer: __D,
+                        ) -> _serde::export::Result<Self, __D::Error>
+                        where
+                            __D: _serde::Deserializer<'de>,
+                        {
+                            struct __Visitor<'de> {
+                                marker: _serde::export::PhantomData<TypeOf>,
+                                lifetime: _serde::export::PhantomData<&'de ()>,
+                            }
+                            impl<'de> _serde::de::Visitor<'de> for __Visitor<'de> {
+                                type Value = TypeOf;
+                                fn expecting(
+                                    &self,
+                                    __formatter: &mut _serde::export::Formatter,
+                                ) -> _serde::export::fmt::Result {
+                                    _serde::export::Formatter::write_str(
+                                        __formatter,
+                                        "tuple struct TypeOf",
+                                    )
+                                }
+                                #[inline]
+                                fn visit_seq<__A>(
+                                    self,
+                                    mut __seq: __A,
+                                ) -> _serde::export::Result<Self::Value, __A::Error>
+                                where
+                                    __A: _serde::de::SeqAccess<'de>,
+                                {
+                                    let __field0 = match match _serde::de::SeqAccess::next_element::<
+                                        _TypeOfMarker,
+                                    >(
+                                        &mut __seq
+                                    ) {
+                                        _serde::export::Ok(__val) => __val,
+                                        _serde::export::Err(__err) => {
+                                            return _serde::export::Err(__err);
+                                        }
+                                    } {
+                                        _serde::export::Some(__value) => __value,
+                                        _serde::export::None => {
+                                            return _serde::export::Err(
+                                                _serde::de::Error::invalid_length(
+                                                    0usize,
+                                                    &"tuple struct TypeOf with 2 elements",
+                                                ),
+                                            );
+                                        }
+                                    };
+                                    let __field1 = match match _serde::de::SeqAccess::next_element::<
+                                        BaseExpr,
+                                    >(
+                                        &mut __seq
+                                    ) {
+                                        _serde::export::Ok(__val) => __val,
+                                        _serde::export::Err(__err) => {
+                                            return _serde::export::Err(__err);
+                                        }
+                                    } {
+                                        _serde::export::Some(__value) => __value,
+                                        _serde::export::None => {
+                                            return _serde::export::Err(
+                                                _serde::de::Error::invalid_length(
+                                                    1usize,
+                                                    &"tuple struct TypeOf with 2 elements",
+                                                ),
+                                            );
+                                        }
+                                    };
+                                    _serde::export::Ok(TypeOf(__field0, __field1))
+                                }
+                            }
+                            _serde::Deserializer::deserialize_tuple_struct(
+                                __deserializer,
+                                "TypeOf",
+                                2usize,
+                                __Visitor {
+                                    marker: _serde::export::PhantomData::<TypeOf>,
+                                    lifetime: _serde::export::PhantomData,
+                                },
+                            )
+                        }
+                    }
+                };
+                impl Expr for TypeOf {
+                    fn is_zoom(&self) -> bool {
+                        self.1.is_zoom()
+                    }
+                    fn is_feature(&self) -> bool {
+                        self.1.is_feature()
+                    }
+                    fn eval(&self, ctx: &EvaluationContext) -> ExprResult {
+                        let v = self.1.eval(ctx)?;
+                        return Ok(::fmt::format(::std::fmt::Arguments::new_v1_formatted(
+                            &[""],
+                            &match (&v.typ(),) {
+                                (arg0,) => {
+                                    [::std::fmt::ArgumentV1::new(arg0, ::std::fmt::Debug::fmt)]
+                                }
+                            },
+                            &[::std::fmt::rt::v1::Argument {
+                                position: ::std::fmt::rt::v1::Position::At(0usize),
+                                format: ::std::fmt::rt::v1::FormatSpec {
+                                    fill: ' ',
+                                    align: ::std::fmt::rt::v1::Alignment::Unknown,
+                                    flags: 0u32,
+                                    precision: ::std::fmt::rt::v1::Count::Implied,
+                                    width: ::std::fmt::rt::v1::Count::Implied,
+                                },
+                            }],
+                        )).into());
+                    }
+                }
+            }
+            pub mod feature {
+                use super::*;
+                use prelude::*;
+                use serde::Deserialize;
+                pub enum _GeomTypeMarker {
+                    #[serde(rename = "geometry-type")]
+                    _Mark,
+                }
+                #[automatically_derived]
+                #[allow(unused_qualifications)]
+                impl ::std::fmt::Debug for _GeomTypeMarker {
+                    fn fmt(&self, f: &mut ::std::fmt::Formatter) -> ::std::fmt::Result {
+                        match (&*self,) {
+                            (&_GeomTypeMarker::_Mark,) => {
+                                let mut debug_trait_builder = f.debug_tuple("_Mark");
+                                debug_trait_builder.finish()
+                            }
+                        }
+                    }
+                }
+                #[automatically_derived]
+                #[allow(unused_qualifications)]
+                impl ::std::clone::Clone for _GeomTypeMarker {
+                    #[inline]
+                    fn clone(&self) -> _GeomTypeMarker {
+                        match (&*self,) {
+                            (&_GeomTypeMarker::_Mark,) => _GeomTypeMarker::_Mark,
+                        }
+                    }
+                }
+                #[automatically_derived]
+                #[allow(unused_qualifications)]
+                impl ::std::cmp::PartialEq for _GeomTypeMarker {
+                    #[inline]
+                    fn eq(&self, other: &_GeomTypeMarker) -> bool {
+                        match (&*self, &*other) {
+                            _ => true,
+                        }
+                    }
+                }
+                #[allow(non_upper_case_globals, unused_attributes, unused_qualifications)]
+                const _IMPL_DESERIALIZE_FOR__GeomTypeMarker: () = {
+                    extern crate serde as _serde;
+                    #[allow(unused_macros)]
+                    macro_rules! try(( $ __expr : expr ) => {
+                                         match $ __expr {
+                                         _serde :: export :: Ok ( __val ) =>
+                                         __val , _serde :: export :: Err (
+                                         __err ) => {
+                                         return _serde :: export :: Err (
+                                         __err ) ; } } });
+                    #[automatically_derived]
+                    impl<'de> _serde::Deserialize<'de> for _GeomTypeMarker {
+                        fn deserialize<__D>(
+                            __deserializer: __D,
+                        ) -> _serde::export::Result<Self, __D::Error>
+                        where
+                            __D: _serde::Deserializer<'de>,
+                        {
+                            #[allow(non_camel_case_types)]
+                            enum __Field {
+                                __field0,
+                            }
+                            struct __FieldVisitor;
+                            impl<'de> _serde::de::Visitor<'de> for __FieldVisitor {
+                                type Value = __Field;
+                                fn expecting(
+                                    &self,
+                                    __formatter: &mut _serde::export::Formatter,
+                                ) -> _serde::export::fmt::Result {
+                                    _serde::export::Formatter::write_str(
+                                        __formatter,
+                                        "variant identifier",
+                                    )
+                                }
+                                fn visit_u64<__E>(
+                                    self,
+                                    __value: u64,
+                                ) -> _serde::export::Result<Self::Value, __E>
+                                where
+                                    __E: _serde::de::Error,
+                                {
+                                    match __value {
+                                        0u64 => _serde::export::Ok(__Field::__field0),
+                                        _ => _serde::export::Err(_serde::de::Error::invalid_value(
+                                            _serde::de::Unexpected::Unsigned(__value),
+                                            &"variant index 0 <= i < 1",
+                                        )),
+                                    }
+                                }
+                                fn visit_str<__E>(
+                                    self,
+                                    __value: &str,
+                                ) -> _serde::export::Result<Self::Value, __E>
+                                where
+                                    __E: _serde::de::Error,
+                                {
+                                    match __value {
+                                        "geometry-type" => _serde::export::Ok(__Field::__field0),
+                                        _ => _serde::export::Err(
+                                            _serde::de::Error::unknown_variant(__value, VARIANTS),
+                                        ),
+                                    }
+                                }
+                                fn visit_bytes<__E>(
+                                    self,
+                                    __value: &[u8],
+                                ) -> _serde::export::Result<Self::Value, __E>
+                                where
+                                    __E: _serde::de::Error,
+                                {
+                                    match __value {
+                                        b"geometry-type" => _serde::export::Ok(__Field::__field0),
+                                        _ => {
+                                            let __value = &_serde::export::from_utf8_lossy(__value);
+                                            _serde::export::Err(_serde::de::Error::unknown_variant(
+                                                __value, VARIANTS,
+                                            ))
+                                        }
+                                    }
+                                }
+                            }
+                            impl<'de> _serde::Deserialize<'de> for __Field {
+                                #[inline]
+                                fn deserialize<__D>(
+                                    __deserializer: __D,
+                                ) -> _serde::export::Result<Self, __D::Error>
+                                where
+                                    __D: _serde::Deserializer<'de>,
+                                {
+                                    _serde::Deserializer::deserialize_identifier(
+                                        __deserializer,
+                                        __FieldVisitor,
+                                    )
+                                }
+                            }
+                            struct __Visitor<'de> {
+                                marker: _serde::export::PhantomData<_GeomTypeMarker>,
+                                lifetime: _serde::export::PhantomData<&'de ()>,
+                            }
+                            impl<'de> _serde::de::Visitor<'de> for __Visitor<'de> {
+                                type Value = _GeomTypeMarker;
+                                fn expecting(
+                                    &self,
+                                    __formatter: &mut _serde::export::Formatter,
+                                ) -> _serde::export::fmt::Result {
+                                    _serde::export::Formatter::write_str(
+                                        __formatter,
+                                        "enum _GeomTypeMarker",
+                                    )
+                                }
+                                fn visit_enum<__A>(
+                                    self,
+                                    __data: __A,
+                                ) -> _serde::export::Result<Self::Value, __A::Error>
+                                where
+                                    __A: _serde::de::EnumAccess<'de>,
+                                {
+                                    match match _serde::de::EnumAccess::variant(__data) {
+                                        _serde::export::Ok(__val) => __val,
+                                        _serde::export::Err(__err) => {
+                                            return _serde::export::Err(__err);
+                                        }
+                                    } {
+                                        (__Field::__field0, __variant) => {
+                                            match _serde::de::VariantAccess::unit_variant(__variant)
+                                            {
+                                                _serde::export::Ok(__val) => __val,
+                                                _serde::export::Err(__err) => {
+                                                    return _serde::export::Err(__err);
+                                                }
+                                            };
+                                            _serde::export::Ok(_GeomTypeMarker::_Mark)
+                                        }
+                                    }
+                                }
+                            }
+                            const VARIANTS: &'static [&'static str] = &["geometry-type"];
+                            _serde::Deserializer::deserialize_enum(
+                                __deserializer,
+                                "_GeomTypeMarker",
+                                VARIANTS,
+                                __Visitor {
+                                    marker: _serde::export::PhantomData::<_GeomTypeMarker>,
+                                    lifetime: _serde::export::PhantomData,
+                                },
+                            )
+                        }
+                    }
+                };
+                pub struct GeomType(_GeomTypeMarker);
+                #[automatically_derived]
+                #[allow(unused_qualifications)]
+                impl ::std::fmt::Debug for GeomType {
+                    fn fmt(&self, f: &mut ::std::fmt::Formatter) -> ::std::fmt::Result {
+                        match *self {
+                            GeomType(ref __self_0_0) => {
+                                let mut debug_trait_builder = f.debug_tuple("GeomType");
+                                let _ = debug_trait_builder.field(&&(*__self_0_0));
+                                debug_trait_builder.finish()
+                            }
+                        }
+                    }
+                }
+                #[automatically_derived]
+                #[allow(unused_qualifications)]
+                impl ::std::clone::Clone for GeomType {
+                    #[inline]
+                    fn clone(&self) -> GeomType {
+                        match *self {
+                            GeomType(ref __self_0_0) => {
+                                GeomType(::std::clone::Clone::clone(&(*__self_0_0)))
+                            }
+                        }
+                    }
+                }
+                #[automatically_derived]
+                #[allow(unused_qualifications)]
+                impl ::std::cmp::PartialEq for GeomType {
+                    #[inline]
+                    fn eq(&self, other: &GeomType) -> bool {
+                        match *other {
+                            GeomType(ref __self_1_0) => match *self {
+                                GeomType(ref __self_0_0) => (*__self_0_0) == (*__self_1_0),
+                            },
+                        }
+                    }
+                    #[inline]
+                    fn ne(&self, other: &GeomType) -> bool {
+                        match *other {
+                            GeomType(ref __self_1_0) => match *self {
+                                GeomType(ref __self_0_0) => (*__self_0_0) != (*__self_1_0),
+                            },
+                        }
+                    }
+                }
+                impl<'de> Deserialize<'de> for GeomType {
+                    fn deserialize<D>(
+                        deserializer: D,
+                    ) -> StdResult<Self, <D as Deserializer<'de>>::Error>
+                    where
+                        D: Deserializer<'de>,
+                    {
+                        use serde::de::Error;
+                        let d: Vec<_GeomTypeMarker> = Deserialize::deserialize(deserializer)?;
+                        return Ok(GeomType(_GeomTypeMarker::_Mark));
+                    }
+                }
+                impl Expr for GeomType {
+                    fn is_zoom(&self) -> bool {
+                        false
+                    }
+                    fn is_feature(&self) -> bool {
+                        true
+                    }
+                    fn eval(&self, ctx: &EvaluationContext) -> ExprResult {
+                        {
+                            ::rt::begin_panic(
+                                "not yet implemented",
+                                &("rmaps/src/map/style/expr/feature.rs", 37u32, 9u32),
+                            )
+                        }
+                    }
+                }
+                pub enum _IdMarker {
+                    #[serde(rename = "id")]
+                    _Mark,
+                }
+                #[automatically_derived]
+                #[allow(unused_qualifications)]
+                impl ::std::fmt::Debug for _IdMarker {
+                    fn fmt(&self, f: &mut ::std::fmt::Formatter) -> ::std::fmt::Result {
+                        match (&*self,) {
+                            (&_IdMarker::_Mark,) => {
+                                let mut debug_trait_builder = f.debug_tuple("_Mark");
+                                debug_trait_builder.finish()
+                            }
+                        }
+                    }
+                }
+                #[automatically_derived]
+                #[allow(unused_qualifications)]
+                impl ::std::clone::Clone for _IdMarker {
+                    #[inline]
+                    fn clone(&self) -> _IdMarker {
+                        match (&*self,) {
+                            (&_IdMarker::_Mark,) => _IdMarker::_Mark,
+                        }
+                    }
+                }
+                #[automatically_derived]
+                #[allow(unused_qualifications)]
+                impl ::std::cmp::PartialEq for _IdMarker {
+                    #[inline]
+                    fn eq(&self, other: &_IdMarker) -> bool {
+                        match (&*self, &*other) {
+                            _ => true,
+                        }
+                    }
+                }
+                #[allow(non_upper_case_globals, unused_attributes, unused_qualifications)]
+                const _IMPL_DESERIALIZE_FOR__IdMarker: () = {
+                    extern crate serde as _serde;
+                    #[allow(unused_macros)]
+                    macro_rules! try(( $ __expr : expr ) => {
+                                         match $ __expr {
+                                         _serde :: export :: Ok ( __val ) =>
+                                         __val , _serde :: export :: Err (
+                                         __err ) => {
+                                         return _serde :: export :: Err (
+                                         __err ) ; } } });
+                    #[automatically_derived]
+                    impl<'de> _serde::Deserialize<'de> for _IdMarker {
+                        fn deserialize<__D>(
+                            __deserializer: __D,
+                        ) -> _serde::export::Result<Self, __D::Error>
+                        where
+                            __D: _serde::Deserializer<'de>,
+                        {
+                            #[allow(non_camel_case_types)]
+                            enum __Field {
+                                __field0,
+                            }
+                            struct __FieldVisitor;
+                            impl<'de> _serde::de::Visitor<'de> for __FieldVisitor {
+                                type Value = __Field;
+                                fn expecting(
+                                    &self,
+                                    __formatter: &mut _serde::export::Formatter,
+                                ) -> _serde::export::fmt::Result {
+                                    _serde::export::Formatter::write_str(
+                                        __formatter,
+                                        "variant identifier",
+                                    )
+                                }
+                                fn visit_u64<__E>(
+                                    self,
+                                    __value: u64,
+                                ) -> _serde::export::Result<Self::Value, __E>
+                                where
+                                    __E: _serde::de::Error,
+                                {
+                                    match __value {
+                                        0u64 => _serde::export::Ok(__Field::__field0),
+                                        _ => _serde::export::Err(_serde::de::Error::invalid_value(
+                                            _serde::de::Unexpected::Unsigned(__value),
+                                            &"variant index 0 <= i < 1",
+                                        )),
+                                    }
+                                }
+                                fn visit_str<__E>(
+                                    self,
+                                    __value: &str,
+                                ) -> _serde::export::Result<Self::Value, __E>
+                                where
+                                    __E: _serde::de::Error,
+                                {
+                                    match __value {
+                                        "id" => _serde::export::Ok(__Field::__field0),
+                                        _ => _serde::export::Err(
+                                            _serde::de::Error::unknown_variant(__value, VARIANTS),
+                                        ),
+                                    }
+                                }
+                                fn visit_bytes<__E>(
+                                    self,
+                                    __value: &[u8],
+                                ) -> _serde::export::Result<Self::Value, __E>
+                                where
+                                    __E: _serde::de::Error,
+                                {
+                                    match __value {
+                                        b"id" => _serde::export::Ok(__Field::__field0),
+                                        _ => {
+                                            let __value = &_serde::export::from_utf8_lossy(__value);
+                                            _serde::export::Err(_serde::de::Error::unknown_variant(
+                                                __value, VARIANTS,
+                                            ))
+                                        }
+                                    }
+                                }
+                            }
+                            impl<'de> _serde::Deserialize<'de> for __Field {
+                                #[inline]
+                                fn deserialize<__D>(
+                                    __deserializer: __D,
+                                ) -> _serde::export::Result<Self, __D::Error>
+                                where
+                                    __D: _serde::Deserializer<'de>,
+                                {
+                                    _serde::Deserializer::deserialize_identifier(
+                                        __deserializer,
+                                        __FieldVisitor,
+                                    )
+                                }
+                            }
+                            struct __Visitor<'de> {
+                                marker: _serde::export::PhantomData<_IdMarker>,
+                                lifetime: _serde::export::PhantomData<&'de ()>,
+                            }
+                            impl<'de> _serde::de::Visitor<'de> for __Visitor<'de> {
+                                type Value = _IdMarker;
+                                fn expecting(
+                                    &self,
+                                    __formatter: &mut _serde::export::Formatter,
+                                ) -> _serde::export::fmt::Result {
+                                    _serde::export::Formatter::write_str(
+                                        __formatter,
+                                        "enum _IdMarker",
+                                    )
+                                }
+                                fn visit_enum<__A>(
+                                    self,
+                                    __data: __A,
+                                ) -> _serde::export::Result<Self::Value, __A::Error>
+                                where
+                                    __A: _serde::de::EnumAccess<'de>,
+                                {
+                                    match match _serde::de::EnumAccess::variant(__data) {
+                                        _serde::export::Ok(__val) => __val,
+                                        _serde::export::Err(__err) => {
+                                            return _serde::export::Err(__err);
+                                        }
+                                    } {
+                                        (__Field::__field0, __variant) => {
+                                            match _serde::de::VariantAccess::unit_variant(__variant)
+                                            {
+                                                _serde::export::Ok(__val) => __val,
+                                                _serde::export::Err(__err) => {
+                                                    return _serde::export::Err(__err);
+                                                }
+                                            };
+                                            _serde::export::Ok(_IdMarker::_Mark)
+                                        }
+                                    }
+                                }
+                            }
+                            const VARIANTS: &'static [&'static str] = &["id"];
+                            _serde::Deserializer::deserialize_enum(
+                                __deserializer,
+                                "_IdMarker",
+                                VARIANTS,
+                                __Visitor {
+                                    marker: _serde::export::PhantomData::<_IdMarker>,
+                                    lifetime: _serde::export::PhantomData,
+                                },
+                            )
+                        }
+                    }
+                };
+                pub struct Id(_IdMarker);
+                #[automatically_derived]
+                #[allow(unused_qualifications)]
+                impl ::std::fmt::Debug for Id {
+                    fn fmt(&self, f: &mut ::std::fmt::Formatter) -> ::std::fmt::Result {
+                        match *self {
+                            Id(ref __self_0_0) => {
+                                let mut debug_trait_builder = f.debug_tuple("Id");
+                                let _ = debug_trait_builder.field(&&(*__self_0_0));
+                                debug_trait_builder.finish()
+                            }
+                        }
+                    }
+                }
+                #[automatically_derived]
+                #[allow(unused_qualifications)]
+                impl ::std::clone::Clone for Id {
+                    #[inline]
+                    fn clone(&self) -> Id {
+                        match *self {
+                            Id(ref __self_0_0) => Id(::std::clone::Clone::clone(&(*__self_0_0))),
+                        }
+                    }
+                }
+                #[automatically_derived]
+                #[allow(unused_qualifications)]
+                impl ::std::cmp::PartialEq for Id {
+                    #[inline]
+                    fn eq(&self, other: &Id) -> bool {
+                        match *other {
+                            Id(ref __self_1_0) => match *self {
+                                Id(ref __self_0_0) => (*__self_0_0) == (*__self_1_0),
+                            },
+                        }
+                    }
+                    #[inline]
+                    fn ne(&self, other: &Id) -> bool {
+                        match *other {
+                            Id(ref __self_1_0) => match *self {
+                                Id(ref __self_0_0) => (*__self_0_0) != (*__self_1_0),
+                            },
+                        }
+                    }
+                }
+                impl<'de> Deserialize<'de> for Id {
+                    fn deserialize<D>(
+                        deserializer: D,
+                    ) -> StdResult<Self, <D as Deserializer<'de>>::Error>
+                    where
+                        D: Deserializer<'de>,
+                    {
+                        use serde::de::Error;
+                        let d: Vec<_IdMarker> = Deserialize::deserialize(deserializer)?;
+                        return Ok(Id(_IdMarker::_Mark));
+                    }
+                }
+                impl Expr for Id {
+                    fn is_zoom(&self) -> bool {
+                        false
+                    }
+                    fn is_feature(&self) -> bool {
+                        true
+                    }
+                    fn eval(&self, ctx: &EvaluationContext) -> ExprResult {
+                        {
+                            ::rt::begin_panic(
+                                "not yet implemented",
+                                &("rmaps/src/map/style/expr/feature.rs", 71u32, 9u32),
+                            )
+                        }
+                    }
+                }
+                pub enum _PropertiesMarker {
+                    #[serde(rename = "properties")]
+                    _Mark,
+                }
+                #[automatically_derived]
+                #[allow(unused_qualifications)]
+                impl ::std::fmt::Debug for _PropertiesMarker {
+                    fn fmt(&self, f: &mut ::std::fmt::Formatter) -> ::std::fmt::Result {
+                        match (&*self,) {
+                            (&_PropertiesMarker::_Mark,) => {
+                                let mut debug_trait_builder = f.debug_tuple("_Mark");
+                                debug_trait_builder.finish()
+                            }
+                        }
+                    }
+                }
+                #[automatically_derived]
+                #[allow(unused_qualifications)]
+                impl ::std::clone::Clone for _PropertiesMarker {
+                    #[inline]
+                    fn clone(&self) -> _PropertiesMarker {
+                        match (&*self,) {
+                            (&_PropertiesMarker::_Mark,) => _PropertiesMarker::_Mark,
+                        }
+                    }
+                }
+                #[automatically_derived]
+                #[allow(unused_qualifications)]
+                impl ::std::cmp::PartialEq for _PropertiesMarker {
+                    #[inline]
+                    fn eq(&self, other: &_PropertiesMarker) -> bool {
+                        match (&*self, &*other) {
+                            _ => true,
+                        }
+                    }
+                }
+                #[allow(non_upper_case_globals, unused_attributes, unused_qualifications)]
+                const _IMPL_DESERIALIZE_FOR__PropertiesMarker: () = {
+                    extern crate serde as _serde;
+                    #[allow(unused_macros)]
+                    macro_rules! try(( $ __expr : expr ) => {
+                                         match $ __expr {
+                                         _serde :: export :: Ok ( __val ) =>
+                                         __val , _serde :: export :: Err (
+                                         __err ) => {
+                                         return _serde :: export :: Err (
+                                         __err ) ; } } });
+                    #[automatically_derived]
+                    impl<'de> _serde::Deserialize<'de> for _PropertiesMarker {
+                        fn deserialize<__D>(
+                            __deserializer: __D,
+                        ) -> _serde::export::Result<Self, __D::Error>
+                        where
+                            __D: _serde::Deserializer<'de>,
+                        {
+                            #[allow(non_camel_case_types)]
+                            enum __Field {
+                                __field0,
+                            }
+                            struct __FieldVisitor;
+                            impl<'de> _serde::de::Visitor<'de> for __FieldVisitor {
+                                type Value = __Field;
+                                fn expecting(
+                                    &self,
+                                    __formatter: &mut _serde::export::Formatter,
+                                ) -> _serde::export::fmt::Result {
+                                    _serde::export::Formatter::write_str(
+                                        __formatter,
+                                        "variant identifier",
+                                    )
+                                }
+                                fn visit_u64<__E>(
+                                    self,
+                                    __value: u64,
+                                ) -> _serde::export::Result<Self::Value, __E>
+                                where
+                                    __E: _serde::de::Error,
+                                {
+                                    match __value {
+                                        0u64 => _serde::export::Ok(__Field::__field0),
+                                        _ => _serde::export::Err(_serde::de::Error::invalid_value(
+                                            _serde::de::Unexpected::Unsigned(__value),
+                                            &"variant index 0 <= i < 1",
+                                        )),
+                                    }
+                                }
+                                fn visit_str<__E>(
+                                    self,
+                                    __value: &str,
+                                ) -> _serde::export::Result<Self::Value, __E>
+                                where
+                                    __E: _serde::de::Error,
+                                {
+                                    match __value {
+                                        "properties" => _serde::export::Ok(__Field::__field0),
+                                        _ => _serde::export::Err(
+                                            _serde::de::Error::unknown_variant(__value, VARIANTS),
+                                        ),
+                                    }
+                                }
+                                fn visit_bytes<__E>(
+                                    self,
+                                    __value: &[u8],
+                                ) -> _serde::export::Result<Self::Value, __E>
+                                where
+                                    __E: _serde::de::Error,
+                                {
+                                    match __value {
+                                        b"properties" => _serde::export::Ok(__Field::__field0),
+                                        _ => {
+                                            let __value = &_serde::export::from_utf8_lossy(__value);
+                                            _serde::export::Err(_serde::de::Error::unknown_variant(
+                                                __value, VARIANTS,
+                                            ))
+                                        }
+                                    }
+                                }
+                            }
+                            impl<'de> _serde::Deserialize<'de> for __Field {
+                                #[inline]
+                                fn deserialize<__D>(
+                                    __deserializer: __D,
+                                ) -> _serde::export::Result<Self, __D::Error>
+                                where
+                                    __D: _serde::Deserializer<'de>,
+                                {
+                                    _serde::Deserializer::deserialize_identifier(
+                                        __deserializer,
+                                        __FieldVisitor,
+                                    )
+                                }
+                            }
+                            struct __Visitor<'de> {
+                                marker: _serde::export::PhantomData<_PropertiesMarker>,
+                                lifetime: _serde::export::PhantomData<&'de ()>,
+                            }
+                            impl<'de> _serde::de::Visitor<'de> for __Visitor<'de> {
+                                type Value = _PropertiesMarker;
+                                fn expecting(
+                                    &self,
+                                    __formatter: &mut _serde::export::Formatter,
+                                ) -> _serde::export::fmt::Result {
+                                    _serde::export::Formatter::write_str(
+                                        __formatter,
+                                        "enum _PropertiesMarker",
+                                    )
+                                }
+                                fn visit_enum<__A>(
+                                    self,
+                                    __data: __A,
+                                ) -> _serde::export::Result<Self::Value, __A::Error>
+                                where
+                                    __A: _serde::de::EnumAccess<'de>,
+                                {
+                                    match match _serde::de::EnumAccess::variant(__data) {
+                                        _serde::export::Ok(__val) => __val,
+                                        _serde::export::Err(__err) => {
+                                            return _serde::export::Err(__err);
+                                        }
+                                    } {
+                                        (__Field::__field0, __variant) => {
+                                            match _serde::de::VariantAccess::unit_variant(__variant)
+                                            {
+                                                _serde::export::Ok(__val) => __val,
+                                                _serde::export::Err(__err) => {
+                                                    return _serde::export::Err(__err);
+                                                }
+                                            };
+                                            _serde::export::Ok(_PropertiesMarker::_Mark)
+                                        }
+                                    }
+                                }
+                            }
+                            const VARIANTS: &'static [&'static str] = &["properties"];
+                            _serde::Deserializer::deserialize_enum(
+                                __deserializer,
+                                "_PropertiesMarker",
+                                VARIANTS,
+                                __Visitor {
+                                    marker: _serde::export::PhantomData::<_PropertiesMarker>,
+                                    lifetime: _serde::export::PhantomData,
+                                },
+                            )
+                        }
+                    }
+                };
+                pub struct Properties(_PropertiesMarker);
+                #[automatically_derived]
+                #[allow(unused_qualifications)]
+                impl ::std::fmt::Debug for Properties {
+                    fn fmt(&self, f: &mut ::std::fmt::Formatter) -> ::std::fmt::Result {
+                        match *self {
+                            Properties(ref __self_0_0) => {
+                                let mut debug_trait_builder = f.debug_tuple("Properties");
+                                let _ = debug_trait_builder.field(&&(*__self_0_0));
+                                debug_trait_builder.finish()
+                            }
+                        }
+                    }
+                }
+                #[automatically_derived]
+                #[allow(unused_qualifications)]
+                impl ::std::clone::Clone for Properties {
+                    #[inline]
+                    fn clone(&self) -> Properties {
+                        match *self {
+                            Properties(ref __self_0_0) => {
+                                Properties(::std::clone::Clone::clone(&(*__self_0_0)))
+                            }
+                        }
+                    }
+                }
+                #[automatically_derived]
+                #[allow(unused_qualifications)]
+                impl ::std::cmp::PartialEq for Properties {
+                    #[inline]
+                    fn eq(&self, other: &Properties) -> bool {
+                        match *other {
+                            Properties(ref __self_1_0) => match *self {
+                                Properties(ref __self_0_0) => (*__self_0_0) == (*__self_1_0),
+                            },
+                        }
+                    }
+                    #[inline]
+                    fn ne(&self, other: &Properties) -> bool {
+                        match *other {
+                            Properties(ref __self_1_0) => match *self {
+                                Properties(ref __self_0_0) => (*__self_0_0) != (*__self_1_0),
+                            },
+                        }
+                    }
+                }
+                impl<'de> Deserialize<'de> for Properties {
+                    fn deserialize<D>(
+                        deserializer: D,
+                    ) -> StdResult<Self, <D as Deserializer<'de>>::Error>
+                    where
+                        D: Deserializer<'de>,
+                    {
+                        use serde::de::Error;
+                        let d: Vec<_PropertiesMarker> = Deserialize::deserialize(deserializer)?;
+                        return Ok(Properties(_PropertiesMarker::_Mark));
+                    }
+                }
+                impl Expr for Properties {
+                    fn is_zoom(&self) -> bool {
+                        false
+                    }
+                    fn is_feature(&self) -> bool {
+                        true
+                    }
+                    fn eval(&self, ctx: &EvaluationContext) -> ExprResult {
+                        {
+                            ::rt::begin_panic(
+                                "not yet implemented",
+                                &("rmaps/src/map/style/expr/feature.rs", 106u32, 9u32),
+                            )
+                        }
+                    }
+                }
+            }
+            pub mod lookup {
+                use super::*;
+                use prelude::*;
+                pub enum _AtMarker {
+                    #[serde(rename = "at")]
+                    _Mark,
+                }
+                #[automatically_derived]
+                #[allow(unused_qualifications)]
+                impl ::std::fmt::Debug for _AtMarker {
+                    fn fmt(&self, f: &mut ::std::fmt::Formatter) -> ::std::fmt::Result {
+                        match (&*self,) {
+                            (&_AtMarker::_Mark,) => {
+                                let mut debug_trait_builder = f.debug_tuple("_Mark");
+                                debug_trait_builder.finish()
+                            }
+                        }
+                    }
+                }
+                #[automatically_derived]
+                #[allow(unused_qualifications)]
+                impl ::std::clone::Clone for _AtMarker {
+                    #[inline]
+                    fn clone(&self) -> _AtMarker {
+                        match (&*self,) {
+                            (&_AtMarker::_Mark,) => _AtMarker::_Mark,
+                        }
+                    }
+                }
+                #[automatically_derived]
+                #[allow(unused_qualifications)]
+                impl ::std::cmp::PartialEq for _AtMarker {
+                    #[inline]
+                    fn eq(&self, other: &_AtMarker) -> bool {
+                        match (&*self, &*other) {
+                            _ => true,
+                        }
+                    }
+                }
+                #[allow(non_upper_case_globals, unused_attributes, unused_qualifications)]
+                const _IMPL_DESERIALIZE_FOR__AtMarker: () = {
+                    extern crate serde as _serde;
+                    #[allow(unused_macros)]
+                    macro_rules! try(( $ __expr : expr ) => {
+                                         match $ __expr {
+                                         _serde :: export :: Ok ( __val ) =>
+                                         __val , _serde :: export :: Err (
+                                         __err ) => {
+                                         return _serde :: export :: Err (
+                                         __err ) ; } } });
+                    #[automatically_derived]
+                    impl<'de> _serde::Deserialize<'de> for _AtMarker {
+                        fn deserialize<__D>(
+                            __deserializer: __D,
+                        ) -> _serde::export::Result<Self, __D::Error>
+                        where
+                            __D: _serde::Deserializer<'de>,
+                        {
+                            #[allow(non_camel_case_types)]
+                            enum __Field {
+                                __field0,
+                            }
+                            struct __FieldVisitor;
+                            impl<'de> _serde::de::Visitor<'de> for __FieldVisitor {
+                                type Value = __Field;
+                                fn expecting(
+                                    &self,
+                                    __formatter: &mut _serde::export::Formatter,
+                                ) -> _serde::export::fmt::Result {
+                                    _serde::export::Formatter::write_str(
+                                        __formatter,
+                                        "variant identifier",
+                                    )
+                                }
+                                fn visit_u64<__E>(
+                                    self,
+                                    __value: u64,
+                                ) -> _serde::export::Result<Self::Value, __E>
+                                where
+                                    __E: _serde::de::Error,
+                                {
+                                    match __value {
+                                        0u64 => _serde::export::Ok(__Field::__field0),
+                                        _ => _serde::export::Err(_serde::de::Error::invalid_value(
+                                            _serde::de::Unexpected::Unsigned(__value),
+                                            &"variant index 0 <= i < 1",
+                                        )),
+                                    }
+                                }
+                                fn visit_str<__E>(
+                                    self,
+                                    __value: &str,
+                                ) -> _serde::export::Result<Self::Value, __E>
+                                where
+                                    __E: _serde::de::Error,
+                                {
+                                    match __value {
+                                        "at" => _serde::export::Ok(__Field::__field0),
+                                        _ => _serde::export::Err(
+                                            _serde::de::Error::unknown_variant(__value, VARIANTS),
+                                        ),
+                                    }
+                                }
+                                fn visit_bytes<__E>(
+                                    self,
+                                    __value: &[u8],
+                                ) -> _serde::export::Result<Self::Value, __E>
+                                where
+                                    __E: _serde::de::Error,
+                                {
+                                    match __value {
+                                        b"at" => _serde::export::Ok(__Field::__field0),
+                                        _ => {
+                                            let __value = &_serde::export::from_utf8_lossy(__value);
+                                            _serde::export::Err(_serde::de::Error::unknown_variant(
+                                                __value, VARIANTS,
+                                            ))
+                                        }
+                                    }
+                                }
+                            }
+                            impl<'de> _serde::Deserialize<'de> for __Field {
+                                #[inline]
+                                fn deserialize<__D>(
+                                    __deserializer: __D,
+                                ) -> _serde::export::Result<Self, __D::Error>
+                                where
+                                    __D: _serde::Deserializer<'de>,
+                                {
+                                    _serde::Deserializer::deserialize_identifier(
+                                        __deserializer,
+                                        __FieldVisitor,
+                                    )
+                                }
+                            }
+                            struct __Visitor<'de> {
+                                marker: _serde::export::PhantomData<_AtMarker>,
+                                lifetime: _serde::export::PhantomData<&'de ()>,
+                            }
+                            impl<'de> _serde::de::Visitor<'de> for __Visitor<'de> {
+                                type Value = _AtMarker;
+                                fn expecting(
+                                    &self,
+                                    __formatter: &mut _serde::export::Formatter,
+                                ) -> _serde::export::fmt::Result {
+                                    _serde::export::Formatter::write_str(
+                                        __formatter,
+                                        "enum _AtMarker",
+                                    )
+                                }
+                                fn visit_enum<__A>(
+                                    self,
+                                    __data: __A,
+                                ) -> _serde::export::Result<Self::Value, __A::Error>
+                                where
+                                    __A: _serde::de::EnumAccess<'de>,
+                                {
+                                    match match _serde::de::EnumAccess::variant(__data) {
+                                        _serde::export::Ok(__val) => __val,
+                                        _serde::export::Err(__err) => {
+                                            return _serde::export::Err(__err);
+                                        }
+                                    } {
+                                        (__Field::__field0, __variant) => {
+                                            match _serde::de::VariantAccess::unit_variant(__variant)
+                                            {
+                                                _serde::export::Ok(__val) => __val,
+                                                _serde::export::Err(__err) => {
+                                                    return _serde::export::Err(__err);
+                                                }
+                                            };
+                                            _serde::export::Ok(_AtMarker::_Mark)
+                                        }
+                                    }
+                                }
+                            }
+                            const VARIANTS: &'static [&'static str] = &["at"];
+                            _serde::Deserializer::deserialize_enum(
+                                __deserializer,
+                                "_AtMarker",
+                                VARIANTS,
+                                __Visitor {
+                                    marker: _serde::export::PhantomData::<_AtMarker>,
+                                    lifetime: _serde::export::PhantomData,
+                                },
+                            )
+                        }
+                    }
+                };
+                pub enum _GetMarker {
+                    #[serde(rename = "get")]
+                    _Mark,
+                }
+                #[automatically_derived]
+                #[allow(unused_qualifications)]
+                impl ::std::fmt::Debug for _GetMarker {
+                    fn fmt(&self, f: &mut ::std::fmt::Formatter) -> ::std::fmt::Result {
+                        match (&*self,) {
+                            (&_GetMarker::_Mark,) => {
+                                let mut debug_trait_builder = f.debug_tuple("_Mark");
+                                debug_trait_builder.finish()
+                            }
+                        }
+                    }
+                }
+                #[automatically_derived]
+                #[allow(unused_qualifications)]
+                impl ::std::clone::Clone for _GetMarker {
+                    #[inline]
+                    fn clone(&self) -> _GetMarker {
+                        match (&*self,) {
+                            (&_GetMarker::_Mark,) => _GetMarker::_Mark,
+                        }
+                    }
+                }
+                #[automatically_derived]
+                #[allow(unused_qualifications)]
+                impl ::std::cmp::PartialEq for _GetMarker {
+                    #[inline]
+                    fn eq(&self, other: &_GetMarker) -> bool {
+                        match (&*self, &*other) {
+                            _ => true,
+                        }
+                    }
+                }
+                #[allow(non_upper_case_globals, unused_attributes, unused_qualifications)]
+                const _IMPL_DESERIALIZE_FOR__GetMarker: () = {
+                    extern crate serde as _serde;
+                    #[allow(unused_macros)]
+                    macro_rules! try(( $ __expr : expr ) => {
+                                         match $ __expr {
+                                         _serde :: export :: Ok ( __val ) =>
+                                         __val , _serde :: export :: Err (
+                                         __err ) => {
+                                         return _serde :: export :: Err (
+                                         __err ) ; } } });
+                    #[automatically_derived]
+                    impl<'de> _serde::Deserialize<'de> for _GetMarker {
+                        fn deserialize<__D>(
+                            __deserializer: __D,
+                        ) -> _serde::export::Result<Self, __D::Error>
+                        where
+                            __D: _serde::Deserializer<'de>,
+                        {
+                            #[allow(non_camel_case_types)]
+                            enum __Field {
+                                __field0,
+                            }
+                            struct __FieldVisitor;
+                            impl<'de> _serde::de::Visitor<'de> for __FieldVisitor {
+                                type Value = __Field;
+                                fn expecting(
+                                    &self,
+                                    __formatter: &mut _serde::export::Formatter,
+                                ) -> _serde::export::fmt::Result {
+                                    _serde::export::Formatter::write_str(
+                                        __formatter,
+                                        "variant identifier",
+                                    )
+                                }
+                                fn visit_u64<__E>(
+                                    self,
+                                    __value: u64,
+                                ) -> _serde::export::Result<Self::Value, __E>
+                                where
+                                    __E: _serde::de::Error,
+                                {
+                                    match __value {
+                                        0u64 => _serde::export::Ok(__Field::__field0),
+                                        _ => _serde::export::Err(_serde::de::Error::invalid_value(
+                                            _serde::de::Unexpected::Unsigned(__value),
+                                            &"variant index 0 <= i < 1",
+                                        )),
+                                    }
+                                }
+                                fn visit_str<__E>(
+                                    self,
+                                    __value: &str,
+                                ) -> _serde::export::Result<Self::Value, __E>
+                                where
+                                    __E: _serde::de::Error,
+                                {
+                                    match __value {
+                                        "get" => _serde::export::Ok(__Field::__field0),
+                                        _ => _serde::export::Err(
+                                            _serde::de::Error::unknown_variant(__value, VARIANTS),
+                                        ),
+                                    }
+                                }
+                                fn visit_bytes<__E>(
+                                    self,
+                                    __value: &[u8],
+                                ) -> _serde::export::Result<Self::Value, __E>
+                                where
+                                    __E: _serde::de::Error,
+                                {
+                                    match __value {
+                                        b"get" => _serde::export::Ok(__Field::__field0),
+                                        _ => {
+                                            let __value = &_serde::export::from_utf8_lossy(__value);
+                                            _serde::export::Err(_serde::de::Error::unknown_variant(
+                                                __value, VARIANTS,
+                                            ))
+                                        }
+                                    }
+                                }
+                            }
+                            impl<'de> _serde::Deserialize<'de> for __Field {
+                                #[inline]
+                                fn deserialize<__D>(
+                                    __deserializer: __D,
+                                ) -> _serde::export::Result<Self, __D::Error>
+                                where
+                                    __D: _serde::Deserializer<'de>,
+                                {
+                                    _serde::Deserializer::deserialize_identifier(
+                                        __deserializer,
+                                        __FieldVisitor,
+                                    )
+                                }
+                            }
+                            struct __Visitor<'de> {
+                                marker: _serde::export::PhantomData<_GetMarker>,
+                                lifetime: _serde::export::PhantomData<&'de ()>,
+                            }
+                            impl<'de> _serde::de::Visitor<'de> for __Visitor<'de> {
+                                type Value = _GetMarker;
+                                fn expecting(
+                                    &self,
+                                    __formatter: &mut _serde::export::Formatter,
+                                ) -> _serde::export::fmt::Result {
+                                    _serde::export::Formatter::write_str(
+                                        __formatter,
+                                        "enum _GetMarker",
+                                    )
+                                }
+                                fn visit_enum<__A>(
+                                    self,
+                                    __data: __A,
+                                ) -> _serde::export::Result<Self::Value, __A::Error>
+                                where
+                                    __A: _serde::de::EnumAccess<'de>,
+                                {
+                                    match match _serde::de::EnumAccess::variant(__data) {
+                                        _serde::export::Ok(__val) => __val,
+                                        _serde::export::Err(__err) => {
+                                            return _serde::export::Err(__err);
+                                        }
+                                    } {
+                                        (__Field::__field0, __variant) => {
+                                            match _serde::de::VariantAccess::unit_variant(__variant)
+                                            {
+                                                _serde::export::Ok(__val) => __val,
+                                                _serde::export::Err(__err) => {
+                                                    return _serde::export::Err(__err);
+                                                }
+                                            };
+                                            _serde::export::Ok(_GetMarker::_Mark)
+                                        }
+                                    }
+                                }
+                            }
+                            const VARIANTS: &'static [&'static str] = &["get"];
+                            _serde::Deserializer::deserialize_enum(
+                                __deserializer,
+                                "_GetMarker",
+                                VARIANTS,
+                                __Visitor {
+                                    marker: _serde::export::PhantomData::<_GetMarker>,
+                                    lifetime: _serde::export::PhantomData,
+                                },
+                            )
+                        }
+                    }
+                };
+                pub enum _HasMarker {
+                    #[serde(rename = "has")]
+                    _Mark,
+                }
+                #[automatically_derived]
+                #[allow(unused_qualifications)]
+                impl ::std::fmt::Debug for _HasMarker {
+                    fn fmt(&self, f: &mut ::std::fmt::Formatter) -> ::std::fmt::Result {
+                        match (&*self,) {
+                            (&_HasMarker::_Mark,) => {
+                                let mut debug_trait_builder = f.debug_tuple("_Mark");
+                                debug_trait_builder.finish()
+                            }
+                        }
+                    }
+                }
+                #[automatically_derived]
+                #[allow(unused_qualifications)]
+                impl ::std::clone::Clone for _HasMarker {
+                    #[inline]
+                    fn clone(&self) -> _HasMarker {
+                        match (&*self,) {
+                            (&_HasMarker::_Mark,) => _HasMarker::_Mark,
+                        }
+                    }
+                }
+                #[automatically_derived]
+                #[allow(unused_qualifications)]
+                impl ::std::cmp::PartialEq for _HasMarker {
+                    #[inline]
+                    fn eq(&self, other: &_HasMarker) -> bool {
+                        match (&*self, &*other) {
+                            _ => true,
+                        }
+                    }
+                }
+                #[allow(non_upper_case_globals, unused_attributes, unused_qualifications)]
+                const _IMPL_DESERIALIZE_FOR__HasMarker: () = {
+                    extern crate serde as _serde;
+                    #[allow(unused_macros)]
+                    macro_rules! try(( $ __expr : expr ) => {
+                                         match $ __expr {
+                                         _serde :: export :: Ok ( __val ) =>
+                                         __val , _serde :: export :: Err (
+                                         __err ) => {
+                                         return _serde :: export :: Err (
+                                         __err ) ; } } });
+                    #[automatically_derived]
+                    impl<'de> _serde::Deserialize<'de> for _HasMarker {
+                        fn deserialize<__D>(
+                            __deserializer: __D,
+                        ) -> _serde::export::Result<Self, __D::Error>
+                        where
+                            __D: _serde::Deserializer<'de>,
+                        {
+                            #[allow(non_camel_case_types)]
+                            enum __Field {
+                                __field0,
+                            }
+                            struct __FieldVisitor;
+                            impl<'de> _serde::de::Visitor<'de> for __FieldVisitor {
+                                type Value = __Field;
+                                fn expecting(
+                                    &self,
+                                    __formatter: &mut _serde::export::Formatter,
+                                ) -> _serde::export::fmt::Result {
+                                    _serde::export::Formatter::write_str(
+                                        __formatter,
+                                        "variant identifier",
+                                    )
+                                }
+                                fn visit_u64<__E>(
+                                    self,
+                                    __value: u64,
+                                ) -> _serde::export::Result<Self::Value, __E>
+                                where
+                                    __E: _serde::de::Error,
+                                {
+                                    match __value {
+                                        0u64 => _serde::export::Ok(__Field::__field0),
+                                        _ => _serde::export::Err(_serde::de::Error::invalid_value(
+                                            _serde::de::Unexpected::Unsigned(__value),
+                                            &"variant index 0 <= i < 1",
+                                        )),
+                                    }
+                                }
+                                fn visit_str<__E>(
+                                    self,
+                                    __value: &str,
+                                ) -> _serde::export::Result<Self::Value, __E>
+                                where
+                                    __E: _serde::de::Error,
+                                {
+                                    match __value {
+                                        "has" => _serde::export::Ok(__Field::__field0),
+                                        _ => _serde::export::Err(
+                                            _serde::de::Error::unknown_variant(__value, VARIANTS),
+                                        ),
+                                    }
+                                }
+                                fn visit_bytes<__E>(
+                                    self,
+                                    __value: &[u8],
+                                ) -> _serde::export::Result<Self::Value, __E>
+                                where
+                                    __E: _serde::de::Error,
+                                {
+                                    match __value {
+                                        b"has" => _serde::export::Ok(__Field::__field0),
+                                        _ => {
+                                            let __value = &_serde::export::from_utf8_lossy(__value);
+                                            _serde::export::Err(_serde::de::Error::unknown_variant(
+                                                __value, VARIANTS,
+                                            ))
+                                        }
+                                    }
+                                }
+                            }
+                            impl<'de> _serde::Deserialize<'de> for __Field {
+                                #[inline]
+                                fn deserialize<__D>(
+                                    __deserializer: __D,
+                                ) -> _serde::export::Result<Self, __D::Error>
+                                where
+                                    __D: _serde::Deserializer<'de>,
+                                {
+                                    _serde::Deserializer::deserialize_identifier(
+                                        __deserializer,
+                                        __FieldVisitor,
+                                    )
+                                }
+                            }
+                            struct __Visitor<'de> {
+                                marker: _serde::export::PhantomData<_HasMarker>,
+                                lifetime: _serde::export::PhantomData<&'de ()>,
+                            }
+                            impl<'de> _serde::de::Visitor<'de> for __Visitor<'de> {
+                                type Value = _HasMarker;
+                                fn expecting(
+                                    &self,
+                                    __formatter: &mut _serde::export::Formatter,
+                                ) -> _serde::export::fmt::Result {
+                                    _serde::export::Formatter::write_str(
+                                        __formatter,
+                                        "enum _HasMarker",
+                                    )
+                                }
+                                fn visit_enum<__A>(
+                                    self,
+                                    __data: __A,
+                                ) -> _serde::export::Result<Self::Value, __A::Error>
+                                where
+                                    __A: _serde::de::EnumAccess<'de>,
+                                {
+                                    match match _serde::de::EnumAccess::variant(__data) {
+                                        _serde::export::Ok(__val) => __val,
+                                        _serde::export::Err(__err) => {
+                                            return _serde::export::Err(__err);
+                                        }
+                                    } {
+                                        (__Field::__field0, __variant) => {
+                                            match _serde::de::VariantAccess::unit_variant(__variant)
+                                            {
+                                                _serde::export::Ok(__val) => __val,
+                                                _serde::export::Err(__err) => {
+                                                    return _serde::export::Err(__err);
+                                                }
+                                            };
+                                            _serde::export::Ok(_HasMarker::_Mark)
+                                        }
+                                    }
+                                }
+                            }
+                            const VARIANTS: &'static [&'static str] = &["has"];
+                            _serde::Deserializer::deserialize_enum(
+                                __deserializer,
+                                "_HasMarker",
+                                VARIANTS,
+                                __Visitor {
+                                    marker: _serde::export::PhantomData::<_HasMarker>,
+                                    lifetime: _serde::export::PhantomData,
+                                },
+                            )
+                        }
+                    }
+                };
+                pub enum _LengthMarker {
+                    #[serde(rename = "length")]
+                    _Mark,
+                }
+                #[automatically_derived]
+                #[allow(unused_qualifications)]
+                impl ::std::fmt::Debug for _LengthMarker {
+                    fn fmt(&self, f: &mut ::std::fmt::Formatter) -> ::std::fmt::Result {
+                        match (&*self,) {
+                            (&_LengthMarker::_Mark,) => {
+                                let mut debug_trait_builder = f.debug_tuple("_Mark");
+                                debug_trait_builder.finish()
+                            }
+                        }
+                    }
+                }
+                #[automatically_derived]
+                #[allow(unused_qualifications)]
+                impl ::std::clone::Clone for _LengthMarker {
+                    #[inline]
+                    fn clone(&self) -> _LengthMarker {
+                        match (&*self,) {
+                            (&_LengthMarker::_Mark,) => _LengthMarker::_Mark,
+                        }
+                    }
+                }
+                #[automatically_derived]
+                #[allow(unused_qualifications)]
+                impl ::std::cmp::PartialEq for _LengthMarker {
+                    #[inline]
+                    fn eq(&self, other: &_LengthMarker) -> bool {
+                        match (&*self, &*other) {
+                            _ => true,
+                        }
+                    }
+                }
+                #[allow(non_upper_case_globals, unused_attributes, unused_qualifications)]
+                const _IMPL_DESERIALIZE_FOR__LengthMarker: () = {
+                    extern crate serde as _serde;
+                    #[allow(unused_macros)]
+                    macro_rules! try(( $ __expr : expr ) => {
+                                         match $ __expr {
+                                         _serde :: export :: Ok ( __val ) =>
+                                         __val , _serde :: export :: Err (
+                                         __err ) => {
+                                         return _serde :: export :: Err (
+                                         __err ) ; } } });
+                    #[automatically_derived]
+                    impl<'de> _serde::Deserialize<'de> for _LengthMarker {
+                        fn deserialize<__D>(
+                            __deserializer: __D,
+                        ) -> _serde::export::Result<Self, __D::Error>
+                        where
+                            __D: _serde::Deserializer<'de>,
+                        {
+                            #[allow(non_camel_case_types)]
+                            enum __Field {
+                                __field0,
+                            }
+                            struct __FieldVisitor;
+                            impl<'de> _serde::de::Visitor<'de> for __FieldVisitor {
+                                type Value = __Field;
+                                fn expecting(
+                                    &self,
+                                    __formatter: &mut _serde::export::Formatter,
+                                ) -> _serde::export::fmt::Result {
+                                    _serde::export::Formatter::write_str(
+                                        __formatter,
+                                        "variant identifier",
+                                    )
+                                }
+                                fn visit_u64<__E>(
+                                    self,
+                                    __value: u64,
+                                ) -> _serde::export::Result<Self::Value, __E>
+                                where
+                                    __E: _serde::de::Error,
+                                {
+                                    match __value {
+                                        0u64 => _serde::export::Ok(__Field::__field0),
+                                        _ => _serde::export::Err(_serde::de::Error::invalid_value(
+                                            _serde::de::Unexpected::Unsigned(__value),
+                                            &"variant index 0 <= i < 1",
+                                        )),
+                                    }
+                                }
+                                fn visit_str<__E>(
+                                    self,
+                                    __value: &str,
+                                ) -> _serde::export::Result<Self::Value, __E>
+                                where
+                                    __E: _serde::de::Error,
+                                {
+                                    match __value {
+                                        "length" => _serde::export::Ok(__Field::__field0),
+                                        _ => _serde::export::Err(
+                                            _serde::de::Error::unknown_variant(__value, VARIANTS),
+                                        ),
+                                    }
+                                }
+                                fn visit_bytes<__E>(
+                                    self,
+                                    __value: &[u8],
+                                ) -> _serde::export::Result<Self::Value, __E>
+                                where
+                                    __E: _serde::de::Error,
+                                {
+                                    match __value {
+                                        b"length" => _serde::export::Ok(__Field::__field0),
+                                        _ => {
+                                            let __value = &_serde::export::from_utf8_lossy(__value);
+                                            _serde::export::Err(_serde::de::Error::unknown_variant(
+                                                __value, VARIANTS,
+                                            ))
+                                        }
+                                    }
+                                }
+                            }
+                            impl<'de> _serde::Deserialize<'de> for __Field {
+                                #[inline]
+                                fn deserialize<__D>(
+                                    __deserializer: __D,
+                                ) -> _serde::export::Result<Self, __D::Error>
+                                where
+                                    __D: _serde::Deserializer<'de>,
+                                {
+                                    _serde::Deserializer::deserialize_identifier(
+                                        __deserializer,
+                                        __FieldVisitor,
+                                    )
+                                }
+                            }
+                            struct __Visitor<'de> {
+                                marker: _serde::export::PhantomData<_LengthMarker>,
+                                lifetime: _serde::export::PhantomData<&'de ()>,
+                            }
+                            impl<'de> _serde::de::Visitor<'de> for __Visitor<'de> {
+                                type Value = _LengthMarker;
+                                fn expecting(
+                                    &self,
+                                    __formatter: &mut _serde::export::Formatter,
+                                ) -> _serde::export::fmt::Result {
+                                    _serde::export::Formatter::write_str(
+                                        __formatter,
+                                        "enum _LengthMarker",
+                                    )
+                                }
+                                fn visit_enum<__A>(
+                                    self,
+                                    __data: __A,
+                                ) -> _serde::export::Result<Self::Value, __A::Error>
+                                where
+                                    __A: _serde::de::EnumAccess<'de>,
+                                {
+                                    match match _serde::de::EnumAccess::variant(__data) {
+                                        _serde::export::Ok(__val) => __val,
+                                        _serde::export::Err(__err) => {
+                                            return _serde::export::Err(__err);
+                                        }
+                                    } {
+                                        (__Field::__field0, __variant) => {
+                                            match _serde::de::VariantAccess::unit_variant(__variant)
+                                            {
+                                                _serde::export::Ok(__val) => __val,
+                                                _serde::export::Err(__err) => {
+                                                    return _serde::export::Err(__err);
+                                                }
+                                            };
+                                            _serde::export::Ok(_LengthMarker::_Mark)
+                                        }
+                                    }
+                                }
+                            }
+                            const VARIANTS: &'static [&'static str] = &["length"];
+                            _serde::Deserializer::deserialize_enum(
+                                __deserializer,
+                                "_LengthMarker",
+                                VARIANTS,
+                                __Visitor {
+                                    marker: _serde::export::PhantomData::<_LengthMarker>,
+                                    lifetime: _serde::export::PhantomData,
+                                },
+                            )
+                        }
+                    }
+                };
+                #[serde(untagged)]
+                pub enum Lookup {
+                    At(_AtMarker, BaseExpr, BaseExpr),
+                    Get(_GetMarker, BaseExpr),
+                    GetExplicit(_GetMarker, BaseExpr, BaseExpr),
+                    Has(_HasMarker, BaseExpr),
+                    HasExplicit(_HasMarker, BaseExpr, BaseExpr),
+                    Length(_LengthMarker, BaseExpr),
+                }
+                #[automatically_derived]
+                #[allow(unused_qualifications)]
+                impl ::std::fmt::Debug for Lookup {
+                    fn fmt(&self, f: &mut ::std::fmt::Formatter) -> ::std::fmt::Result {
+                        match (&*self,) {
+                            (&Lookup::At(ref __self_0, ref __self_1, ref __self_2),) => {
+                                let mut debug_trait_builder = f.debug_tuple("At");
+                                let _ = debug_trait_builder.field(&&(*__self_0));
+                                let _ = debug_trait_builder.field(&&(*__self_1));
+                                let _ = debug_trait_builder.field(&&(*__self_2));
+                                debug_trait_builder.finish()
+                            }
+                            (&Lookup::Get(ref __self_0, ref __self_1),) => {
+                                let mut debug_trait_builder = f.debug_tuple("Get");
+                                let _ = debug_trait_builder.field(&&(*__self_0));
+                                let _ = debug_trait_builder.field(&&(*__self_1));
+                                debug_trait_builder.finish()
+                            }
+                            (&Lookup::GetExplicit(ref __self_0, ref __self_1, ref __self_2),) => {
+                                let mut debug_trait_builder = f.debug_tuple("GetExplicit");
+                                let _ = debug_trait_builder.field(&&(*__self_0));
+                                let _ = debug_trait_builder.field(&&(*__self_1));
+                                let _ = debug_trait_builder.field(&&(*__self_2));
+                                debug_trait_builder.finish()
+                            }
+                            (&Lookup::Has(ref __self_0, ref __self_1),) => {
+                                let mut debug_trait_builder = f.debug_tuple("Has");
+                                let _ = debug_trait_builder.field(&&(*__self_0));
+                                let _ = debug_trait_builder.field(&&(*__self_1));
+                                debug_trait_builder.finish()
+                            }
+                            (&Lookup::HasExplicit(ref __self_0, ref __self_1, ref __self_2),) => {
+                                let mut debug_trait_builder = f.debug_tuple("HasExplicit");
+                                let _ = debug_trait_builder.field(&&(*__self_0));
+                                let _ = debug_trait_builder.field(&&(*__self_1));
+                                let _ = debug_trait_builder.field(&&(*__self_2));
+                                debug_trait_builder.finish()
+                            }
+                            (&Lookup::Length(ref __self_0, ref __self_1),) => {
+                                let mut debug_trait_builder = f.debug_tuple("Length");
+                                let _ = debug_trait_builder.field(&&(*__self_0));
+                                let _ = debug_trait_builder.field(&&(*__self_1));
+                                debug_trait_builder.finish()
+                            }
+                        }
+                    }
+                }
+                #[automatically_derived]
+                #[allow(unused_qualifications)]
+                impl ::std::clone::Clone for Lookup {
+                    #[inline]
+                    fn clone(&self) -> Lookup {
+                        match (&*self,) {
+                            (&Lookup::At(ref __self_0, ref __self_1, ref __self_2),) => Lookup::At(
+                                ::std::clone::Clone::clone(&(*__self_0)),
+                                ::std::clone::Clone::clone(&(*__self_1)),
+                                ::std::clone::Clone::clone(&(*__self_2)),
+                            ),
+                            (&Lookup::Get(ref __self_0, ref __self_1),) => Lookup::Get(
+                                ::std::clone::Clone::clone(&(*__self_0)),
+                                ::std::clone::Clone::clone(&(*__self_1)),
+                            ),
+                            (&Lookup::GetExplicit(ref __self_0, ref __self_1, ref __self_2),) => {
+                                Lookup::GetExplicit(
+                                    ::std::clone::Clone::clone(&(*__self_0)),
+                                    ::std::clone::Clone::clone(&(*__self_1)),
+                                    ::std::clone::Clone::clone(&(*__self_2)),
+                                )
+                            }
+                            (&Lookup::Has(ref __self_0, ref __self_1),) => Lookup::Has(
+                                ::std::clone::Clone::clone(&(*__self_0)),
+                                ::std::clone::Clone::clone(&(*__self_1)),
+                            ),
+                            (&Lookup::HasExplicit(ref __self_0, ref __self_1, ref __self_2),) => {
+                                Lookup::HasExplicit(
+                                    ::std::clone::Clone::clone(&(*__self_0)),
+                                    ::std::clone::Clone::clone(&(*__self_1)),
+                                    ::std::clone::Clone::clone(&(*__self_2)),
+                                )
+                            }
+                            (&Lookup::Length(ref __self_0, ref __self_1),) => Lookup::Length(
+                                ::std::clone::Clone::clone(&(*__self_0)),
+                                ::std::clone::Clone::clone(&(*__self_1)),
+                            ),
+                        }
+                    }
+                }
+                #[automatically_derived]
+                #[allow(unused_qualifications)]
+                impl ::std::cmp::PartialEq for Lookup {
+                    #[inline]
+                    fn eq(&self, other: &Lookup) -> bool {
+                        {
+                            let __self_vi =
+                                unsafe { ::std::intrinsics::discriminant_value(&*self) } as isize;
+                            let __arg_1_vi =
+                                unsafe { ::std::intrinsics::discriminant_value(&*other) } as isize;
+                            if true && __self_vi == __arg_1_vi {
+                                match (&*self, &*other) {
+                                    (
+                                        &Lookup::At(ref __self_0, ref __self_1, ref __self_2),
+                                        &Lookup::At(ref __arg_1_0, ref __arg_1_1, ref __arg_1_2),
+                                    ) => {
+                                        (*__self_0) == (*__arg_1_0)
+                                            && (*__self_1) == (*__arg_1_1)
+                                            && (*__self_2) == (*__arg_1_2)
+                                    }
+                                    (
+                                        &Lookup::Get(ref __self_0, ref __self_1),
+                                        &Lookup::Get(ref __arg_1_0, ref __arg_1_1),
+                                    ) => (*__self_0) == (*__arg_1_0) && (*__self_1) == (*__arg_1_1),
+                                    (
+                                        &Lookup::GetExplicit(
+                                            ref __self_0,
+                                            ref __self_1,
+                                            ref __self_2,
+                                        ),
+                                        &Lookup::GetExplicit(
+                                            ref __arg_1_0,
+                                            ref __arg_1_1,
+                                            ref __arg_1_2,
+                                        ),
+                                    ) => {
+                                        (*__self_0) == (*__arg_1_0)
+                                            && (*__self_1) == (*__arg_1_1)
+                                            && (*__self_2) == (*__arg_1_2)
+                                    }
+                                    (
+                                        &Lookup::Has(ref __self_0, ref __self_1),
+                                        &Lookup::Has(ref __arg_1_0, ref __arg_1_1),
+                                    ) => (*__self_0) == (*__arg_1_0) && (*__self_1) == (*__arg_1_1),
+                                    (
+                                        &Lookup::HasExplicit(
+                                            ref __self_0,
+                                            ref __self_1,
+                                            ref __self_2,
+                                        ),
+                                        &Lookup::HasExplicit(
+                                            ref __arg_1_0,
+                                            ref __arg_1_1,
+                                            ref __arg_1_2,
+                                        ),
+                                    ) => {
+                                        (*__self_0) == (*__arg_1_0)
+                                            && (*__self_1) == (*__arg_1_1)
+                                            && (*__self_2) == (*__arg_1_2)
+                                    }
+                                    (
+                                        &Lookup::Length(ref __self_0, ref __self_1),
+                                        &Lookup::Length(ref __arg_1_0, ref __arg_1_1),
+                                    ) => (*__self_0) == (*__arg_1_0) && (*__self_1) == (*__arg_1_1),
+                                    _ => unsafe { ::std::intrinsics::unreachable() },
+                                }
+                            } else {
+                                false
+                            }
+                        }
+                    }
+                    #[inline]
+                    fn ne(&self, other: &Lookup) -> bool {
+                        {
+                            let __self_vi =
+                                unsafe { ::std::intrinsics::discriminant_value(&*self) } as isize;
+                            let __arg_1_vi =
+                                unsafe { ::std::intrinsics::discriminant_value(&*other) } as isize;
+                            if true && __self_vi == __arg_1_vi {
+                                match (&*self, &*other) {
+                                    (
+                                        &Lookup::At(ref __self_0, ref __self_1, ref __self_2),
+                                        &Lookup::At(ref __arg_1_0, ref __arg_1_1, ref __arg_1_2),
+                                    ) => {
+                                        (*__self_0) != (*__arg_1_0)
+                                            || (*__self_1) != (*__arg_1_1)
+                                            || (*__self_2) != (*__arg_1_2)
+                                    }
+                                    (
+                                        &Lookup::Get(ref __self_0, ref __self_1),
+                                        &Lookup::Get(ref __arg_1_0, ref __arg_1_1),
+                                    ) => (*__self_0) != (*__arg_1_0) || (*__self_1) != (*__arg_1_1),
+                                    (
+                                        &Lookup::GetExplicit(
+                                            ref __self_0,
+                                            ref __self_1,
+                                            ref __self_2,
+                                        ),
+                                        &Lookup::GetExplicit(
+                                            ref __arg_1_0,
+                                            ref __arg_1_1,
+                                            ref __arg_1_2,
+                                        ),
+                                    ) => {
+                                        (*__self_0) != (*__arg_1_0)
+                                            || (*__self_1) != (*__arg_1_1)
+                                            || (*__self_2) != (*__arg_1_2)
+                                    }
+                                    (
+                                        &Lookup::Has(ref __self_0, ref __self_1),
+                                        &Lookup::Has(ref __arg_1_0, ref __arg_1_1),
+                                    ) => (*__self_0) != (*__arg_1_0) || (*__self_1) != (*__arg_1_1),
+                                    (
+                                        &Lookup::HasExplicit(
+                                            ref __self_0,
+                                            ref __self_1,
+                                            ref __self_2,
+                                        ),
+                                        &Lookup::HasExplicit(
+                                            ref __arg_1_0,
+                                            ref __arg_1_1,
+                                            ref __arg_1_2,
+                                        ),
+                                    ) => {
+                                        (*__self_0) != (*__arg_1_0)
+                                            || (*__self_1) != (*__arg_1_1)
+                                            || (*__self_2) != (*__arg_1_2)
+                                    }
+                                    (
+                                        &Lookup::Length(ref __self_0, ref __self_1),
+                                        &Lookup::Length(ref __arg_1_0, ref __arg_1_1),
+                                    ) => (*__self_0) != (*__arg_1_0) || (*__self_1) != (*__arg_1_1),
+                                    _ => unsafe { ::std::intrinsics::unreachable() },
+                                }
+                            } else {
+                                true
+                            }
+                        }
+                    }
+                }
+                #[allow(non_upper_case_globals, unused_attributes, unused_qualifications)]
+                const _IMPL_DESERIALIZE_FOR_Lookup: () = {
+                    extern crate serde as _serde;
+                    #[allow(unused_macros)]
+                    macro_rules! try(( $ __expr : expr ) => {
+                                         match $ __expr {
+                                         _serde :: export :: Ok ( __val ) =>
+                                         __val , _serde :: export :: Err (
+                                         __err ) => {
+                                         return _serde :: export :: Err (
+                                         __err ) ; } } });
+                    #[automatically_derived]
+                    impl<'de> _serde::Deserialize<'de> for Lookup {
+                        fn deserialize<__D>(
+                            __deserializer: __D,
+                        ) -> _serde::export::Result<Self, __D::Error>
+                        where
+                            __D: _serde::Deserializer<'de>,
+                        {
+                            let __content =
+                                    match <_serde::private::de::Content as
+                                              _serde::Deserialize>::deserialize(__deserializer)
+                                        {
+                                        _serde::export::Ok(__val) => __val,
+                                        _serde::export::Err(__err) => {
+                                            return _serde::export::Err(__err);
+                                        }
+                                    };
+                            if let _serde::export::Ok(__ok) = {
+                                struct __Visitor<'de> {
+                                    marker: _serde::export::PhantomData<Lookup>,
+                                    lifetime: _serde::export::PhantomData<&'de ()>,
+                                }
+                                impl<'de> _serde::de::Visitor<'de> for __Visitor<'de> {
+                                    type Value = Lookup;
+                                    fn expecting(
+                                        &self,
+                                        __formatter: &mut _serde::export::Formatter,
+                                    ) -> _serde::export::fmt::Result
+                                    {
+                                        _serde::export::Formatter::write_str(
+                                            __formatter,
+                                            "tuple variant Lookup::At",
+                                        )
+                                    }
+                                    #[inline]
+                                    fn visit_seq<__A>(
+                                        self,
+                                        mut __seq: __A,
+                                    ) -> _serde::export::Result<Self::Value, __A::Error>
+                                    where
+                                        __A: _serde::de::SeqAccess<'de>,
+                                    {
+                                        let __field0 =
+                                            match match _serde::de::SeqAccess::next_element::<
+                                                _AtMarker,
+                                            >(
+                                                &mut __seq
+                                            ) {
+                                                _serde::export::Ok(__val) => __val,
+                                                _serde::export::Err(__err) => {
+                                                    return _serde::export::Err(__err);
+                                                }
+                                            } {
+                                                _serde::export::Some(__value) => __value,
+                                                _serde::export::None => {
+                                                    return _serde::export::Err(_serde::de::Error::invalid_length(0usize,
+                                                                                                                            &"tuple variant Lookup::At with 3 elements"));
+                                                }
+                                            };
+                                        let __field1 =
+                                            match match _serde::de::SeqAccess::next_element::<
+                                                BaseExpr,
+                                            >(
+                                                &mut __seq
+                                            ) {
+                                                _serde::export::Ok(__val) => __val,
+                                                _serde::export::Err(__err) => {
+                                                    return _serde::export::Err(__err);
+                                                }
+                                            } {
+                                                _serde::export::Some(__value) => __value,
+                                                _serde::export::None => {
+                                                    return _serde::export::Err(_serde::de::Error::invalid_length(1usize,
+                                                                                                                            &"tuple variant Lookup::At with 3 elements"));
+                                                }
+                                            };
+                                        let __field2 =
+                                            match match _serde::de::SeqAccess::next_element::<
+                                                BaseExpr,
+                                            >(
+                                                &mut __seq
+                                            ) {
+                                                _serde::export::Ok(__val) => __val,
+                                                _serde::export::Err(__err) => {
+                                                    return _serde::export::Err(__err);
+                                                }
+                                            } {
+                                                _serde::export::Some(__value) => __value,
+                                                _serde::export::None => {
+                                                    return _serde::export::Err(_serde::de::Error::invalid_length(2usize,
+                                                                                                                            &"tuple variant Lookup::At with 3 elements"));
+                                                }
+                                            };
+                                        _serde::export::Ok(Lookup::At(__field0, __field1, __field2))
+                                    }
+                                }
+                                _serde::Deserializer::deserialize_tuple(
+                                    _serde::private::de::ContentRefDeserializer::<__D::Error>::new(
+                                        &__content,
+                                    ),
+                                    3usize,
+                                    __Visitor {
+                                        marker: _serde::export::PhantomData::<Lookup>,
+                                        lifetime: _serde::export::PhantomData,
+                                    },
+                                )
+                            } {
+                                return _serde::export::Ok(__ok);
+                            }
+                            if let _serde::export::Ok(__ok) = {
+                                struct __Visitor<'de> {
+                                    marker: _serde::export::PhantomData<Lookup>,
+                                    lifetime: _serde::export::PhantomData<&'de ()>,
+                                }
+                                impl<'de> _serde::de::Visitor<'de> for __Visitor<'de> {
+                                    type Value = Lookup;
+                                    fn expecting(
+                                        &self,
+                                        __formatter: &mut _serde::export::Formatter,
+                                    ) -> _serde::export::fmt::Result
+                                    {
+                                        _serde::export::Formatter::write_str(
+                                            __formatter,
+                                            "tuple variant Lookup::Get",
+                                        )
+                                    }
+                                    #[inline]
+                                    fn visit_seq<__A>(
+                                        self,
+                                        mut __seq: __A,
+                                    ) -> _serde::export::Result<Self::Value, __A::Error>
+                                    where
+                                        __A: _serde::de::SeqAccess<'de>,
+                                    {
+                                        let __field0 =
+                                            match match _serde::de::SeqAccess::next_element::<
+                                                _GetMarker,
+                                            >(
+                                                &mut __seq
+                                            ) {
+                                                _serde::export::Ok(__val) => __val,
+                                                _serde::export::Err(__err) => {
+                                                    return _serde::export::Err(__err);
+                                                }
+                                            } {
+                                                _serde::export::Some(__value) => __value,
+                                                _serde::export::None => {
+                                                    return _serde::export::Err(_serde::de::Error::invalid_length(0usize,
+                                                                                                                            &"tuple variant Lookup::Get with 2 elements"));
+                                                }
+                                            };
+                                        let __field1 =
+                                            match match _serde::de::SeqAccess::next_element::<
+                                                BaseExpr,
+                                            >(
+                                                &mut __seq
+                                            ) {
+                                                _serde::export::Ok(__val) => __val,
+                                                _serde::export::Err(__err) => {
+                                                    return _serde::export::Err(__err);
+                                                }
+                                            } {
+                                                _serde::export::Some(__value) => __value,
+                                                _serde::export::None => {
+                                                    return _serde::export::Err(_serde::de::Error::invalid_length(1usize,
+                                                                                                                            &"tuple variant Lookup::Get with 2 elements"));
+                                                }
+                                            };
+                                        _serde::export::Ok(Lookup::Get(__field0, __field1))
+                                    }
+                                }
+                                _serde::Deserializer::deserialize_tuple(
+                                    _serde::private::de::ContentRefDeserializer::<__D::Error>::new(
+                                        &__content,
+                                    ),
+                                    2usize,
+                                    __Visitor {
+                                        marker: _serde::export::PhantomData::<Lookup>,
+                                        lifetime: _serde::export::PhantomData,
+                                    },
+                                )
+                            } {
+                                return _serde::export::Ok(__ok);
+                            }
+                            if let _serde::export::Ok(__ok) = {
+                                struct __Visitor<'de> {
+                                    marker: _serde::export::PhantomData<Lookup>,
+                                    lifetime: _serde::export::PhantomData<&'de ()>,
+                                }
+                                impl<'de> _serde::de::Visitor<'de> for __Visitor<'de> {
+                                    type Value = Lookup;
+                                    fn expecting(
+                                        &self,
+                                        __formatter: &mut _serde::export::Formatter,
+                                    ) -> _serde::export::fmt::Result
+                                    {
+                                        _serde::export::Formatter::write_str(
+                                            __formatter,
+                                            "tuple variant Lookup::GetExplicit",
+                                        )
+                                    }
+                                    #[inline]
+                                    fn visit_seq<__A>(
+                                        self,
+                                        mut __seq: __A,
+                                    ) -> _serde::export::Result<Self::Value, __A::Error>
+                                    where
+                                        __A: _serde::de::SeqAccess<'de>,
+                                    {
+                                        let __field0 =
+                                            match match _serde::de::SeqAccess::next_element::<
+                                                _GetMarker,
+                                            >(
+                                                &mut __seq
+                                            ) {
+                                                _serde::export::Ok(__val) => __val,
+                                                _serde::export::Err(__err) => {
+                                                    return _serde::export::Err(__err);
+                                                }
+                                            } {
+                                                _serde::export::Some(__value) => __value,
+                                                _serde::export::None => {
+                                                    return _serde::export::Err(_serde::de::Error::invalid_length(0usize,
+                                                                                                                            &"tuple variant Lookup::GetExplicit with 3 elements"));
+                                                }
+                                            };
+                                        let __field1 =
+                                            match match _serde::de::SeqAccess::next_element::<
+                                                BaseExpr,
+                                            >(
+                                                &mut __seq
+                                            ) {
+                                                _serde::export::Ok(__val) => __val,
+                                                _serde::export::Err(__err) => {
+                                                    return _serde::export::Err(__err);
+                                                }
+                                            } {
+                                                _serde::export::Some(__value) => __value,
+                                                _serde::export::None => {
+                                                    return _serde::export::Err(_serde::de::Error::invalid_length(1usize,
+                                                                                                                            &"tuple variant Lookup::GetExplicit with 3 elements"));
+                                                }
+                                            };
+                                        let __field2 =
+                                            match match _serde::de::SeqAccess::next_element::<
+                                                BaseExpr,
+                                            >(
+                                                &mut __seq
+                                            ) {
+                                                _serde::export::Ok(__val) => __val,
+                                                _serde::export::Err(__err) => {
+                                                    return _serde::export::Err(__err);
+                                                }
+                                            } {
+                                                _serde::export::Some(__value) => __value,
+                                                _serde::export::None => {
+                                                    return _serde::export::Err(_serde::de::Error::invalid_length(2usize,
+                                                                                                                            &"tuple variant Lookup::GetExplicit with 3 elements"));
+                                                }
+                                            };
+                                        _serde::export::Ok(Lookup::GetExplicit(
+                                            __field0, __field1, __field2,
+                                        ))
+                                    }
+                                }
+                                _serde::Deserializer::deserialize_tuple(
+                                    _serde::private::de::ContentRefDeserializer::<__D::Error>::new(
+                                        &__content,
+                                    ),
+                                    3usize,
+                                    __Visitor {
+                                        marker: _serde::export::PhantomData::<Lookup>,
+                                        lifetime: _serde::export::PhantomData,
+                                    },
+                                )
+                            } {
+                                return _serde::export::Ok(__ok);
+                            }
+                            if let _serde::export::Ok(__ok) = {
+                                struct __Visitor<'de> {
+                                    marker: _serde::export::PhantomData<Lookup>,
+                                    lifetime: _serde::export::PhantomData<&'de ()>,
+                                }
+                                impl<'de> _serde::de::Visitor<'de> for __Visitor<'de> {
+                                    type Value = Lookup;
+                                    fn expecting(
+                                        &self,
+                                        __formatter: &mut _serde::export::Formatter,
+                                    ) -> _serde::export::fmt::Result
+                                    {
+                                        _serde::export::Formatter::write_str(
+                                            __formatter,
+                                            "tuple variant Lookup::Has",
+                                        )
+                                    }
+                                    #[inline]
+                                    fn visit_seq<__A>(
+                                        self,
+                                        mut __seq: __A,
+                                    ) -> _serde::export::Result<Self::Value, __A::Error>
+                                    where
+                                        __A: _serde::de::SeqAccess<'de>,
+                                    {
+                                        let __field0 =
+                                            match match _serde::de::SeqAccess::next_element::<
+                                                _HasMarker,
+                                            >(
+                                                &mut __seq
+                                            ) {
+                                                _serde::export::Ok(__val) => __val,
+                                                _serde::export::Err(__err) => {
+                                                    return _serde::export::Err(__err);
+                                                }
+                                            } {
+                                                _serde::export::Some(__value) => __value,
+                                                _serde::export::None => {
+                                                    return _serde::export::Err(_serde::de::Error::invalid_length(0usize,
+                                                                                                                            &"tuple variant Lookup::Has with 2 elements"));
+                                                }
+                                            };
+                                        let __field1 =
+                                            match match _serde::de::SeqAccess::next_element::<
+                                                BaseExpr,
+                                            >(
+                                                &mut __seq
+                                            ) {
+                                                _serde::export::Ok(__val) => __val,
+                                                _serde::export::Err(__err) => {
+                                                    return _serde::export::Err(__err);
+                                                }
+                                            } {
+                                                _serde::export::Some(__value) => __value,
+                                                _serde::export::None => {
+                                                    return _serde::export::Err(_serde::de::Error::invalid_length(1usize,
+                                                                                                                            &"tuple variant Lookup::Has with 2 elements"));
+                                                }
+                                            };
+                                        _serde::export::Ok(Lookup::Has(__field0, __field1))
+                                    }
+                                }
+                                _serde::Deserializer::deserialize_tuple(
+                                    _serde::private::de::ContentRefDeserializer::<__D::Error>::new(
+                                        &__content,
+                                    ),
+                                    2usize,
+                                    __Visitor {
+                                        marker: _serde::export::PhantomData::<Lookup>,
+                                        lifetime: _serde::export::PhantomData,
+                                    },
+                                )
+                            } {
+                                return _serde::export::Ok(__ok);
+                            }
+                            if let _serde::export::Ok(__ok) = {
+                                struct __Visitor<'de> {
+                                    marker: _serde::export::PhantomData<Lookup>,
+                                    lifetime: _serde::export::PhantomData<&'de ()>,
+                                }
+                                impl<'de> _serde::de::Visitor<'de> for __Visitor<'de> {
+                                    type Value = Lookup;
+                                    fn expecting(
+                                        &self,
+                                        __formatter: &mut _serde::export::Formatter,
+                                    ) -> _serde::export::fmt::Result
+                                    {
+                                        _serde::export::Formatter::write_str(
+                                            __formatter,
+                                            "tuple variant Lookup::HasExplicit",
+                                        )
+                                    }
+                                    #[inline]
+                                    fn visit_seq<__A>(
+                                        self,
+                                        mut __seq: __A,
+                                    ) -> _serde::export::Result<Self::Value, __A::Error>
+                                    where
+                                        __A: _serde::de::SeqAccess<'de>,
+                                    {
+                                        let __field0 =
+                                            match match _serde::de::SeqAccess::next_element::<
+                                                _HasMarker,
+                                            >(
+                                                &mut __seq
+                                            ) {
+                                                _serde::export::Ok(__val) => __val,
+                                                _serde::export::Err(__err) => {
+                                                    return _serde::export::Err(__err);
+                                                }
+                                            } {
+                                                _serde::export::Some(__value) => __value,
+                                                _serde::export::None => {
+                                                    return _serde::export::Err(_serde::de::Error::invalid_length(0usize,
+                                                                                                                            &"tuple variant Lookup::HasExplicit with 3 elements"));
+                                                }
+                                            };
+                                        let __field1 =
+                                            match match _serde::de::SeqAccess::next_element::<
+                                                BaseExpr,
+                                            >(
+                                                &mut __seq
+                                            ) {
+                                                _serde::export::Ok(__val) => __val,
+                                                _serde::export::Err(__err) => {
+                                                    return _serde::export::Err(__err);
+                                                }
+                                            } {
+                                                _serde::export::Some(__value) => __value,
+                                                _serde::export::None => {
+                                                    return _serde::export::Err(_serde::de::Error::invalid_length(1usize,
+                                                                                                                            &"tuple variant Lookup::HasExplicit with 3 elements"));
+                                                }
+                                            };
+                                        let __field2 =
+                                            match match _serde::de::SeqAccess::next_element::<
+                                                BaseExpr,
+                                            >(
+                                                &mut __seq
+                                            ) {
+                                                _serde::export::Ok(__val) => __val,
+                                                _serde::export::Err(__err) => {
+                                                    return _serde::export::Err(__err);
+                                                }
+                                            } {
+                                                _serde::export::Some(__value) => __value,
+                                                _serde::export::None => {
+                                                    return _serde::export::Err(_serde::de::Error::invalid_length(2usize,
+                                                                                                                            &"tuple variant Lookup::HasExplicit with 3 elements"));
+                                                }
+                                            };
+                                        _serde::export::Ok(Lookup::HasExplicit(
+                                            __field0, __field1, __field2,
+                                        ))
+                                    }
+                                }
+                                _serde::Deserializer::deserialize_tuple(
+                                    _serde::private::de::ContentRefDeserializer::<__D::Error>::new(
+                                        &__content,
+                                    ),
+                                    3usize,
+                                    __Visitor {
+                                        marker: _serde::export::PhantomData::<Lookup>,
+                                        lifetime: _serde::export::PhantomData,
+                                    },
+                                )
+                            } {
+                                return _serde::export::Ok(__ok);
+                            }
+                            if let _serde::export::Ok(__ok) = {
+                                struct __Visitor<'de> {
+                                    marker: _serde::export::PhantomData<Lookup>,
+                                    lifetime: _serde::export::PhantomData<&'de ()>,
+                                }
+                                impl<'de> _serde::de::Visitor<'de> for __Visitor<'de> {
+                                    type Value = Lookup;
+                                    fn expecting(
+                                        &self,
+                                        __formatter: &mut _serde::export::Formatter,
+                                    ) -> _serde::export::fmt::Result
+                                    {
+                                        _serde::export::Formatter::write_str(
+                                            __formatter,
+                                            "tuple variant Lookup::Length",
+                                        )
+                                    }
+                                    #[inline]
+                                    fn visit_seq<__A>(
+                                        self,
+                                        mut __seq: __A,
+                                    ) -> _serde::export::Result<Self::Value, __A::Error>
+                                    where
+                                        __A: _serde::de::SeqAccess<'de>,
+                                    {
+                                        let __field0 =
+                                            match match _serde::de::SeqAccess::next_element::<
+                                                _LengthMarker,
+                                            >(
+                                                &mut __seq
+                                            ) {
+                                                _serde::export::Ok(__val) => __val,
+                                                _serde::export::Err(__err) => {
+                                                    return _serde::export::Err(__err);
+                                                }
+                                            } {
+                                                _serde::export::Some(__value) => __value,
+                                                _serde::export::None => {
+                                                    return _serde::export::Err(_serde::de::Error::invalid_length(0usize,
+                                                                                                                            &"tuple variant Lookup::Length with 2 elements"));
+                                                }
+                                            };
+                                        let __field1 =
+                                            match match _serde::de::SeqAccess::next_element::<
+                                                BaseExpr,
+                                            >(
+                                                &mut __seq
+                                            ) {
+                                                _serde::export::Ok(__val) => __val,
+                                                _serde::export::Err(__err) => {
+                                                    return _serde::export::Err(__err);
+                                                }
+                                            } {
+                                                _serde::export::Some(__value) => __value,
+                                                _serde::export::None => {
+                                                    return _serde::export::Err(_serde::de::Error::invalid_length(1usize,
+                                                                                                                            &"tuple variant Lookup::Length with 2 elements"));
+                                                }
+                                            };
+                                        _serde::export::Ok(Lookup::Length(__field0, __field1))
+                                    }
+                                }
+                                _serde::Deserializer::deserialize_tuple(
+                                    _serde::private::de::ContentRefDeserializer::<__D::Error>::new(
+                                        &__content,
+                                    ),
+                                    2usize,
+                                    __Visitor {
+                                        marker: _serde::export::PhantomData::<Lookup>,
+                                        lifetime: _serde::export::PhantomData,
+                                    },
+                                )
+                            } {
+                                return _serde::export::Ok(__ok);
+                            }
+                            _serde::export::Err(_serde::de::Error::custom(
+                                "data did not match any variant of untagged enum Lookup",
+                            ))
+                        }
+                    }
+                };
+                impl Expr for Lookup {
+                    fn is_zoom(&self) -> bool {
+                        return match self {
+                            Lookup::At(_, a, b) => a.is_zoom() || b.is_zoom(),
+                            Lookup::Get(_, a) => a.is_zoom(),
+                            Lookup::GetExplicit(_, a, b) => a.is_zoom() || b.is_zoom(),
+                            Lookup::Has(_, a) => a.is_zoom(),
+                            Lookup::HasExplicit(_, a, b) => a.is_zoom() || b.is_zoom(),
+                            Lookup::Length(_, a) => a.is_zoom(),
+                        };
+                    }
+                    fn is_feature(&self) -> bool {
+                        return match self {
+                            Lookup::At(_, a, b) => a.is_feature() || b.is_feature(),
+                            Lookup::Get(_, _) => true,
+                            Lookup::GetExplicit(_, a, b) => a.is_feature() || b.is_feature(),
+                            Lookup::Has(_, _) => true,
+                            Lookup::HasExplicit(_, a, b) => a.is_feature() || b.is_feature(),
+                            Lookup::Length(_, a) => a.is_feature(),
+                        };
+                    }
+                    fn eval(&self, ctx: &EvaluationContext) -> ExprResult {
+                        match self {
+                            Lookup::At(_, pos, arr) => {
+                                let iv = expect_type(Type::Number, pos.eval(ctx)?)?;
+                                let i = iv.as_number().unwrap() as usize;
+                                let av = expect_type(Type::Array, arr.eval(ctx)?)?;
+                                let a = av.as_array().unwrap();
+                                if !(i < a.len()) {
+                                    {
+                                        ::rt::begin_panic(
+                                            "assertion failed: i < a.len()",
+                                            &("rmaps/src/map/style/expr/lookup.rs", 72u32, 17u32),
+                                        )
+                                    }
+                                };
+                                return Ok(a[i].clone());
+                            }
+                            Lookup::Get(_, name) => {
+                                let n = expect_type(Type::String, name.eval(ctx)?)?;
+                                let n = n.as_str().unwrap();
+                                return if let Some(v) = ctx.get(n) {
+                                    Ok(v.clone())
+                                } else {
+                                    Ok(ExprVal::Null)
+                                };
+                            }
+                            Lookup::GetExplicit(_, name, o) => {
+                                let n = expect_type(Type::String, name.eval(ctx)?)?;
+                                let n = n.as_str().unwrap();
+                                let o = expect_type(Type::Object, o.eval(ctx)?)?;
+                                let o = o.as_object().unwrap();
+                                return if let Some(v) = o.get(n) {
+                                    Ok(v.clone())
+                                } else {
+                                    Ok(ExprVal::Null)
+                                };
+                            }
+                            Lookup::Has(_, name) => {
+                                let n = expect_type(Type::String, name.eval(ctx)?)?;
+                                let n = n.as_str().unwrap();
+                                return Ok(ctx.get(n).is_some().into());
+                            }
+                            Lookup::HasExplicit(_, n, o) => {
+                                let n = expect_type(Type::String, n.eval(ctx)?)?;
+                                let n = n.as_str().unwrap();
+                                let o = expect_type(Type::Object, o.eval(ctx)?)?;
+                                let o = o.as_object().unwrap();
+                                return Ok(o.contains_key(n).into());
+                            }
+                            Lookup::Length(_, e) => {
+                                return Ok(ExprVal::Num(match e.eval(ctx)? {
+                                    ExprVal::String(s) => s.len(),
+                                    ExprVal::List(l) => l.len(),
+                                    a @ _ => {
+                                        ::rt::begin_panic(
+                                            "Error",
+                                            &("rmaps/src/map/style/expr/lookup.rs", 119u32, 25u32),
+                                        )
+                                    }
+                                } as f64));
+                            }
+                        }
+                        {
+                            ::rt::begin_panic(
+                                "not yet implemented",
+                                &("rmaps/src/map/style/expr/lookup.rs", 124u32, 9u32),
+                            )
+                        }
+                    }
+                }
+            }
+            pub mod decision {
+                use super::*;
+                use prelude::*;
+                use serde::de::Error;
+                use serde::Deserialize;
+                #[serde(untagged)]
+                pub enum Decision {
+                    Case(Case),
+                    Match(Match),
+                    Coalesce(Coalesce),
+                }
+                #[automatically_derived]
+                #[allow(unused_qualifications)]
+                impl ::std::fmt::Debug for Decision {
+                    fn fmt(&self, f: &mut ::std::fmt::Formatter) -> ::std::fmt::Result {
+                        match (&*self,) {
+                            (&Decision::Case(ref __self_0),) => {
+                                let mut debug_trait_builder = f.debug_tuple("Case");
+                                let _ = debug_trait_builder.field(&&(*__self_0));
+                                debug_trait_builder.finish()
+                            }
+                            (&Decision::Match(ref __self_0),) => {
+                                let mut debug_trait_builder = f.debug_tuple("Match");
+                                let _ = debug_trait_builder.field(&&(*__self_0));
+                                debug_trait_builder.finish()
+                            }
+                            (&Decision::Coalesce(ref __self_0),) => {
+                                let mut debug_trait_builder = f.debug_tuple("Coalesce");
+                                let _ = debug_trait_builder.field(&&(*__self_0));
+                                debug_trait_builder.finish()
+                            }
+                        }
+                    }
+                }
+                #[allow(non_upper_case_globals, unused_attributes, unused_qualifications)]
+                const _IMPL_DESERIALIZE_FOR_Decision: () = {
+                    extern crate serde as _serde;
+                    #[allow(unused_macros)]
+                    macro_rules! try(( $ __expr : expr ) => {
+                                         match $ __expr {
+                                         _serde :: export :: Ok ( __val ) =>
+                                         __val , _serde :: export :: Err (
+                                         __err ) => {
+                                         return _serde :: export :: Err (
+                                         __err ) ; } } });
+                    #[automatically_derived]
+                    impl<'de> _serde::Deserialize<'de> for Decision {
+                        fn deserialize<__D>(
+                            __deserializer: __D,
+                        ) -> _serde::export::Result<Self, __D::Error>
+                        where
+                            __D: _serde::Deserializer<'de>,
+                        {
+                            let __content =
+                                    match <_serde::private::de::Content as
+                                              _serde::Deserialize>::deserialize(__deserializer)
+                                        {
+                                        _serde::export::Ok(__val) => __val,
+                                        _serde::export::Err(__err) => {
+                                            return _serde::export::Err(__err);
+                                        }
+                                    };
+                            if let _serde::export::Ok(__ok) = _serde::export::Result::map(
+                                <Case as _serde::Deserialize>::deserialize(
+                                    _serde::private::de::ContentRefDeserializer::<__D::Error>::new(
+                                        &__content,
+                                    ),
+                                ),
+                                Decision::Case,
+                            ) {
+                                return _serde::export::Ok(__ok);
+                            }
+                            if let _serde::export::Ok(__ok) = _serde::export::Result::map(
+                                <Match as _serde::Deserialize>::deserialize(
+                                    _serde::private::de::ContentRefDeserializer::<__D::Error>::new(
+                                        &__content,
+                                    ),
+                                ),
+                                Decision::Match,
+                            ) {
+                                return _serde::export::Ok(__ok);
+                            }
+                            if let _serde::export::Ok(__ok) = _serde::export::Result::map(
+                                <Coalesce as _serde::Deserialize>::deserialize(
+                                    _serde::private::de::ContentRefDeserializer::<__D::Error>::new(
+                                        &__content,
+                                    ),
+                                ),
+                                Decision::Coalesce,
+                            ) {
+                                return _serde::export::Ok(__ok);
+                            }
+                            _serde::export::Err(_serde::de::Error::custom(
+                                "data did not match any variant of untagged enum Decision",
+                            ))
+                        }
+                    }
+                };
+                #[automatically_derived]
+                #[allow(unused_qualifications)]
+                impl ::std::clone::Clone for Decision {
+                    #[inline]
+                    fn clone(&self) -> Decision {
+                        match (&*self,) {
+                            (&Decision::Case(ref __self_0),) => {
+                                Decision::Case(::std::clone::Clone::clone(&(*__self_0)))
+                            }
+                            (&Decision::Match(ref __self_0),) => {
+                                Decision::Match(::std::clone::Clone::clone(&(*__self_0)))
+                            }
+                            (&Decision::Coalesce(ref __self_0),) => {
+                                Decision::Coalesce(::std::clone::Clone::clone(&(*__self_0)))
+                            }
+                        }
+                    }
+                }
+                #[automatically_derived]
+                #[allow(unused_qualifications)]
+                impl ::std::cmp::PartialEq for Decision {
+                    #[inline]
+                    fn eq(&self, other: &Decision) -> bool {
+                        {
+                            let __self_vi =
+                                unsafe { ::std::intrinsics::discriminant_value(&*self) } as isize;
+                            let __arg_1_vi =
+                                unsafe { ::std::intrinsics::discriminant_value(&*other) } as isize;
+                            if true && __self_vi == __arg_1_vi {
+                                match (&*self, &*other) {
+                                    (
+                                        &Decision::Case(ref __self_0),
+                                        &Decision::Case(ref __arg_1_0),
+                                    ) => (*__self_0) == (*__arg_1_0),
+                                    (
+                                        &Decision::Match(ref __self_0),
+                                        &Decision::Match(ref __arg_1_0),
+                                    ) => (*__self_0) == (*__arg_1_0),
+                                    (
+                                        &Decision::Coalesce(ref __self_0),
+                                        &Decision::Coalesce(ref __arg_1_0),
+                                    ) => (*__self_0) == (*__arg_1_0),
+                                    _ => unsafe { ::std::intrinsics::unreachable() },
+                                }
+                            } else {
+                                false
+                            }
+                        }
+                    }
+                    #[inline]
+                    fn ne(&self, other: &Decision) -> bool {
+                        {
+                            let __self_vi =
+                                unsafe { ::std::intrinsics::discriminant_value(&*self) } as isize;
+                            let __arg_1_vi =
+                                unsafe { ::std::intrinsics::discriminant_value(&*other) } as isize;
+                            if true && __self_vi == __arg_1_vi {
+                                match (&*self, &*other) {
+                                    (
+                                        &Decision::Case(ref __self_0),
+                                        &Decision::Case(ref __arg_1_0),
+                                    ) => (*__self_0) != (*__arg_1_0),
+                                    (
+                                        &Decision::Match(ref __self_0),
+                                        &Decision::Match(ref __arg_1_0),
+                                    ) => (*__self_0) != (*__arg_1_0),
+                                    (
+                                        &Decision::Coalesce(ref __self_0),
+                                        &Decision::Coalesce(ref __arg_1_0),
+                                    ) => (*__self_0) != (*__arg_1_0),
+                                    _ => unsafe { ::std::intrinsics::unreachable() },
+                                }
+                            } else {
+                                true
+                            }
+                        }
+                    }
+                }
+                impl Expr for Decision {
+                    fn is_zoom(&self) -> bool {
+                        match self {
+                            Decision::Case(c) => c.is_zoom(),
+                            Decision::Match(m) => m.is_zoom(),
+                            Decision::Coalesce(c) => c.is_zoom(),
+                        }
+                    }
+                    fn is_feature(&self) -> bool {
+                        match self {
+                            Decision::Case(c) => c.is_feature(),
+                            Decision::Match(m) => m.is_feature(),
+                            Decision::Coalesce(c) => c.is_feature(),
+                        }
+                    }
+                    fn eval(&self, ctx: &EvaluationContext) -> ExprResult {
+                        match self {
+                            Decision::Case(c) => c.eval(ctx),
+                            Decision::Match(m) => m.eval(ctx),
+                            Decision::Coalesce(c) => c.eval(ctx),
+                        }
+                    }
+                }
+                pub struct Case(Vec<(BaseExpr, BaseExpr)>, BaseExpr);
+                #[automatically_derived]
+                #[allow(unused_qualifications)]
+                impl ::std::fmt::Debug for Case {
+                    fn fmt(&self, f: &mut ::std::fmt::Formatter) -> ::std::fmt::Result {
+                        match *self {
+                            Case(ref __self_0_0, ref __self_0_1) => {
+                                let mut debug_trait_builder = f.debug_tuple("Case");
+                                let _ = debug_trait_builder.field(&&(*__self_0_0));
+                                let _ = debug_trait_builder.field(&&(*__self_0_1));
+                                debug_trait_builder.finish()
+                            }
+                        }
+                    }
+                }
+                #[automatically_derived]
+                #[allow(unused_qualifications)]
+                impl ::std::clone::Clone for Case {
+                    #[inline]
+                    fn clone(&self) -> Case {
+                        match *self {
+                            Case(ref __self_0_0, ref __self_0_1) => Case(
+                                ::std::clone::Clone::clone(&(*__self_0_0)),
+                                ::std::clone::Clone::clone(&(*__self_0_1)),
+                            ),
+                        }
+                    }
+                }
+                #[automatically_derived]
+                #[allow(unused_qualifications)]
+                impl ::std::cmp::PartialEq for Case {
+                    #[inline]
+                    fn eq(&self, other: &Case) -> bool {
+                        match *other {
+                            Case(ref __self_1_0, ref __self_1_1) => match *self {
+                                Case(ref __self_0_0, ref __self_0_1) => {
+                                    (*__self_0_0) == (*__self_1_0) && (*__self_0_1) == (*__self_1_1)
+                                }
+                            },
+                        }
+                    }
+                    #[inline]
+                    fn ne(&self, other: &Case) -> bool {
+                        match *other {
+                            Case(ref __self_1_0, ref __self_1_1) => match *self {
+                                Case(ref __self_0_0, ref __self_0_1) => {
+                                    (*__self_0_0) != (*__self_1_0) || (*__self_0_1) != (*__self_1_1)
+                                }
+                            },
+                        }
+                    }
+                }
+                impl<'de> Deserialize<'de> for Case {
+                    fn deserialize<D>(
+                        deserializer: D,
+                    ) -> StdResult<Self, <D as Deserializer<'de>>::Error>
+                    where
+                        D: Deserializer<'de>,
+                    {
+                        enum _Marker {
+                            #[serde(rename = "case")]
+                            _Mark,
+                        }
+                        #[allow(non_upper_case_globals, unused_attributes, unused_qualifications)]
+                        const _IMPL_DESERIALIZE_FOR__Marker: () = {
+                            extern crate serde as _serde;
+                            #[allow(unused_macros)]
+                            macro_rules! try(( $ __expr : expr ) => {
+                                                 match $ __expr {
+                                                 _serde :: export :: Ok (
+                                                 __val ) => __val , _serde ::
+                                                 export :: Err ( __err ) => {
+                                                 return _serde :: export ::
+                                                 Err ( __err ) ; } } });
+                            #[automatically_derived]
+                            impl<'de> _serde::Deserialize<'de> for _Marker {
+                                fn deserialize<__D>(
+                                    __deserializer: __D,
+                                ) -> _serde::export::Result<Self, __D::Error>
+                                where
+                                    __D: _serde::Deserializer<'de>,
+                                {
+                                    #[allow(non_camel_case_types)]
+                                    enum __Field {
+                                        __field0,
+                                    }
+                                    struct __FieldVisitor;
+                                    impl<'de> _serde::de::Visitor<'de> for __FieldVisitor {
+                                        type Value = __Field;
+                                        fn expecting(
+                                            &self,
+                                            __formatter: &mut _serde::export::Formatter,
+                                        ) -> _serde::export::fmt::Result
+                                        {
+                                            _serde::export::Formatter::write_str(
+                                                __formatter,
+                                                "variant identifier",
+                                            )
+                                        }
+                                        fn visit_u64<__E>(
+                                            self,
+                                            __value: u64,
+                                        ) -> _serde::export::Result<Self::Value, __E>
+                                        where
+                                            __E: _serde::de::Error,
+                                        {
+                                            match __value {
+                                                0u64 => _serde::export::Ok(__Field::__field0),
+                                                _ => _serde::export::Err(
+                                                    _serde::de::Error::invalid_value(
+                                                        _serde::de::Unexpected::Unsigned(__value),
+                                                        &"variant index 0 <= i < 1",
+                                                    ),
+                                                ),
+                                            }
+                                        }
+                                        fn visit_str<__E>(
+                                            self,
+                                            __value: &str,
+                                        ) -> _serde::export::Result<Self::Value, __E>
+                                        where
+                                            __E: _serde::de::Error,
+                                        {
+                                            match __value {
+                                                "case" => _serde::export::Ok(__Field::__field0),
+                                                _ => _serde::export::Err(
+                                                    _serde::de::Error::unknown_variant(
+                                                        __value, VARIANTS,
+                                                    ),
+                                                ),
+                                            }
+                                        }
+                                        fn visit_bytes<__E>(
+                                            self,
+                                            __value: &[u8],
+                                        ) -> _serde::export::Result<Self::Value, __E>
+                                        where
+                                            __E: _serde::de::Error,
+                                        {
+                                            match __value {
+                                                b"case" => _serde::export::Ok(__Field::__field0),
+                                                _ => {
+                                                    let __value =
+                                                        &_serde::export::from_utf8_lossy(__value);
+                                                    _serde::export::Err(
+                                                        _serde::de::Error::unknown_variant(
+                                                            __value, VARIANTS,
+                                                        ),
+                                                    )
+                                                }
+                                            }
+                                        }
+                                    }
+                                    impl<'de> _serde::Deserialize<'de> for __Field {
+                                        #[inline]
+                                        fn deserialize<__D>(
+                                            __deserializer: __D,
+                                        ) -> _serde::export::Result<Self, __D::Error>
+                                        where
+                                            __D: _serde::Deserializer<'de>,
+                                        {
+                                            _serde::Deserializer::deserialize_identifier(
+                                                __deserializer,
+                                                __FieldVisitor,
+                                            )
+                                        }
+                                    }
+                                    struct __Visitor<'de> {
+                                        marker: _serde::export::PhantomData<_Marker>,
+                                        lifetime: _serde::export::PhantomData<&'de ()>,
+                                    }
+                                    impl<'de> _serde::de::Visitor<'de> for __Visitor<'de> {
+                                        type Value = _Marker;
+                                        fn expecting(
+                                            &self,
+                                            __formatter: &mut _serde::export::Formatter,
+                                        ) -> _serde::export::fmt::Result
+                                        {
+                                            _serde::export::Formatter::write_str(
+                                                __formatter,
+                                                "enum _Marker",
+                                            )
+                                        }
+                                        fn visit_enum<__A>(
+                                            self,
+                                            __data: __A,
+                                        ) -> _serde::export::Result<Self::Value, __A::Error>
+                                        where
+                                            __A: _serde::de::EnumAccess<'de>,
+                                        {
+                                            match match _serde::de::EnumAccess::variant(__data) {
+                                                _serde::export::Ok(__val) => __val,
+                                                _serde::export::Err(__err) => {
+                                                    return _serde::export::Err(__err);
+                                                }
+                                            } {
+                                                (__Field::__field0, __variant) => {
+                                                    match _serde::de::VariantAccess::unit_variant(
+                                                        __variant,
+                                                    ) {
+                                                        _serde::export::Ok(__val) => __val,
+                                                        _serde::export::Err(__err) => {
+                                                            return _serde::export::Err(__err);
+                                                        }
+                                                    };
+                                                    _serde::export::Ok(_Marker::_Mark)
+                                                }
+                                            }
+                                        }
+                                    }
+                                    const VARIANTS: &'static [&'static str] = &["case"];
+                                    _serde::Deserializer::deserialize_enum(
+                                        __deserializer,
+                                        "_Marker",
+                                        VARIANTS,
+                                        __Visitor {
+                                            marker: _serde::export::PhantomData::<_Marker>,
+                                            lifetime: _serde::export::PhantomData,
+                                        },
+                                    )
+                                }
+                            }
+                        };
+                        let PrefixHelper(_Marker::_Mark, mut exprs) =
+                            Deserialize::deserialize(deserializer)?;
+                        ::io::_print(::std::fmt::Arguments::new_v1_formatted(
+                            &["Exprs: ", "\n"],
+                            &match (&exprs,) {
+                                (arg0,) => {
+                                    [::std::fmt::ArgumentV1::new(arg0, ::std::fmt::Debug::fmt)]
+                                }
+                            },
+                            &[::std::fmt::rt::v1::Argument {
+                                position: ::std::fmt::rt::v1::Position::At(0usize),
+                                format: ::std::fmt::rt::v1::FormatSpec {
+                                    fill: ' ',
+                                    align: ::std::fmt::rt::v1::Alignment::Unknown,
+                                    flags: 4u32,
+                                    precision: ::std::fmt::rt::v1::Count::Implied,
+                                    width: ::std::fmt::rt::v1::Count::Implied,
+                                },
+                            }],
+                        ));
+                        let mut iter = exprs.into_iter();
+                        let mut arms = <[_]>::into_vec(box []);
+                        'l: loop {
+                            match (iter.next(), iter.next()) {
+                                (Some(k), Some(v)) => {
+                                    arms.push((k, v));
+                                }
+                                (Some(default), None) => {
+                                    break 'l Ok(Case(arms, default));
+                                }
+                                a @ _ => {
+                                    break 'l Err(D::Error::custom(::fmt::format(
+                                        ::std::fmt::Arguments::new_v1_formatted(
+                                            &["Invalid match expression "],
+                                            &match (&a,) {
+                                                (arg0,) => [::std::fmt::ArgumentV1::new(
+                                                    arg0,
+                                                    ::std::fmt::Debug::fmt,
+                                                )],
+                                            },
+                                            &[::std::fmt::rt::v1::Argument {
+                                                position: ::std::fmt::rt::v1::Position::At(0usize),
+                                                format: ::std::fmt::rt::v1::FormatSpec {
+                                                    fill: ' ',
+                                                    align: ::std::fmt::rt::v1::Alignment::Unknown,
+                                                    flags: 0u32,
+                                                    precision: ::std::fmt::rt::v1::Count::Implied,
+                                                    width: ::std::fmt::rt::v1::Count::Implied,
+                                                },
+                                            }],
+                                        ),
+                                    )));
+                                }
+                            }
+                        }
+                    }
+                }
+                impl Expr for Case {
+                    fn is_zoom(&self) -> bool {
+                        return self.0.iter().any(|(a, b)| a.is_zoom() || b.is_zoom())
+                            || self.1.is_zoom();
+                    }
+                    fn is_feature(&self) -> bool {
+                        return self.0.iter().any(|(a, b)| a.is_feature() || b.is_feature())
+                            || self.1.is_feature();
+                    }
+                    fn eval(&self, ctx: &EvaluationContext) -> ExprResult {
+                        for (cond, val) in self.0.iter() {
+                            let test = expect_type(Type::Boolean, cond.eval(ctx)?)?;
+                            if let ExprVal::Bool(test) = test {
+                                return val.eval(ctx);
+                            }
+                        }
+                        self.1.eval(ctx)
+                    }
+                }
+                pub struct Coalesce(Vec<BaseExpr>);
+                #[automatically_derived]
+                #[allow(unused_qualifications)]
+                impl ::std::fmt::Debug for Coalesce {
+                    fn fmt(&self, f: &mut ::std::fmt::Formatter) -> ::std::fmt::Result {
+                        match *self {
+                            Coalesce(ref __self_0_0) => {
+                                let mut debug_trait_builder = f.debug_tuple("Coalesce");
+                                let _ = debug_trait_builder.field(&&(*__self_0_0));
+                                debug_trait_builder.finish()
+                            }
+                        }
+                    }
+                }
+                #[automatically_derived]
+                #[allow(unused_qualifications)]
+                impl ::std::clone::Clone for Coalesce {
+                    #[inline]
+                    fn clone(&self) -> Coalesce {
+                        match *self {
+                            Coalesce(ref __self_0_0) => {
+                                Coalesce(::std::clone::Clone::clone(&(*__self_0_0)))
+                            }
+                        }
+                    }
+                }
+                #[automatically_derived]
+                #[allow(unused_qualifications)]
+                impl ::std::cmp::PartialEq for Coalesce {
+                    #[inline]
+                    fn eq(&self, other: &Coalesce) -> bool {
+                        match *other {
+                            Coalesce(ref __self_1_0) => match *self {
+                                Coalesce(ref __self_0_0) => (*__self_0_0) == (*__self_1_0),
+                            },
+                        }
+                    }
+                    #[inline]
+                    fn ne(&self, other: &Coalesce) -> bool {
+                        match *other {
+                            Coalesce(ref __self_1_0) => match *self {
+                                Coalesce(ref __self_0_0) => (*__self_0_0) != (*__self_1_0),
+                            },
+                        }
+                    }
+                }
+                impl<'de> Deserialize<'de> for Coalesce {
+                    fn deserialize<D>(
+                        deserializer: D,
+                    ) -> StdResult<Self, <D as Deserializer<'de>>::Error>
+                    where
+                        D: Deserializer<'de>,
+                    {
+                        let d: Vec<json::Value> = Deserialize::deserialize(deserializer)?;
+                        if d.len() < 2 {
+                            return Err(D::Error::custom("Array too short"));
+                        }
+                        if d[0] == ::to_value(&"coalesce").unwrap() {
+                            let exprs: StdResult<Vec<BaseExpr>, _> =
+                                d.into_iter().skip(1).map(|v| json::from_value(v)).collect();
+                            return Ok(Coalesce(
+                                exprs.map_err(|_| D::Error::custom("Could not parse type"))?,
+                            ));
+                        }
+                        return Err(D::Error::custom("Could not parse type"));
+                    }
+                }
+                impl Expr for Coalesce {
+                    fn is_zoom(&self) -> bool {
+                        self.0.iter().any(|v| v.is_zoom())
+                    }
+                    fn is_feature(&self) -> bool {
+                        self.0.iter().any(|v| v.is_feature())
+                    }
+                    fn eval(&self, ctx: &EvaluationContext) -> ExprResult {
+                        for e in self.0.iter() {
+                            let v = e.eval(ctx)?;
+                            if v.typ() != Type::Null {
+                                return Ok(v);
+                            }
+                        }
+                        return Ok(ExprVal::Null);
+                    }
+                }
+                pub struct MatchArm {
+                    label: ExprVal,
+                    expr: BaseExpr,
+                }
+                #[automatically_derived]
+                #[allow(unused_qualifications)]
+                impl ::std::fmt::Debug for MatchArm {
+                    fn fmt(&self, f: &mut ::std::fmt::Formatter) -> ::std::fmt::Result {
+                        match *self {
+                            MatchArm {
+                                label: ref __self_0_0,
+                                expr: ref __self_0_1,
+                            } => {
+                                let mut debug_trait_builder = f.debug_struct("MatchArm");
+                                let _ = debug_trait_builder.field("label", &&(*__self_0_0));
+                                let _ = debug_trait_builder.field("expr", &&(*__self_0_1));
+                                debug_trait_builder.finish()
+                            }
+                        }
+                    }
+                }
+                #[automatically_derived]
+                #[allow(unused_qualifications)]
+                impl ::std::clone::Clone for MatchArm {
+                    #[inline]
+                    fn clone(&self) -> MatchArm {
+                        match *self {
+                            MatchArm {
+                                label: ref __self_0_0,
+                                expr: ref __self_0_1,
+                            } => MatchArm {
+                                label: ::std::clone::Clone::clone(&(*__self_0_0)),
+                                expr: ::std::clone::Clone::clone(&(*__self_0_1)),
+                            },
+                        }
+                    }
+                }
+                #[automatically_derived]
+                #[allow(unused_qualifications)]
+                impl ::std::cmp::PartialEq for MatchArm {
+                    #[inline]
+                    fn eq(&self, other: &MatchArm) -> bool {
+                        match *other {
+                            MatchArm {
+                                label: ref __self_1_0,
+                                expr: ref __self_1_1,
+                            } => match *self {
+                                MatchArm {
+                                    label: ref __self_0_0,
+                                    expr: ref __self_0_1,
+                                } => {
+                                    (*__self_0_0) == (*__self_1_0) && (*__self_0_1) == (*__self_1_1)
+                                }
+                            },
+                        }
+                    }
+                    #[inline]
+                    fn ne(&self, other: &MatchArm) -> bool {
+                        match *other {
+                            MatchArm {
+                                label: ref __self_1_0,
+                                expr: ref __self_1_1,
+                            } => match *self {
+                                MatchArm {
+                                    label: ref __self_0_0,
+                                    expr: ref __self_0_1,
+                                } => {
+                                    (*__self_0_0) != (*__self_1_0) || (*__self_0_1) != (*__self_1_1)
+                                }
+                            },
+                        }
+                    }
+                }
+                pub struct Match {
+                    input: BaseExpr,
+                    arms: Vec<MatchArm>,
+                    default: BaseExpr,
+                }
+                #[automatically_derived]
+                #[allow(unused_qualifications)]
+                impl ::std::fmt::Debug for Match {
+                    fn fmt(&self, f: &mut ::std::fmt::Formatter) -> ::std::fmt::Result {
+                        match *self {
+                            Match {
+                                input: ref __self_0_0,
+                                arms: ref __self_0_1,
+                                default: ref __self_0_2,
+                            } => {
+                                let mut debug_trait_builder = f.debug_struct("Match");
+                                let _ = debug_trait_builder.field("input", &&(*__self_0_0));
+                                let _ = debug_trait_builder.field("arms", &&(*__self_0_1));
+                                let _ = debug_trait_builder.field("default", &&(*__self_0_2));
+                                debug_trait_builder.finish()
+                            }
+                        }
+                    }
+                }
+                #[automatically_derived]
+                #[allow(unused_qualifications)]
+                impl ::std::clone::Clone for Match {
+                    #[inline]
+                    fn clone(&self) -> Match {
+                        match *self {
+                            Match {
+                                input: ref __self_0_0,
+                                arms: ref __self_0_1,
+                                default: ref __self_0_2,
+                            } => Match {
+                                input: ::std::clone::Clone::clone(&(*__self_0_0)),
+                                arms: ::std::clone::Clone::clone(&(*__self_0_1)),
+                                default: ::std::clone::Clone::clone(&(*__self_0_2)),
+                            },
+                        }
+                    }
+                }
+                #[automatically_derived]
+                #[allow(unused_qualifications)]
+                impl ::std::cmp::PartialEq for Match {
+                    #[inline]
+                    fn eq(&self, other: &Match) -> bool {
+                        match *other {
+                            Match {
+                                input: ref __self_1_0,
+                                arms: ref __self_1_1,
+                                default: ref __self_1_2,
+                            } => match *self {
+                                Match {
+                                    input: ref __self_0_0,
+                                    arms: ref __self_0_1,
+                                    default: ref __self_0_2,
+                                } => {
+                                    (*__self_0_0) == (*__self_1_0)
+                                        && (*__self_0_1) == (*__self_1_1)
+                                        && (*__self_0_2) == (*__self_1_2)
+                                }
+                            },
+                        }
+                    }
+                    #[inline]
+                    fn ne(&self, other: &Match) -> bool {
+                        match *other {
+                            Match {
+                                input: ref __self_1_0,
+                                arms: ref __self_1_1,
+                                default: ref __self_1_2,
+                            } => match *self {
+                                Match {
+                                    input: ref __self_0_0,
+                                    arms: ref __self_0_1,
+                                    default: ref __self_0_2,
+                                } => {
+                                    (*__self_0_0) != (*__self_1_0)
+                                        || (*__self_0_1) != (*__self_1_1)
+                                        || (*__self_0_2) != (*__self_1_2)
+                                }
+                            },
+                        }
+                    }
+                }
+                impl<'de> Deserialize<'de> for Match {
+                    fn deserialize<D>(
+                        deserializer: D,
+                    ) -> StdResult<Self, <D as Deserializer<'de>>::Error>
+                    where
+                        D: Deserializer<'de>,
+                    {
+                        enum _Marker {
+                            #[serde(rename = "match")]
+                            _Mark,
+                        }
+                        #[allow(non_upper_case_globals, unused_attributes, unused_qualifications)]
+                        const _IMPL_DESERIALIZE_FOR__Marker: () = {
+                            extern crate serde as _serde;
+                            #[allow(unused_macros)]
+                            macro_rules! try(( $ __expr : expr ) => {
+                                                 match $ __expr {
+                                                 _serde :: export :: Ok (
+                                                 __val ) => __val , _serde ::
+                                                 export :: Err ( __err ) => {
+                                                 return _serde :: export ::
+                                                 Err ( __err ) ; } } });
+                            #[automatically_derived]
+                            impl<'de> _serde::Deserialize<'de> for _Marker {
+                                fn deserialize<__D>(
+                                    __deserializer: __D,
+                                ) -> _serde::export::Result<Self, __D::Error>
+                                where
+                                    __D: _serde::Deserializer<'de>,
+                                {
+                                    #[allow(non_camel_case_types)]
+                                    enum __Field {
+                                        __field0,
+                                    }
+                                    struct __FieldVisitor;
+                                    impl<'de> _serde::de::Visitor<'de> for __FieldVisitor {
+                                        type Value = __Field;
+                                        fn expecting(
+                                            &self,
+                                            __formatter: &mut _serde::export::Formatter,
+                                        ) -> _serde::export::fmt::Result
+                                        {
+                                            _serde::export::Formatter::write_str(
+                                                __formatter,
+                                                "variant identifier",
+                                            )
+                                        }
+                                        fn visit_u64<__E>(
+                                            self,
+                                            __value: u64,
+                                        ) -> _serde::export::Result<Self::Value, __E>
+                                        where
+                                            __E: _serde::de::Error,
+                                        {
+                                            match __value {
+                                                0u64 => _serde::export::Ok(__Field::__field0),
+                                                _ => _serde::export::Err(
+                                                    _serde::de::Error::invalid_value(
+                                                        _serde::de::Unexpected::Unsigned(__value),
+                                                        &"variant index 0 <= i < 1",
+                                                    ),
+                                                ),
+                                            }
+                                        }
+                                        fn visit_str<__E>(
+                                            self,
+                                            __value: &str,
+                                        ) -> _serde::export::Result<Self::Value, __E>
+                                        where
+                                            __E: _serde::de::Error,
+                                        {
+                                            match __value {
+                                                "match" => _serde::export::Ok(__Field::__field0),
+                                                _ => _serde::export::Err(
+                                                    _serde::de::Error::unknown_variant(
+                                                        __value, VARIANTS,
+                                                    ),
+                                                ),
+                                            }
+                                        }
+                                        fn visit_bytes<__E>(
+                                            self,
+                                            __value: &[u8],
+                                        ) -> _serde::export::Result<Self::Value, __E>
+                                        where
+                                            __E: _serde::de::Error,
+                                        {
+                                            match __value {
+                                                b"match" => _serde::export::Ok(__Field::__field0),
+                                                _ => {
+                                                    let __value =
+                                                        &_serde::export::from_utf8_lossy(__value);
+                                                    _serde::export::Err(
+                                                        _serde::de::Error::unknown_variant(
+                                                            __value, VARIANTS,
+                                                        ),
+                                                    )
+                                                }
+                                            }
+                                        }
+                                    }
+                                    impl<'de> _serde::Deserialize<'de> for __Field {
+                                        #[inline]
+                                        fn deserialize<__D>(
+                                            __deserializer: __D,
+                                        ) -> _serde::export::Result<Self, __D::Error>
+                                        where
+                                            __D: _serde::Deserializer<'de>,
+                                        {
+                                            _serde::Deserializer::deserialize_identifier(
+                                                __deserializer,
+                                                __FieldVisitor,
+                                            )
+                                        }
+                                    }
+                                    struct __Visitor<'de> {
+                                        marker: _serde::export::PhantomData<_Marker>,
+                                        lifetime: _serde::export::PhantomData<&'de ()>,
+                                    }
+                                    impl<'de> _serde::de::Visitor<'de> for __Visitor<'de> {
+                                        type Value = _Marker;
+                                        fn expecting(
+                                            &self,
+                                            __formatter: &mut _serde::export::Formatter,
+                                        ) -> _serde::export::fmt::Result
+                                        {
+                                            _serde::export::Formatter::write_str(
+                                                __formatter,
+                                                "enum _Marker",
+                                            )
+                                        }
+                                        fn visit_enum<__A>(
+                                            self,
+                                            __data: __A,
+                                        ) -> _serde::export::Result<Self::Value, __A::Error>
+                                        where
+                                            __A: _serde::de::EnumAccess<'de>,
+                                        {
+                                            match match _serde::de::EnumAccess::variant(__data) {
+                                                _serde::export::Ok(__val) => __val,
+                                                _serde::export::Err(__err) => {
+                                                    return _serde::export::Err(__err);
+                                                }
+                                            } {
+                                                (__Field::__field0, __variant) => {
+                                                    match _serde::de::VariantAccess::unit_variant(
+                                                        __variant,
+                                                    ) {
+                                                        _serde::export::Ok(__val) => __val,
+                                                        _serde::export::Err(__err) => {
+                                                            return _serde::export::Err(__err);
+                                                        }
+                                                    };
+                                                    _serde::export::Ok(_Marker::_Mark)
+                                                }
+                                            }
+                                        }
+                                    }
+                                    const VARIANTS: &'static [&'static str] = &["match"];
+                                    _serde::Deserializer::deserialize_enum(
+                                        __deserializer,
+                                        "_Marker",
+                                        VARIANTS,
+                                        __Visitor {
+                                            marker: _serde::export::PhantomData::<_Marker>,
+                                            lifetime: _serde::export::PhantomData,
+                                        },
+                                    )
+                                }
+                            }
+                        };
+                        let PrefixHelper(_Marker::_Mark, mut exprs) =
+                            Deserialize::deserialize(deserializer)?;
+                        let input = exprs.remove(0);
+                        let mut iter = exprs.into_iter();
+                        let mut arms = <[_]>::into_vec(box []);
+                        'l: loop {
+                            match (iter.next(), iter.next()) {
+                                (Some(BaseExpr::Value(k)), Some(v)) => {
+                                    arms.push(MatchArm { label: k, expr: v });
+                                }
+                                (Some(default), None) => {
+                                    break 'l Ok(Match {
+                                        input,
+                                        arms,
+                                        default,
+                                    });
+                                }
+                                a @ _ => {
+                                    break 'l Err(D::Error::custom(::fmt::format(
+                                        ::std::fmt::Arguments::new_v1_formatted(
+                                            &["Invalid match expression "],
+                                            &match (&a,) {
+                                                (arg0,) => [::std::fmt::ArgumentV1::new(
+                                                    arg0,
+                                                    ::std::fmt::Debug::fmt,
+                                                )],
+                                            },
+                                            &[::std::fmt::rt::v1::Argument {
+                                                position: ::std::fmt::rt::v1::Position::At(0usize),
+                                                format: ::std::fmt::rt::v1::FormatSpec {
+                                                    fill: ' ',
+                                                    align: ::std::fmt::rt::v1::Alignment::Unknown,
+                                                    flags: 0u32,
+                                                    precision: ::std::fmt::rt::v1::Count::Implied,
+                                                    width: ::std::fmt::rt::v1::Count::Implied,
+                                                },
+                                            }],
+                                        ),
+                                    )));
+                                }
+                            }
+                        }
+                    }
+                }
+                impl Expr for Match {
+                    fn is_zoom(&self) -> bool {
+                        return self.input.is_zoom()
+                            || self.arms.iter().any(|a| a.expr.is_zoom())
+                            || self.default.is_zoom();
+                    }
+                    fn is_feature(&self) -> bool {
+                        return self.input.is_feature()
+                            || self.arms.iter().any(|a| a.expr.is_feature())
+                            || self.default.is_feature();
+                    }
+                    fn eval(&self, ctx: &EvaluationContext) -> ExprResult {
+                        let val = self.input.eval(ctx)?;
+                        for MatchArm { label, expr } in self.arms.iter() {
+                            if &val == label {
+                                return expr.eval(ctx);
+                            }
+                        }
+                        return self.default.eval(ctx);
+                    }
+                }
+            }
+            pub mod interp {
+                use super::*;
+                use prelude::*;
+                use serde::de::Error;
+                use serde::Deserialize;
+                pub enum InterpType {
+                    Linear,
+                    Exponential(f64),
+                    Cubic(f64, f64, f64, f64),
+                }
+                #[automatically_derived]
+                #[allow(unused_qualifications)]
+                impl ::std::fmt::Debug for InterpType {
+                    fn fmt(&self, f: &mut ::std::fmt::Formatter) -> ::std::fmt::Result {
+                        match (&*self,) {
+                            (&InterpType::Linear,) => {
+                                let mut debug_trait_builder = f.debug_tuple("Linear");
+                                debug_trait_builder.finish()
+                            }
+                            (&InterpType::Exponential(ref __self_0),) => {
+                                let mut debug_trait_builder = f.debug_tuple("Exponential");
+                                let _ = debug_trait_builder.field(&&(*__self_0));
+                                debug_trait_builder.finish()
+                            }
+                            (&InterpType::Cubic(
+                                ref __self_0,
+                                ref __self_1,
+                                ref __self_2,
+                                ref __self_3,
+                            ),) => {
+                                let mut debug_trait_builder = f.debug_tuple("Cubic");
+                                let _ = debug_trait_builder.field(&&(*__self_0));
+                                let _ = debug_trait_builder.field(&&(*__self_1));
+                                let _ = debug_trait_builder.field(&&(*__self_2));
+                                let _ = debug_trait_builder.field(&&(*__self_3));
+                                debug_trait_builder.finish()
+                            }
+                        }
+                    }
+                }
+                #[automatically_derived]
+                #[allow(unused_qualifications)]
+                impl ::std::clone::Clone for InterpType {
+                    #[inline]
+                    fn clone(&self) -> InterpType {
+                        match (&*self,) {
+                            (&InterpType::Linear,) => InterpType::Linear,
+                            (&InterpType::Exponential(ref __self_0),) => {
+                                InterpType::Exponential(::std::clone::Clone::clone(&(*__self_0)))
+                            }
+                            (&InterpType::Cubic(
+                                ref __self_0,
+                                ref __self_1,
+                                ref __self_2,
+                                ref __self_3,
+                            ),) => InterpType::Cubic(
+                                ::std::clone::Clone::clone(&(*__self_0)),
+                                ::std::clone::Clone::clone(&(*__self_1)),
+                                ::std::clone::Clone::clone(&(*__self_2)),
+                                ::std::clone::Clone::clone(&(*__self_3)),
+                            ),
+                        }
+                    }
+                }
+                #[automatically_derived]
+                #[allow(unused_qualifications)]
+                impl ::std::cmp::PartialEq for InterpType {
+                    #[inline]
+                    fn eq(&self, other: &InterpType) -> bool {
+                        {
+                            let __self_vi =
+                                unsafe { ::std::intrinsics::discriminant_value(&*self) } as isize;
+                            let __arg_1_vi =
+                                unsafe { ::std::intrinsics::discriminant_value(&*other) } as isize;
+                            if true && __self_vi == __arg_1_vi {
+                                match (&*self, &*other) {
+                                    (
+                                        &InterpType::Exponential(ref __self_0),
+                                        &InterpType::Exponential(ref __arg_1_0),
+                                    ) => (*__self_0) == (*__arg_1_0),
+                                    (
+                                        &InterpType::Cubic(
+                                            ref __self_0,
+                                            ref __self_1,
+                                            ref __self_2,
+                                            ref __self_3,
+                                        ),
+                                        &InterpType::Cubic(
+                                            ref __arg_1_0,
+                                            ref __arg_1_1,
+                                            ref __arg_1_2,
+                                            ref __arg_1_3,
+                                        ),
+                                    ) => {
+                                        (*__self_0) == (*__arg_1_0)
+                                            && (*__self_1) == (*__arg_1_1)
+                                            && (*__self_2) == (*__arg_1_2)
+                                            && (*__self_3) == (*__arg_1_3)
+                                    }
+                                    _ => true,
+                                }
+                            } else {
+                                false
+                            }
+                        }
+                    }
+                    #[inline]
+                    fn ne(&self, other: &InterpType) -> bool {
+                        {
+                            let __self_vi =
+                                unsafe { ::std::intrinsics::discriminant_value(&*self) } as isize;
+                            let __arg_1_vi =
+                                unsafe { ::std::intrinsics::discriminant_value(&*other) } as isize;
+                            if true && __self_vi == __arg_1_vi {
+                                match (&*self, &*other) {
+                                    (
+                                        &InterpType::Exponential(ref __self_0),
+                                        &InterpType::Exponential(ref __arg_1_0),
+                                    ) => (*__self_0) != (*__arg_1_0),
+                                    (
+                                        &InterpType::Cubic(
+                                            ref __self_0,
+                                            ref __self_1,
+                                            ref __self_2,
+                                            ref __self_3,
+                                        ),
+                                        &InterpType::Cubic(
+                                            ref __arg_1_0,
+                                            ref __arg_1_1,
+                                            ref __arg_1_2,
+                                            ref __arg_1_3,
+                                        ),
+                                    ) => {
+                                        (*__self_0) != (*__arg_1_0)
+                                            || (*__self_1) != (*__arg_1_1)
+                                            || (*__self_2) != (*__arg_1_2)
+                                            || (*__self_3) != (*__arg_1_3)
+                                    }
+                                    _ => false,
+                                }
+                            } else {
+                                true
+                            }
+                        }
+                    }
+                }
+                fn clamp(min: f64, max: f64, val: f64) -> f64 {
+                    f64::min(f64::max(val, 0.0), 1.0)
+                }
+                impl InterpType {
+                    fn get_factor(&self, a: f64, b: f64, value: f64) -> f64 {
+                        let range = b - a;
+                        let progress = value - a;
+                        return clamp(
+                            0.,
+                            1.,
+                            match self {
+                                InterpType::Linear => progress / range,
+                                InterpType::Exponential(base) => {
+                                    (f64::powf(*base, progress) - 1.)
+                                        / (f64::powf(*base, range) - 1.)
+                                }
+                                InterpType::Cubic(x1, y1, x2, y2) => {
+                                    ::rt::begin_panic(
+                                        "Cubic bezier interpolation not yet supported",
+                                        &("rmaps/src/map/style/expr/interp.rs", 33u32, 17u32),
+                                    )
+                                }
+                            },
+                        );
+                    }
+                }
+                impl<'de> Deserialize<'de> for InterpType {
+                    fn deserialize<D>(
+                        deserializer: D,
+                    ) -> StdResult<Self, <D as Deserializer<'de>>::Error>
+                    where
+                        D: Deserializer<'de>,
+                    {
+                        let mut input: Vec<json::Value> = Deserialize::deserialize(deserializer)?;
+                        if input.len() < 1 {
+                            return Err(D::Error::custom("Array too short"));
+                        }
+                        let name = input.remove(0);
+                        return if name.as_str() == Some("linear") {
+                            Ok(InterpType::Linear)
+                        } else if name.as_str() == Some("exponential") && input.len() >= 1 {
+                            let base: StdResult<f64, _> = json::from_value(input.remove(0));
+                            base.map(|v| InterpType::Exponential(v))
+                                .map_err(|_| D::Error::custom("Invalid exponential exponent"))
+                        } else if name.as_str() == Some("cubic-bezier") && input.len() >= 4 {
+                            let points: StdResult<Vec<f64>, _> =
+                                input.into_iter().map(json::from_value).collect();
+                            points
+                                .map(|p| InterpType::Cubic(p[0], p[1], p[2], p[3]))
+                                .map_err(|_| D::Error::custom("Invalid bezier control points"))
+                        } else {
+                            Err(D::Error::custom(
+                                "Could not parse expression as interpolation specifier",
+                            ))
+                        };
+                    }
+                }
+                pub struct Stop {
+                    val: f64,
+                    out: BaseExpr,
+                }
+                #[automatically_derived]
+                #[allow(unused_qualifications)]
+                impl ::std::fmt::Debug for Stop {
+                    fn fmt(&self, f: &mut ::std::fmt::Formatter) -> ::std::fmt::Result {
+                        match *self {
+                            Stop {
+                                val: ref __self_0_0,
+                                out: ref __self_0_1,
+                            } => {
+                                let mut debug_trait_builder = f.debug_struct("Stop");
+                                let _ = debug_trait_builder.field("val", &&(*__self_0_0));
+                                let _ = debug_trait_builder.field("out", &&(*__self_0_1));
+                                debug_trait_builder.finish()
+                            }
+                        }
+                    }
+                }
+                #[automatically_derived]
+                #[allow(unused_qualifications)]
+                impl ::std::clone::Clone for Stop {
+                    #[inline]
+                    fn clone(&self) -> Stop {
+                        match *self {
+                            Stop {
+                                val: ref __self_0_0,
+                                out: ref __self_0_1,
+                            } => Stop {
+                                val: ::std::clone::Clone::clone(&(*__self_0_0)),
+                                out: ::std::clone::Clone::clone(&(*__self_0_1)),
+                            },
+                        }
+                    }
+                }
+                #[automatically_derived]
+                #[allow(unused_qualifications)]
+                impl ::std::cmp::PartialEq for Stop {
+                    #[inline]
+                    fn eq(&self, other: &Stop) -> bool {
+                        match *other {
+                            Stop {
+                                val: ref __self_1_0,
+                                out: ref __self_1_1,
+                            } => match *self {
+                                Stop {
+                                    val: ref __self_0_0,
+                                    out: ref __self_0_1,
+                                } => {
+                                    (*__self_0_0) == (*__self_1_0) && (*__self_0_1) == (*__self_1_1)
+                                }
+                            },
+                        }
+                    }
+                    #[inline]
+                    fn ne(&self, other: &Stop) -> bool {
+                        match *other {
+                            Stop {
+                                val: ref __self_1_0,
+                                out: ref __self_1_1,
+                            } => match *self {
+                                Stop {
+                                    val: ref __self_0_0,
+                                    out: ref __self_0_1,
+                                } => {
+                                    (*__self_0_0) != (*__self_1_0) || (*__self_0_1) != (*__self_1_1)
+                                }
+                            },
+                        }
+                    }
+                }
+                pub struct Interpolate {
+                    typ: InterpType,
+                    input: BaseExpr,
+                    stops: Vec<Stop>,
+                }
+                #[automatically_derived]
+                #[allow(unused_qualifications)]
+                impl ::std::fmt::Debug for Interpolate {
+                    fn fmt(&self, f: &mut ::std::fmt::Formatter) -> ::std::fmt::Result {
+                        match *self {
+                            Interpolate {
+                                typ: ref __self_0_0,
+                                input: ref __self_0_1,
+                                stops: ref __self_0_2,
+                            } => {
+                                let mut debug_trait_builder = f.debug_struct("Interpolate");
+                                let _ = debug_trait_builder.field("typ", &&(*__self_0_0));
+                                let _ = debug_trait_builder.field("input", &&(*__self_0_1));
+                                let _ = debug_trait_builder.field("stops", &&(*__self_0_2));
+                                debug_trait_builder.finish()
+                            }
+                        }
+                    }
+                }
+                #[automatically_derived]
+                #[allow(unused_qualifications)]
+                impl ::std::clone::Clone for Interpolate {
+                    #[inline]
+                    fn clone(&self) -> Interpolate {
+                        match *self {
+                            Interpolate {
+                                typ: ref __self_0_0,
+                                input: ref __self_0_1,
+                                stops: ref __self_0_2,
+                            } => Interpolate {
+                                typ: ::std::clone::Clone::clone(&(*__self_0_0)),
+                                input: ::std::clone::Clone::clone(&(*__self_0_1)),
+                                stops: ::std::clone::Clone::clone(&(*__self_0_2)),
+                            },
+                        }
+                    }
+                }
+                #[automatically_derived]
+                #[allow(unused_qualifications)]
+                impl ::std::cmp::PartialEq for Interpolate {
+                    #[inline]
+                    fn eq(&self, other: &Interpolate) -> bool {
+                        match *other {
+                            Interpolate {
+                                typ: ref __self_1_0,
+                                input: ref __self_1_1,
+                                stops: ref __self_1_2,
+                            } => match *self {
+                                Interpolate {
+                                    typ: ref __self_0_0,
+                                    input: ref __self_0_1,
+                                    stops: ref __self_0_2,
+                                } => {
+                                    (*__self_0_0) == (*__self_1_0)
+                                        && (*__self_0_1) == (*__self_1_1)
+                                        && (*__self_0_2) == (*__self_1_2)
+                                }
+                            },
+                        }
+                    }
+                    #[inline]
+                    fn ne(&self, other: &Interpolate) -> bool {
+                        match *other {
+                            Interpolate {
+                                typ: ref __self_1_0,
+                                input: ref __self_1_1,
+                                stops: ref __self_1_2,
+                            } => match *self {
+                                Interpolate {
+                                    typ: ref __self_0_0,
+                                    input: ref __self_0_1,
+                                    stops: ref __self_0_2,
+                                } => {
+                                    (*__self_0_0) != (*__self_1_0)
+                                        || (*__self_0_1) != (*__self_1_1)
+                                        || (*__self_0_2) != (*__self_1_2)
+                                }
+                            },
+                        }
+                    }
+                }
+                impl<'de> Deserialize<'de> for Interpolate {
+                    fn deserialize<D>(
+                        deserializer: D,
+                    ) -> StdResult<Self, <D as Deserializer<'de>>::Error>
+                    where
+                        D: Deserializer<'de>,
+                    {
+                        let mut arr = parse_basics("interpolate", 2, deserializer)?;
+                        let spec = json::from_value(arr.remove(0)).map_err(|e| {
+                            D::Error::custom(::fmt::format(
+                                ::std::fmt::Arguments::new_v1_formatted(
+                                    &["Could not parse interpolation spec : "],
+                                    &match (&e,) {
+                                        (arg0,) => [::std::fmt::ArgumentV1::new(
+                                            arg0,
+                                            ::std::fmt::Debug::fmt,
+                                        )],
+                                    },
+                                    &[::std::fmt::rt::v1::Argument {
+                                        position: ::std::fmt::rt::v1::Position::At(0usize),
+                                        format: ::std::fmt::rt::v1::FormatSpec {
+                                            fill: ' ',
+                                            align: ::std::fmt::rt::v1::Alignment::Unknown,
+                                            flags: 0u32,
+                                            precision: ::std::fmt::rt::v1::Count::Implied,
+                                            width: ::std::fmt::rt::v1::Count::Implied,
+                                        },
+                                    }],
+                                ),
+                            ))
+                        })?;
+                        let input_expr = json::from_value(arr.remove(0)).map_err(|e| {
+                            D::Error::custom(::fmt::format(
+                                ::std::fmt::Arguments::new_v1_formatted(
+                                    &["Could not parse input expression : "],
+                                    &match (&e,) {
+                                        (arg0,) => [::std::fmt::ArgumentV1::new(
+                                            arg0,
+                                            ::std::fmt::Debug::fmt,
+                                        )],
+                                    },
+                                    &[::std::fmt::rt::v1::Argument {
+                                        position: ::std::fmt::rt::v1::Position::At(0usize),
+                                        format: ::std::fmt::rt::v1::FormatSpec {
+                                            fill: ' ',
+                                            align: ::std::fmt::rt::v1::Alignment::Unknown,
+                                            flags: 0u32,
+                                            precision: ::std::fmt::rt::v1::Count::Implied,
+                                            width: ::std::fmt::rt::v1::Count::Implied,
+                                        },
+                                    }],
+                                ),
+                            ))
+                        })?;
+                        let mut iter = arr.into_iter();
+                        let mut stops = <[_]>::into_vec(box []);
+                        return 'l: loop {
+                            match (
+                                iter.next().map(json::from_value),
+                                iter.next().map(json::from_value),
+                            ) {
+                                (Some(Ok(k)), Some(Ok(v))) => {
+                                    stops.push(Stop { val: k, out: v });
+                                }
+                                (None, None) => {
+                                    break 'l Ok(Interpolate {
+                                        typ: spec,
+                                        input: input_expr,
+                                        stops,
+                                    });
+                                }
+                                (a @ Some(Err(_)), b @ _) | (a @ _, b @ Some(Err(_))) => {
+                                    break 'l Err(D::Error::custom(::fmt::format(
+                                        ::std::fmt::Arguments::new_v1_formatted(
+                                            &[
+                                                "Could not parse interpolate arm : input : ",
+                                                ", output : ",
+                                            ],
+                                            &match (&a, &b) {
+                                                (arg0, arg1) => [
+                                                    ::std::fmt::ArgumentV1::new(
+                                                        arg0,
+                                                        ::std::fmt::Debug::fmt,
+                                                    ),
+                                                    ::std::fmt::ArgumentV1::new(
+                                                        arg1,
+                                                        ::std::fmt::Debug::fmt,
+                                                    ),
+                                                ],
+                                            },
+                                            &[
+                                                ::std::fmt::rt::v1::Argument {
+                                                    position: ::std::fmt::rt::v1::Position::At(
+                                                        0usize,
+                                                    ),
+                                                    format: ::std::fmt::rt::v1::FormatSpec {
+                                                        fill: ' ',
+                                                        align:
+                                                            ::std::fmt::rt::v1::Alignment::Unknown,
+                                                        flags: 0u32,
+                                                        precision:
+                                                            ::std::fmt::rt::v1::Count::Implied,
+                                                        width: ::std::fmt::rt::v1::Count::Implied,
+                                                    },
+                                                },
+                                                ::std::fmt::rt::v1::Argument {
+                                                    position: ::std::fmt::rt::v1::Position::At(
+                                                        1usize,
+                                                    ),
+                                                    format: ::std::fmt::rt::v1::FormatSpec {
+                                                        fill: ' ',
+                                                        align:
+                                                            ::std::fmt::rt::v1::Alignment::Unknown,
+                                                        flags: 0u32,
+                                                        precision:
+                                                            ::std::fmt::rt::v1::Count::Implied,
+                                                        width: ::std::fmt::rt::v1::Count::Implied,
+                                                    },
+                                                },
+                                            ],
+                                        ),
+                                    )));
+                                }
+                                _ => {
+                                    break 'l
+                                                   Err(D::Error::custom("Could not parse expression as \"interpolate\", inner error"))
+                                                   ;
+                                }
+                            }
+                        };
+                    }
+                }
+                impl Expr for Interpolate {
+                    fn is_zoom(&self) -> bool {
+                        self.input.is_zoom() || self.stops.iter().any(|s| s.out.is_zoom())
+                    }
+                    fn is_feature(&self) -> bool {
+                        self.input.is_feature() || self.stops.iter().any(|s| s.out.is_feature())
+                    }
+                    fn eval(&self, ctx: &EvaluationContext) -> ExprResult {
+                        let val = expect_num(self.input.eval(ctx)?)?;
+                        let lower = self.stops.iter().rfind(|s| s.val <= val);
+                        let upper = self.stops.iter().find(|s| s.val >= val);
+                        match (lower, upper) {
+                            (Some(l), Some(h)) => {
+                                let factor = self.typ.get_factor(l.val, h.val, val);
+                                let low = l.out.eval(ctx)?;
+                                let high = h.out.eval(ctx)?;
+                            }
+                            (Some(x), None) | (None, Some(x)) => {
+                                return x.out.eval(ctx);
+                            }
+                            (None, None) => {
+                                ::rt::begin_panic(
+                                    "No values to interpolate between found",
+                                    &("rmaps/src/map/style/expr/interp.rs", 143u32, 17u32),
+                                )
+                            }
+                        }
+                        {
+                            ::rt::begin_panic(
+                                "not yet implemented",
+                                &("rmaps/src/map/style/expr/interp.rs", 147u32, 9u32),
+                            )
+                        }
+                    }
+                }
+                pub struct Step {
+                    input: BaseExpr,
+                    default: BaseExpr,
+                    stops: Vec<Stop>,
+                }
+                #[automatically_derived]
+                #[allow(unused_qualifications)]
+                impl ::std::fmt::Debug for Step {
+                    fn fmt(&self, f: &mut ::std::fmt::Formatter) -> ::std::fmt::Result {
+                        match *self {
+                            Step {
+                                input: ref __self_0_0,
+                                default: ref __self_0_1,
+                                stops: ref __self_0_2,
+                            } => {
+                                let mut debug_trait_builder = f.debug_struct("Step");
+                                let _ = debug_trait_builder.field("input", &&(*__self_0_0));
+                                let _ = debug_trait_builder.field("default", &&(*__self_0_1));
+                                let _ = debug_trait_builder.field("stops", &&(*__self_0_2));
+                                debug_trait_builder.finish()
+                            }
+                        }
+                    }
+                }
+                #[automatically_derived]
+                #[allow(unused_qualifications)]
+                impl ::std::clone::Clone for Step {
+                    #[inline]
+                    fn clone(&self) -> Step {
+                        match *self {
+                            Step {
+                                input: ref __self_0_0,
+                                default: ref __self_0_1,
+                                stops: ref __self_0_2,
+                            } => Step {
+                                input: ::std::clone::Clone::clone(&(*__self_0_0)),
+                                default: ::std::clone::Clone::clone(&(*__self_0_1)),
+                                stops: ::std::clone::Clone::clone(&(*__self_0_2)),
+                            },
+                        }
+                    }
+                }
+                #[automatically_derived]
+                #[allow(unused_qualifications)]
+                impl ::std::cmp::PartialEq for Step {
+                    #[inline]
+                    fn eq(&self, other: &Step) -> bool {
+                        match *other {
+                            Step {
+                                input: ref __self_1_0,
+                                default: ref __self_1_1,
+                                stops: ref __self_1_2,
+                            } => match *self {
+                                Step {
+                                    input: ref __self_0_0,
+                                    default: ref __self_0_1,
+                                    stops: ref __self_0_2,
+                                } => {
+                                    (*__self_0_0) == (*__self_1_0)
+                                        && (*__self_0_1) == (*__self_1_1)
+                                        && (*__self_0_2) == (*__self_1_2)
+                                }
+                            },
+                        }
+                    }
+                    #[inline]
+                    fn ne(&self, other: &Step) -> bool {
+                        match *other {
+                            Step {
+                                input: ref __self_1_0,
+                                default: ref __self_1_1,
+                                stops: ref __self_1_2,
+                            } => match *self {
+                                Step {
+                                    input: ref __self_0_0,
+                                    default: ref __self_0_1,
+                                    stops: ref __self_0_2,
+                                } => {
+                                    (*__self_0_0) != (*__self_1_0)
+                                        || (*__self_0_1) != (*__self_1_1)
+                                        || (*__self_0_2) != (*__self_1_2)
+                                }
+                            },
+                        }
+                    }
+                }
+                impl<'de> Deserialize<'de> for Step {
+                    fn deserialize<D>(
+                        deserializer: D,
+                    ) -> StdResult<Self, <D as Deserializer<'de>>::Error>
+                    where
+                        D: Deserializer<'de>,
+                    {
+                        let mut arr = parse_basics("step", 2, deserializer)?;
+                        let input = json::from_value(arr.remove(0))
+                            .map_err(|_| D::Error::custom("Invalid input expression"))?;
+                        let default = json::from_value(arr.remove(0))
+                            .map_err(|_| D::Error::custom("invalid default step"))?;
+                        let mut iter = arr.into_iter();
+                        let mut stops = <[_]>::into_vec(box []);
+                        return 'l: loop {
+                            match (
+                                iter.next().map(json::from_value),
+                                iter.next().map(json::from_value),
+                            ) {
+                                (Some(Ok(k)), Some(Ok(v))) => {
+                                    stops.push(Stop { val: k, out: v });
+                                }
+                                (a @ Some(Err(_)), b @ _) | (a @ _, b @ Some(Err(_))) => {
+                                    break 'l Err(D::Error::custom(::fmt::format(
+                                        ::std::fmt::Arguments::new_v1_formatted(
+                                            &["Could not parse step arm : input : ", ", output : "],
+                                            &match (&a, &b) {
+                                                (arg0, arg1) => [
+                                                    ::std::fmt::ArgumentV1::new(
+                                                        arg0,
+                                                        ::std::fmt::Debug::fmt,
+                                                    ),
+                                                    ::std::fmt::ArgumentV1::new(
+                                                        arg1,
+                                                        ::std::fmt::Debug::fmt,
+                                                    ),
+                                                ],
+                                            },
+                                            &[
+                                                ::std::fmt::rt::v1::Argument {
+                                                    position: ::std::fmt::rt::v1::Position::At(
+                                                        0usize,
+                                                    ),
+                                                    format: ::std::fmt::rt::v1::FormatSpec {
+                                                        fill: ' ',
+                                                        align:
+                                                            ::std::fmt::rt::v1::Alignment::Unknown,
+                                                        flags: 0u32,
+                                                        precision:
+                                                            ::std::fmt::rt::v1::Count::Implied,
+                                                        width: ::std::fmt::rt::v1::Count::Implied,
+                                                    },
+                                                },
+                                                ::std::fmt::rt::v1::Argument {
+                                                    position: ::std::fmt::rt::v1::Position::At(
+                                                        1usize,
+                                                    ),
+                                                    format: ::std::fmt::rt::v1::FormatSpec {
+                                                        fill: ' ',
+                                                        align:
+                                                            ::std::fmt::rt::v1::Alignment::Unknown,
+                                                        flags: 0u32,
+                                                        precision:
+                                                            ::std::fmt::rt::v1::Count::Implied,
+                                                        width: ::std::fmt::rt::v1::Count::Implied,
+                                                    },
+                                                },
+                                            ],
+                                        ),
+                                    )));
+                                }
+                                _ => {
+                                    break 'l Ok(Step {
+                                        input,
+                                        default,
+                                        stops: stops,
+                                    });
+                                }
+                            }
+                        };
+                    }
+                }
+                impl Expr for Step {
+                    fn is_zoom(&self) -> bool {
+                        self.input.is_zoom()
+                            || self.default.is_zoom()
+                            || self.stops.iter().any(|a| a.out.is_zoom())
+                    }
+                    fn is_feature(&self) -> bool {
+                        self.input.is_feature()
+                            || self.default.is_feature()
+                            || self.stops.iter().any(|a| a.out.is_feature())
+                    }
+                    fn eval(&self, ctx: &EvaluationContext) -> ExprResult {
+                        let val = expect_num(self.input.eval(ctx)?)?;
+                        let stop = self.stops.iter().find(|a| a.val <= val);
+                        return if let Some(stop) = stop {
+                            stop.out.eval(ctx)
+                        } else {
+                            self.default.eval(ctx)
+                        };
+                    }
+                }
+            }
+            pub mod variables {
+                use super::*;
+                use prelude::*;
+                pub enum Variable {
+                    Let(Vec<(String, BaseExpr)>, BaseExpr),
+                    Var(String),
+                }
+                #[automatically_derived]
+                #[allow(unused_qualifications)]
+                impl ::std::fmt::Debug for Variable {
+                    fn fmt(&self, f: &mut ::std::fmt::Formatter) -> ::std::fmt::Result {
+                        match (&*self,) {
+                            (&Variable::Let(ref __self_0, ref __self_1),) => {
+                                let mut debug_trait_builder = f.debug_tuple("Let");
+                                let _ = debug_trait_builder.field(&&(*__self_0));
+                                let _ = debug_trait_builder.field(&&(*__self_1));
+                                debug_trait_builder.finish()
+                            }
+                            (&Variable::Var(ref __self_0),) => {
+                                let mut debug_trait_builder = f.debug_tuple("Var");
+                                let _ = debug_trait_builder.field(&&(*__self_0));
+                                debug_trait_builder.finish()
+                            }
+                        }
+                    }
+                }
+                #[automatically_derived]
+                #[allow(unused_qualifications)]
+                impl ::std::clone::Clone for Variable {
+                    #[inline]
+                    fn clone(&self) -> Variable {
+                        match (&*self,) {
+                            (&Variable::Let(ref __self_0, ref __self_1),) => Variable::Let(
+                                ::std::clone::Clone::clone(&(*__self_0)),
+                                ::std::clone::Clone::clone(&(*__self_1)),
+                            ),
+                            (&Variable::Var(ref __self_0),) => {
+                                Variable::Var(::std::clone::Clone::clone(&(*__self_0)))
+                            }
+                        }
+                    }
+                }
+                #[automatically_derived]
+                #[allow(unused_qualifications)]
+                impl ::std::cmp::PartialEq for Variable {
+                    #[inline]
+                    fn eq(&self, other: &Variable) -> bool {
+                        {
+                            let __self_vi =
+                                unsafe { ::std::intrinsics::discriminant_value(&*self) } as isize;
+                            let __arg_1_vi =
+                                unsafe { ::std::intrinsics::discriminant_value(&*other) } as isize;
+                            if true && __self_vi == __arg_1_vi {
+                                match (&*self, &*other) {
+                                    (
+                                        &Variable::Let(ref __self_0, ref __self_1),
+                                        &Variable::Let(ref __arg_1_0, ref __arg_1_1),
+                                    ) => (*__self_0) == (*__arg_1_0) && (*__self_1) == (*__arg_1_1),
+                                    (
+                                        &Variable::Var(ref __self_0),
+                                        &Variable::Var(ref __arg_1_0),
+                                    ) => (*__self_0) == (*__arg_1_0),
+                                    _ => unsafe { ::std::intrinsics::unreachable() },
+                                }
+                            } else {
+                                false
+                            }
+                        }
+                    }
+                    #[inline]
+                    fn ne(&self, other: &Variable) -> bool {
+                        {
+                            let __self_vi =
+                                unsafe { ::std::intrinsics::discriminant_value(&*self) } as isize;
+                            let __arg_1_vi =
+                                unsafe { ::std::intrinsics::discriminant_value(&*other) } as isize;
+                            if true && __self_vi == __arg_1_vi {
+                                match (&*self, &*other) {
+                                    (
+                                        &Variable::Let(ref __self_0, ref __self_1),
+                                        &Variable::Let(ref __arg_1_0, ref __arg_1_1),
+                                    ) => (*__self_0) != (*__arg_1_0) || (*__self_1) != (*__arg_1_1),
+                                    (
+                                        &Variable::Var(ref __self_0),
+                                        &Variable::Var(ref __arg_1_0),
+                                    ) => (*__self_0) != (*__arg_1_0),
+                                    _ => unsafe { ::std::intrinsics::unreachable() },
+                                }
+                            } else {
+                                true
+                            }
+                        }
+                    }
+                }
+                impl<'de> Deserialize<'de> for Variable {
+                    fn deserialize<D>(deserializer: D) -> StdResult<Self, D::Error>
+                    where
+                        D: Deserializer<'de>,
+                    {
+                        use serde::de::Error;
+                        enum _Mark {
+                            #[serde(rename = "let")]
+                            Let,
+
+                            #[serde(rename = "var")]
+                            Var,
+                        }
+                        #[allow(non_upper_case_globals, unused_attributes, unused_qualifications)]
+                        const _IMPL_DESERIALIZE_FOR__Mark: () = {
+                            extern crate serde as _serde;
+                            #[allow(unused_macros)]
+                            macro_rules! try(( $ __expr : expr ) => {
+                                                 match $ __expr {
+                                                 _serde :: export :: Ok (
+                                                 __val ) => __val , _serde ::
+                                                 export :: Err ( __err ) => {
+                                                 return _serde :: export ::
+                                                 Err ( __err ) ; } } });
+                            #[automatically_derived]
+                            impl<'de> _serde::Deserialize<'de> for _Mark {
+                                fn deserialize<__D>(
+                                    __deserializer: __D,
+                                ) -> _serde::export::Result<Self, __D::Error>
+                                where
+                                    __D: _serde::Deserializer<'de>,
+                                {
+                                    #[allow(non_camel_case_types)]
+                                    enum __Field {
+                                        __field0,
+                                        __field1,
+                                    }
+                                    struct __FieldVisitor;
+                                    impl<'de> _serde::de::Visitor<'de> for __FieldVisitor {
+                                        type Value = __Field;
+                                        fn expecting(
+                                            &self,
+                                            __formatter: &mut _serde::export::Formatter,
+                                        ) -> _serde::export::fmt::Result
+                                        {
+                                            _serde::export::Formatter::write_str(
+                                                __formatter,
+                                                "variant identifier",
+                                            )
+                                        }
+                                        fn visit_u64<__E>(
+                                            self,
+                                            __value: u64,
+                                        ) -> _serde::export::Result<Self::Value, __E>
+                                        where
+                                            __E: _serde::de::Error,
+                                        {
+                                            match __value {
+                                                0u64 => _serde::export::Ok(__Field::__field0),
+                                                1u64 => _serde::export::Ok(__Field::__field1),
+                                                _ => _serde::export::Err(
+                                                    _serde::de::Error::invalid_value(
+                                                        _serde::de::Unexpected::Unsigned(__value),
+                                                        &"variant index 0 <= i < 2",
+                                                    ),
+                                                ),
+                                            }
+                                        }
+                                        fn visit_str<__E>(
+                                            self,
+                                            __value: &str,
+                                        ) -> _serde::export::Result<Self::Value, __E>
+                                        where
+                                            __E: _serde::de::Error,
+                                        {
+                                            match __value {
+                                                "let" => _serde::export::Ok(__Field::__field0),
+                                                "var" => _serde::export::Ok(__Field::__field1),
+                                                _ => _serde::export::Err(
+                                                    _serde::de::Error::unknown_variant(
+                                                        __value, VARIANTS,
+                                                    ),
+                                                ),
+                                            }
+                                        }
+                                        fn visit_bytes<__E>(
+                                            self,
+                                            __value: &[u8],
+                                        ) -> _serde::export::Result<Self::Value, __E>
+                                        where
+                                            __E: _serde::de::Error,
+                                        {
+                                            match __value {
+                                                b"let" => _serde::export::Ok(__Field::__field0),
+                                                b"var" => _serde::export::Ok(__Field::__field1),
+                                                _ => {
+                                                    let __value =
+                                                        &_serde::export::from_utf8_lossy(__value);
+                                                    _serde::export::Err(
+                                                        _serde::de::Error::unknown_variant(
+                                                            __value, VARIANTS,
+                                                        ),
+                                                    )
+                                                }
+                                            }
+                                        }
+                                    }
+                                    impl<'de> _serde::Deserialize<'de> for __Field {
+                                        #[inline]
+                                        fn deserialize<__D>(
+                                            __deserializer: __D,
+                                        ) -> _serde::export::Result<Self, __D::Error>
+                                        where
+                                            __D: _serde::Deserializer<'de>,
+                                        {
+                                            _serde::Deserializer::deserialize_identifier(
+                                                __deserializer,
+                                                __FieldVisitor,
+                                            )
+                                        }
+                                    }
+                                    struct __Visitor<'de> {
+                                        marker: _serde::export::PhantomData<_Mark>,
+                                        lifetime: _serde::export::PhantomData<&'de ()>,
+                                    }
+                                    impl<'de> _serde::de::Visitor<'de> for __Visitor<'de> {
+                                        type Value = _Mark;
+                                        fn expecting(
+                                            &self,
+                                            __formatter: &mut _serde::export::Formatter,
+                                        ) -> _serde::export::fmt::Result
+                                        {
+                                            _serde::export::Formatter::write_str(
+                                                __formatter,
+                                                "enum _Mark",
+                                            )
+                                        }
+                                        fn visit_enum<__A>(
+                                            self,
+                                            __data: __A,
+                                        ) -> _serde::export::Result<Self::Value, __A::Error>
+                                        where
+                                            __A: _serde::de::EnumAccess<'de>,
+                                        {
+                                            match match _serde::de::EnumAccess::variant(__data) {
+                                                _serde::export::Ok(__val) => __val,
+                                                _serde::export::Err(__err) => {
+                                                    return _serde::export::Err(__err);
+                                                }
+                                            } {
+                                                (__Field::__field0, __variant) => {
+                                                    match _serde::de::VariantAccess::unit_variant(
+                                                        __variant,
+                                                    ) {
+                                                        _serde::export::Ok(__val) => __val,
+                                                        _serde::export::Err(__err) => {
+                                                            return _serde::export::Err(__err);
+                                                        }
+                                                    };
+                                                    _serde::export::Ok(_Mark::Let)
+                                                }
+                                                (__Field::__field1, __variant) => {
+                                                    match _serde::de::VariantAccess::unit_variant(
+                                                        __variant,
+                                                    ) {
+                                                        _serde::export::Ok(__val) => __val,
+                                                        _serde::export::Err(__err) => {
+                                                            return _serde::export::Err(__err);
+                                                        }
+                                                    };
+                                                    _serde::export::Ok(_Mark::Var)
+                                                }
+                                            }
+                                        }
+                                    }
+                                    const VARIANTS: &'static [&'static str] = &["let", "var"];
+                                    _serde::Deserializer::deserialize_enum(
+                                        __deserializer,
+                                        "_Mark",
+                                        VARIANTS,
+                                        __Visitor {
+                                            marker: _serde::export::PhantomData::<_Mark>,
+                                            lifetime: _serde::export::PhantomData,
+                                        },
+                                    )
+                                }
+                            }
+                        };
+                        let PrefixHelper(mark, mut exprs): PrefixHelper<
+                            _Mark,
+                            json::Value,
+                        > = Deserialize::deserialize(deserializer)?;
+                        if let _Mark::Var = mark {
+                            return Ok(Variable::Var(
+                                json::from_value(exprs.remove(0))
+                                    .map_err(|_| D::Error::custom("invalid var argument"))?,
+                            ));
+                        }
+                        if let _Mark::Let = mark {
+                            let mut iter = exprs.into_iter();
+                            let mut bindings = <[_]>::into_vec(box []);
+                            'l: loop {
+                                match (iter.next(), iter.next()) {
+                                    (Some(a), Some(b)) => {
+                                        bindings.push((
+                                            json::from_value(a).map_err(|_| {
+                                                D::Error::custom("Invalid let binding name")
+                                            })?,
+                                            json::from_value(b).map_err(|_| {
+                                                D::Error::custom("Invalid let binding expression")
+                                            })?,
+                                        ));
+                                    }
+                                    (Some(e), None) => {
+                                        return Ok(Variable::Let(
+                                            bindings,
+                                            json::from_value(e).map_err(|_| {
+                                                D::Error::custom("Invalid let output expr")
+                                            })?,
+                                        ));
+                                    }
+                                    _ => {
+                                        return Err(D::Error::custom(
+                                            "Invaliud let binding number of arguments",
+                                        ));
+                                    }
+                                }
+                            }
+                        }
+                        {
+                            ::rt::begin_panic(
+                                "Should not happen",
+                                &("rmaps/src/map/style/expr/variables.rs", 51u32, 9u32),
+                            )
+                        }
+                    }
+                }
+                impl Expr for Variable {
+                    fn is_zoom(&self) -> bool {
+                        return match self {
+                            Variable::Let(a, b) => {
+                                a.iter().any(|(k, v)| v.is_zoom()) || b.is_zoom()
+                            }
+                            _ => false,
+                        };
+                    }
+                    fn is_feature(&self) -> bool {
+                        return match self {
+                            Variable::Let(a, b) => {
+                                a.iter().any(|(k, v)| v.is_feature()) || b.is_feature()
+                            }
+                            _ => false,
+                        };
+                    }
+                    fn eval(&self, ctx: &EvaluationContext) -> ExprResult {
+                        match self {
+                            Variable::Let(bindings, expr) => {
+                                let mut old_bindings = BTreeMap::new();
+                                if let Ok(mut ctx_bindings) = ctx.bindings.try_borrow_mut() {
+                                    for (k, e) in bindings {
+                                        if let Some(old) = ctx_bindings.insert(k.clone(), e.clone())
+                                        {
+                                            old_bindings.insert(k.clone(), old);
+                                        }
+                                    }
+                                }
+                                let res = expr.eval(ctx)?;
+                                if let Ok(mut ctx_bindings) = ctx.bindings.try_borrow_mut() {
+                                    for (k, e) in old_bindings {
+                                        ctx_bindings.insert(k, e);
+                                    }
+                                }
+                                return Ok(res);
+                            }
+                            Variable::Var(name) => {
+                                let e = { ctx.bindings.borrow().get(name).map(|x| x.clone()) };
+                                if let Some(e) = e {
+                                    return e.eval(ctx);
+                                }
+                                {
+                                    ::rt::begin_panic(
+                                        "Did not find expression by name",
+                                        &("rmaps/src/map/style/expr/variables.rs", 97u32, 17u32),
+                                    )
+                                };
+                            }
+                        }
+                    }
+                }
+            }
+            pub mod logic {
+                use super::*;
+                use prelude::*;
+                use serde::de::Error;
+                use serde::Deserialize;
+                pub enum LogicOp {
+                    #[serde(rename = "!")]
+                    Not,
+
+                    #[serde(rename = "==")]
+                    Eq,
+
+                    #[serde(rename = "!=")]
+                    Neq,
+
+                    #[serde(rename = ">")]
+                    Gt,
+
+                    #[serde(rename = ">=")]
+                    Geq,
+
+                    #[serde(rename = "<")]
+                    Lt,
+
+                    #[serde(rename = "<=")]
+                    Leq,
+
+                    #[serde(rename = "all")]
+                    All,
+
+                    #[serde(rename = "any")]
+                    Any,
+
+                    #[serde(rename = "none")]
+                    None,
+                }
+                #[automatically_derived]
+                #[allow(unused_qualifications)]
+                impl ::std::fmt::Debug for LogicOp {
+                    fn fmt(&self, f: &mut ::std::fmt::Formatter) -> ::std::fmt::Result {
+                        match (&*self,) {
+                            (&LogicOp::Not,) => {
+                                let mut debug_trait_builder = f.debug_tuple("Not");
+                                debug_trait_builder.finish()
+                            }
+                            (&LogicOp::Eq,) => {
+                                let mut debug_trait_builder = f.debug_tuple("Eq");
+                                debug_trait_builder.finish()
+                            }
+                            (&LogicOp::Neq,) => {
+                                let mut debug_trait_builder = f.debug_tuple("Neq");
+                                debug_trait_builder.finish()
+                            }
+                            (&LogicOp::Gt,) => {
+                                let mut debug_trait_builder = f.debug_tuple("Gt");
+                                debug_trait_builder.finish()
+                            }
+                            (&LogicOp::Geq,) => {
+                                let mut debug_trait_builder = f.debug_tuple("Geq");
+                                debug_trait_builder.finish()
+                            }
+                            (&LogicOp::Lt,) => {
+                                let mut debug_trait_builder = f.debug_tuple("Lt");
+                                debug_trait_builder.finish()
+                            }
+                            (&LogicOp::Leq,) => {
+                                let mut debug_trait_builder = f.debug_tuple("Leq");
+                                debug_trait_builder.finish()
+                            }
+                            (&LogicOp::All,) => {
+                                let mut debug_trait_builder = f.debug_tuple("All");
+                                debug_trait_builder.finish()
+                            }
+                            (&LogicOp::Any,) => {
+                                let mut debug_trait_builder = f.debug_tuple("Any");
+                                debug_trait_builder.finish()
+                            }
+                            (&LogicOp::None,) => {
+                                let mut debug_trait_builder = f.debug_tuple("None");
+                                debug_trait_builder.finish()
+                            }
+                        }
+                    }
+                }
+                #[automatically_derived]
+                #[allow(unused_qualifications)]
+                impl ::std::clone::Clone for LogicOp {
+                    #[inline]
+                    fn clone(&self) -> LogicOp {
+                        match (&*self,) {
+                            (&LogicOp::Not,) => LogicOp::Not,
+                            (&LogicOp::Eq,) => LogicOp::Eq,
+                            (&LogicOp::Neq,) => LogicOp::Neq,
+                            (&LogicOp::Gt,) => LogicOp::Gt,
+                            (&LogicOp::Geq,) => LogicOp::Geq,
+                            (&LogicOp::Lt,) => LogicOp::Lt,
+                            (&LogicOp::Leq,) => LogicOp::Leq,
+                            (&LogicOp::All,) => LogicOp::All,
+                            (&LogicOp::Any,) => LogicOp::Any,
+                            (&LogicOp::None,) => LogicOp::None,
+                        }
+                    }
+                }
+                #[automatically_derived]
+                #[allow(unused_qualifications)]
+                impl ::std::cmp::PartialEq for LogicOp {
+                    #[inline]
+                    fn eq(&self, other: &LogicOp) -> bool {
+                        {
+                            let __self_vi =
+                                unsafe { ::std::intrinsics::discriminant_value(&*self) } as isize;
+                            let __arg_1_vi =
+                                unsafe { ::std::intrinsics::discriminant_value(&*other) } as isize;
+                            if true && __self_vi == __arg_1_vi {
+                                match (&*self, &*other) {
+                                    _ => true,
+                                }
+                            } else {
+                                false
+                            }
+                        }
+                    }
+                }
+                #[allow(non_upper_case_globals, unused_attributes, unused_qualifications)]
+                const _IMPL_DESERIALIZE_FOR_LogicOp: () = {
+                    extern crate serde as _serde;
+                    #[allow(unused_macros)]
+                    macro_rules! try(( $ __expr : expr ) => {
+                                         match $ __expr {
+                                         _serde :: export :: Ok ( __val ) =>
+                                         __val , _serde :: export :: Err (
+                                         __err ) => {
+                                         return _serde :: export :: Err (
+                                         __err ) ; } } });
+                    #[automatically_derived]
+                    impl<'de> _serde::Deserialize<'de> for LogicOp {
+                        fn deserialize<__D>(
+                            __deserializer: __D,
+                        ) -> _serde::export::Result<Self, __D::Error>
+                        where
+                            __D: _serde::Deserializer<'de>,
+                        {
+                            #[allow(non_camel_case_types)]
+                            enum __Field {
+                                __field0,
+                                __field1,
+                                __field2,
+                                __field3,
+                                __field4,
+                                __field5,
+                                __field6,
+                                __field7,
+                                __field8,
+                                __field9,
+                            }
+                            struct __FieldVisitor;
+                            impl<'de> _serde::de::Visitor<'de> for __FieldVisitor {
+                                type Value = __Field;
+                                fn expecting(
+                                    &self,
+                                    __formatter: &mut _serde::export::Formatter,
+                                ) -> _serde::export::fmt::Result {
+                                    _serde::export::Formatter::write_str(
+                                        __formatter,
+                                        "variant identifier",
+                                    )
+                                }
+                                fn visit_u64<__E>(
+                                    self,
+                                    __value: u64,
+                                ) -> _serde::export::Result<Self::Value, __E>
+                                where
+                                    __E: _serde::de::Error,
+                                {
+                                    match __value {
+                                        0u64 => _serde::export::Ok(__Field::__field0),
+                                        1u64 => _serde::export::Ok(__Field::__field1),
+                                        2u64 => _serde::export::Ok(__Field::__field2),
+                                        3u64 => _serde::export::Ok(__Field::__field3),
+                                        4u64 => _serde::export::Ok(__Field::__field4),
+                                        5u64 => _serde::export::Ok(__Field::__field5),
+                                        6u64 => _serde::export::Ok(__Field::__field6),
+                                        7u64 => _serde::export::Ok(__Field::__field7),
+                                        8u64 => _serde::export::Ok(__Field::__field8),
+                                        9u64 => _serde::export::Ok(__Field::__field9),
+                                        _ => _serde::export::Err(_serde::de::Error::invalid_value(
+                                            _serde::de::Unexpected::Unsigned(__value),
+                                            &"variant index 0 <= i < 10",
+                                        )),
+                                    }
+                                }
+                                fn visit_str<__E>(
+                                    self,
+                                    __value: &str,
+                                ) -> _serde::export::Result<Self::Value, __E>
+                                where
+                                    __E: _serde::de::Error,
+                                {
+                                    match __value {
+                                        "!" => _serde::export::Ok(__Field::__field0),
+                                        "==" => _serde::export::Ok(__Field::__field1),
+                                        "!=" => _serde::export::Ok(__Field::__field2),
+                                        ">" => _serde::export::Ok(__Field::__field3),
+                                        ">=" => _serde::export::Ok(__Field::__field4),
+                                        "<" => _serde::export::Ok(__Field::__field5),
+                                        "<=" => _serde::export::Ok(__Field::__field6),
+                                        "all" => _serde::export::Ok(__Field::__field7),
+                                        "any" => _serde::export::Ok(__Field::__field8),
+                                        "none" => _serde::export::Ok(__Field::__field9),
+                                        _ => _serde::export::Err(
+                                            _serde::de::Error::unknown_variant(__value, VARIANTS),
+                                        ),
+                                    }
+                                }
+                                fn visit_bytes<__E>(
+                                    self,
+                                    __value: &[u8],
+                                ) -> _serde::export::Result<Self::Value, __E>
+                                where
+                                    __E: _serde::de::Error,
+                                {
+                                    match __value {
+                                        b"!" => _serde::export::Ok(__Field::__field0),
+                                        b"==" => _serde::export::Ok(__Field::__field1),
+                                        b"!=" => _serde::export::Ok(__Field::__field2),
+                                        b">" => _serde::export::Ok(__Field::__field3),
+                                        b">=" => _serde::export::Ok(__Field::__field4),
+                                        b"<" => _serde::export::Ok(__Field::__field5),
+                                        b"<=" => _serde::export::Ok(__Field::__field6),
+                                        b"all" => _serde::export::Ok(__Field::__field7),
+                                        b"any" => _serde::export::Ok(__Field::__field8),
+                                        b"none" => _serde::export::Ok(__Field::__field9),
+                                        _ => {
+                                            let __value = &_serde::export::from_utf8_lossy(__value);
+                                            _serde::export::Err(_serde::de::Error::unknown_variant(
+                                                __value, VARIANTS,
+                                            ))
+                                        }
+                                    }
+                                }
+                            }
+                            impl<'de> _serde::Deserialize<'de> for __Field {
+                                #[inline]
+                                fn deserialize<__D>(
+                                    __deserializer: __D,
+                                ) -> _serde::export::Result<Self, __D::Error>
+                                where
+                                    __D: _serde::Deserializer<'de>,
+                                {
+                                    _serde::Deserializer::deserialize_identifier(
+                                        __deserializer,
+                                        __FieldVisitor,
+                                    )
+                                }
+                            }
+                            struct __Visitor<'de> {
+                                marker: _serde::export::PhantomData<LogicOp>,
+                                lifetime: _serde::export::PhantomData<&'de ()>,
+                            }
+                            impl<'de> _serde::de::Visitor<'de> for __Visitor<'de> {
+                                type Value = LogicOp;
+                                fn expecting(
+                                    &self,
+                                    __formatter: &mut _serde::export::Formatter,
+                                ) -> _serde::export::fmt::Result {
+                                    _serde::export::Formatter::write_str(
+                                        __formatter,
+                                        "enum LogicOp",
+                                    )
+                                }
+                                fn visit_enum<__A>(
+                                    self,
+                                    __data: __A,
+                                ) -> _serde::export::Result<Self::Value, __A::Error>
+                                where
+                                    __A: _serde::de::EnumAccess<'de>,
+                                {
+                                    match match _serde::de::EnumAccess::variant(__data) {
+                                        _serde::export::Ok(__val) => __val,
+                                        _serde::export::Err(__err) => {
+                                            return _serde::export::Err(__err);
+                                        }
+                                    } {
+                                        (__Field::__field0, __variant) => {
+                                            match _serde::de::VariantAccess::unit_variant(__variant)
+                                            {
+                                                _serde::export::Ok(__val) => __val,
+                                                _serde::export::Err(__err) => {
+                                                    return _serde::export::Err(__err);
+                                                }
+                                            };
+                                            _serde::export::Ok(LogicOp::Not)
+                                        }
+                                        (__Field::__field1, __variant) => {
+                                            match _serde::de::VariantAccess::unit_variant(__variant)
+                                            {
+                                                _serde::export::Ok(__val) => __val,
+                                                _serde::export::Err(__err) => {
+                                                    return _serde::export::Err(__err);
+                                                }
+                                            };
+                                            _serde::export::Ok(LogicOp::Eq)
+                                        }
+                                        (__Field::__field2, __variant) => {
+                                            match _serde::de::VariantAccess::unit_variant(__variant)
+                                            {
+                                                _serde::export::Ok(__val) => __val,
+                                                _serde::export::Err(__err) => {
+                                                    return _serde::export::Err(__err);
+                                                }
+                                            };
+                                            _serde::export::Ok(LogicOp::Neq)
+                                        }
+                                        (__Field::__field3, __variant) => {
+                                            match _serde::de::VariantAccess::unit_variant(__variant)
+                                            {
+                                                _serde::export::Ok(__val) => __val,
+                                                _serde::export::Err(__err) => {
+                                                    return _serde::export::Err(__err);
+                                                }
+                                            };
+                                            _serde::export::Ok(LogicOp::Gt)
+                                        }
+                                        (__Field::__field4, __variant) => {
+                                            match _serde::de::VariantAccess::unit_variant(__variant)
+                                            {
+                                                _serde::export::Ok(__val) => __val,
+                                                _serde::export::Err(__err) => {
+                                                    return _serde::export::Err(__err);
+                                                }
+                                            };
+                                            _serde::export::Ok(LogicOp::Geq)
+                                        }
+                                        (__Field::__field5, __variant) => {
+                                            match _serde::de::VariantAccess::unit_variant(__variant)
+                                            {
+                                                _serde::export::Ok(__val) => __val,
+                                                _serde::export::Err(__err) => {
+                                                    return _serde::export::Err(__err);
+                                                }
+                                            };
+                                            _serde::export::Ok(LogicOp::Lt)
+                                        }
+                                        (__Field::__field6, __variant) => {
+                                            match _serde::de::VariantAccess::unit_variant(__variant)
+                                            {
+                                                _serde::export::Ok(__val) => __val,
+                                                _serde::export::Err(__err) => {
+                                                    return _serde::export::Err(__err);
+                                                }
+                                            };
+                                            _serde::export::Ok(LogicOp::Leq)
+                                        }
+                                        (__Field::__field7, __variant) => {
+                                            match _serde::de::VariantAccess::unit_variant(__variant)
+                                            {
+                                                _serde::export::Ok(__val) => __val,
+                                                _serde::export::Err(__err) => {
+                                                    return _serde::export::Err(__err);
+                                                }
+                                            };
+                                            _serde::export::Ok(LogicOp::All)
+                                        }
+                                        (__Field::__field8, __variant) => {
+                                            match _serde::de::VariantAccess::unit_variant(__variant)
+                                            {
+                                                _serde::export::Ok(__val) => __val,
+                                                _serde::export::Err(__err) => {
+                                                    return _serde::export::Err(__err);
+                                                }
+                                            };
+                                            _serde::export::Ok(LogicOp::Any)
+                                        }
+                                        (__Field::__field9, __variant) => {
+                                            match _serde::de::VariantAccess::unit_variant(__variant)
+                                            {
+                                                _serde::export::Ok(__val) => __val,
+                                                _serde::export::Err(__err) => {
+                                                    return _serde::export::Err(__err);
+                                                }
+                                            };
+                                            _serde::export::Ok(LogicOp::None)
+                                        }
+                                    }
+                                }
+                            }
+                            const VARIANTS: &'static [&'static str] =
+                                &["!", "==", "!=", ">", ">=", "<", "<=", "all", "any", "none"];
+                            _serde::Deserializer::deserialize_enum(
+                                __deserializer,
+                                "LogicOp",
+                                VARIANTS,
+                                __Visitor {
+                                    marker: _serde::export::PhantomData::<LogicOp>,
+                                    lifetime: _serde::export::PhantomData,
+                                },
+                            )
+                        }
+                    }
+                };
+                impl LogicOp {
+                    fn min_args(&self) -> usize {
+                        0
+                    }
+                }
+                pub struct Logic(LogicOp, Vec<BaseExpr>);
+                #[automatically_derived]
+                #[allow(unused_qualifications)]
+                impl ::std::fmt::Debug for Logic {
+                    fn fmt(&self, f: &mut ::std::fmt::Formatter) -> ::std::fmt::Result {
+                        match *self {
+                            Logic(ref __self_0_0, ref __self_0_1) => {
+                                let mut debug_trait_builder = f.debug_tuple("Logic");
+                                let _ = debug_trait_builder.field(&&(*__self_0_0));
+                                let _ = debug_trait_builder.field(&&(*__self_0_1));
+                                debug_trait_builder.finish()
+                            }
+                        }
+                    }
+                }
+                #[automatically_derived]
+                #[allow(unused_qualifications)]
+                impl ::std::clone::Clone for Logic {
+                    #[inline]
+                    fn clone(&self) -> Logic {
+                        match *self {
+                            Logic(ref __self_0_0, ref __self_0_1) => Logic(
+                                ::std::clone::Clone::clone(&(*__self_0_0)),
+                                ::std::clone::Clone::clone(&(*__self_0_1)),
+                            ),
+                        }
+                    }
+                }
+                #[automatically_derived]
+                #[allow(unused_qualifications)]
+                impl ::std::cmp::PartialEq for Logic {
+                    #[inline]
+                    fn eq(&self, other: &Logic) -> bool {
+                        match *other {
+                            Logic(ref __self_1_0, ref __self_1_1) => match *self {
+                                Logic(ref __self_0_0, ref __self_0_1) => {
+                                    (*__self_0_0) == (*__self_1_0) && (*__self_0_1) == (*__self_1_1)
+                                }
+                            },
+                        }
+                    }
+                    #[inline]
+                    fn ne(&self, other: &Logic) -> bool {
+                        match *other {
+                            Logic(ref __self_1_0, ref __self_1_1) => match *self {
+                                Logic(ref __self_0_0, ref __self_0_1) => {
+                                    (*__self_0_0) != (*__self_1_0) || (*__self_0_1) != (*__self_1_1)
+                                }
+                            },
+                        }
+                    }
+                }
+                impl<'de> Deserialize<'de> for Logic {
+                    fn deserialize<D>(deserializer: D) -> StdResult<Self, D::Error>
+                    where
+                        D: Deserializer<'de>,
+                    {
+                        use serde::de::Error;
+                        let PrefixHelper(op, exprs) = Deserialize::deserialize(deserializer)?;
+                        return Ok(Logic(op, exprs));
+                    }
+                }
+                impl Expr for Logic {
+                    fn is_zoom(&self) -> bool {
+                        return self.1.iter().any(|e| e.is_zoom());
+                    }
+                    fn is_feature(&self) -> bool {
+                        return self.1.iter().any(|e| e.is_feature());
+                    }
+                    fn eval(&self, ctx: &EvaluationContext) -> ExprResult {
+                        return Ok(match (&self.0, &self.1[..]) {
+                            (LogicOp::Not, [a]) => (!expect_bool(a.eval(ctx)?)?).into(),
+                            (LogicOp::Neq, [a, b]) => (a.eval(ctx)? != b.eval(ctx)?),
+                            (LogicOp::Eq, [a, b]) => (a.eval(ctx)? == b.eval(ctx)?),
+                            (LogicOp::Lt, [a, b]) => (a.eval(ctx)? < b.eval(ctx)?),
+                            (LogicOp::Leq, [a, b]) => (a.eval(ctx)? <= b.eval(ctx)?),
+                            (LogicOp::Gt, [a, b]) => (a.eval(ctx)? > b.eval(ctx)?),
+                            (LogicOp::Geq, [a, b]) => (a.eval(ctx)? >= b.eval(ctx)?),
+                            (LogicOp::All, [exprs..]) => {
+                                let r: StdResult<Vec<_>, _> = exprs
+                                    .iter()
+                                    .map(|e| e.eval(ctx).and_then(|a| expect_bool(a)))
+                                    .collect();
+                                r?.iter().all(|a| *a)
+                            }
+                            (LogicOp::Any, [exprs..]) => {
+                                let r: StdResult<Vec<_>, _> = exprs
+                                    .iter()
+                                    .map(|e| e.eval(ctx).and_then(|a| expect_bool(a)))
+                                    .collect();
+                                r?.iter().any(|a| *a)
+                            }
+                            (LogicOp::None, [exprs..]) => {
+                                let r: StdResult<Vec<_>, _> = exprs
+                                    .iter()
+                                    .map(|e| e.eval(ctx).and_then(|a| expect_bool(a)))
+                                    .collect();
+                                r?.iter().all(|a| !*a)
+                            }
+                            (a, b) => {
+                                return Err(ExprEvalError::custom(::fmt::format(::std::fmt::Arguments::new_v1_formatted(&["Invalid combination of logical operation and arguments: op ",
+                                                                                                                                   ", args : "],
+                                                                                                                                 &match (&self.0,
+                                                                                                                                         &self.1)
+                                                                                                                                      {
+                                                                                                                                      (arg0,
+                                                                                                                                       arg1)
+                                                                                                                                      =>
+                                                                                                                                      [::std::fmt::ArgumentV1::new(arg0,
+                                                                                                                                                                   ::std::fmt::Debug::fmt),
+                                                                                                                                       ::std::fmt::ArgumentV1::new(arg1,
+                                                                                                                                                                   ::std::fmt::Debug::fmt)],
+                                                                                                                                  },
+                                                                                                                                 &[::std::fmt::rt::v1::Argument{position:
+                                                                                                                                                                    ::std::fmt::rt::v1::Position::At(0usize),
+                                                                                                                                                                format:
+                                                                                                                                                                    ::std::fmt::rt::v1::FormatSpec{fill:
+                                                                                                                                                                                                       ' ',
+                                                                                                                                                                                                   align:
+                                                                                                                                                                                                       ::std::fmt::rt::v1::Alignment::Unknown,
+                                                                                                                                                                                                   flags:
+                                                                                                                                                                                                       0u32,
+                                                                                                                                                                                                   precision:
+                                                                                                                                                                                                       ::std::fmt::rt::v1::Count::Implied,
+                                                                                                                                                                                                   width:
+                                                                                                                                                                                                       ::std::fmt::rt::v1::Count::Implied,},},
+                                                                                                                                   ::std::fmt::rt::v1::Argument{position:
+                                                                                                                                                                    ::std::fmt::rt::v1::Position::At(1usize),
+                                                                                                                                                                format:
+                                                                                                                                                                    ::std::fmt::rt::v1::FormatSpec{fill:
+                                                                                                                                                                                                       ' ',
+                                                                                                                                                                                                   align:
+                                                                                                                                                                                                       ::std::fmt::rt::v1::Alignment::Unknown,
+                                                                                                                                                                                                   flags:
+                                                                                                                                                                                                       0u32,
+                                                                                                                                                                                                   precision:
+                                                                                                                                                                                                       ::std::fmt::rt::v1::Count::Implied,
+                                                                                                                                                                                                   width:
+                                                                                                                                                                                                       ::std::fmt::rt::v1::Count::Implied,},}]))));
+                            }
+                        }.into());
+                    }
+                }
+            }
+            pub mod math {
+                use super::*;
+                use prelude::*;
+                use serde::Deserialize;
+                #[rustc_copy_clone_marker]
+                pub enum MathOp {
+                    #[serde(rename = "-")]
+                    Minus,
+
+                    #[serde(rename = "*")]
+                    Times,
+
+                    #[serde(rename = "/")]
+                    Div,
+
+                    #[serde(rename = "%")]
+                    Remainder,
+
+                    #[serde(rename = "^")]
+                    Power,
+
+                    #[serde(rename = "+")]
+                    Sum,
+
+                    #[serde(rename = "abs")]
+                    Abs,
+
+                    #[serde(rename = "acos")]
+                    Acos,
+
+                    #[serde(rename = "asin")]
+                    Asin,
+
+                    #[serde(rename = "atan")]
+                    Atan,
+
+                    #[serde(rename = "ceil")]
+                    Ceil,
+
+                    #[serde(rename = "cos")]
+                    Cos,
+
+                    #[serde(rename = "e")]
+                    E,
+
+                    #[serde(rename = "floor")]
+                    Floor,
+
+                    #[serde(rename = "ln")]
+                    Ln,
+
+                    #[serde(rename = "ln2")]
+                    Ln2,
+
+                    #[serde(rename = "log10")]
+                    Log10,
+
+                    #[serde(rename = "log2")]
+                    Log2,
+
+                    #[serde(rename = "max")]
+                    Max,
+
+                    #[serde(rename = "min")]
+                    Min,
+
+                    #[serde(rename = "pi")]
+                    Pi,
+
+                    #[serde(rename = "round")]
+                    Round,
+
+                    #[serde(rename = "sin")]
+                    Sin,
+
+                    #[serde(rename = "sqrt")]
+                    Sqrt,
+
+                    #[serde(rename = "tan")]
+                    Tan,
+                }
+                #[automatically_derived]
+                #[allow(unused_qualifications)]
+                impl ::std::fmt::Debug for MathOp {
+                    fn fmt(&self, f: &mut ::std::fmt::Formatter) -> ::std::fmt::Result {
+                        match (&*self,) {
+                            (&MathOp::Minus,) => {
+                                let mut debug_trait_builder = f.debug_tuple("Minus");
+                                debug_trait_builder.finish()
+                            }
+                            (&MathOp::Times,) => {
+                                let mut debug_trait_builder = f.debug_tuple("Times");
+                                debug_trait_builder.finish()
+                            }
+                            (&MathOp::Div,) => {
+                                let mut debug_trait_builder = f.debug_tuple("Div");
+                                debug_trait_builder.finish()
+                            }
+                            (&MathOp::Remainder,) => {
+                                let mut debug_trait_builder = f.debug_tuple("Remainder");
+                                debug_trait_builder.finish()
+                            }
+                            (&MathOp::Power,) => {
+                                let mut debug_trait_builder = f.debug_tuple("Power");
+                                debug_trait_builder.finish()
+                            }
+                            (&MathOp::Sum,) => {
+                                let mut debug_trait_builder = f.debug_tuple("Sum");
+                                debug_trait_builder.finish()
+                            }
+                            (&MathOp::Abs,) => {
+                                let mut debug_trait_builder = f.debug_tuple("Abs");
+                                debug_trait_builder.finish()
+                            }
+                            (&MathOp::Acos,) => {
+                                let mut debug_trait_builder = f.debug_tuple("Acos");
+                                debug_trait_builder.finish()
+                            }
+                            (&MathOp::Asin,) => {
+                                let mut debug_trait_builder = f.debug_tuple("Asin");
+                                debug_trait_builder.finish()
+                            }
+                            (&MathOp::Atan,) => {
+                                let mut debug_trait_builder = f.debug_tuple("Atan");
+                                debug_trait_builder.finish()
+                            }
+                            (&MathOp::Ceil,) => {
+                                let mut debug_trait_builder = f.debug_tuple("Ceil");
+                                debug_trait_builder.finish()
+                            }
+                            (&MathOp::Cos,) => {
+                                let mut debug_trait_builder = f.debug_tuple("Cos");
+                                debug_trait_builder.finish()
+                            }
+                            (&MathOp::E,) => {
+                                let mut debug_trait_builder = f.debug_tuple("E");
+                                debug_trait_builder.finish()
+                            }
+                            (&MathOp::Floor,) => {
+                                let mut debug_trait_builder = f.debug_tuple("Floor");
+                                debug_trait_builder.finish()
+                            }
+                            (&MathOp::Ln,) => {
+                                let mut debug_trait_builder = f.debug_tuple("Ln");
+                                debug_trait_builder.finish()
+                            }
+                            (&MathOp::Ln2,) => {
+                                let mut debug_trait_builder = f.debug_tuple("Ln2");
+                                debug_trait_builder.finish()
+                            }
+                            (&MathOp::Log10,) => {
+                                let mut debug_trait_builder = f.debug_tuple("Log10");
+                                debug_trait_builder.finish()
+                            }
+                            (&MathOp::Log2,) => {
+                                let mut debug_trait_builder = f.debug_tuple("Log2");
+                                debug_trait_builder.finish()
+                            }
+                            (&MathOp::Max,) => {
+                                let mut debug_trait_builder = f.debug_tuple("Max");
+                                debug_trait_builder.finish()
+                            }
+                            (&MathOp::Min,) => {
+                                let mut debug_trait_builder = f.debug_tuple("Min");
+                                debug_trait_builder.finish()
+                            }
+                            (&MathOp::Pi,) => {
+                                let mut debug_trait_builder = f.debug_tuple("Pi");
+                                debug_trait_builder.finish()
+                            }
+                            (&MathOp::Round,) => {
+                                let mut debug_trait_builder = f.debug_tuple("Round");
+                                debug_trait_builder.finish()
+                            }
+                            (&MathOp::Sin,) => {
+                                let mut debug_trait_builder = f.debug_tuple("Sin");
+                                debug_trait_builder.finish()
+                            }
+                            (&MathOp::Sqrt,) => {
+                                let mut debug_trait_builder = f.debug_tuple("Sqrt");
+                                debug_trait_builder.finish()
+                            }
+                            (&MathOp::Tan,) => {
+                                let mut debug_trait_builder = f.debug_tuple("Tan");
+                                debug_trait_builder.finish()
+                            }
+                        }
+                    }
+                }
+                #[automatically_derived]
+                #[allow(unused_qualifications)]
+                impl ::std::clone::Clone for MathOp {
+                    #[inline]
+                    fn clone(&self) -> MathOp {
+                        {
+                            *self
+                        }
+                    }
+                }
+                #[automatically_derived]
+                #[allow(unused_qualifications)]
+                impl ::std::marker::Copy for MathOp {}
+                #[automatically_derived]
+                #[allow(unused_qualifications)]
+                impl ::std::cmp::PartialEq for MathOp {
+                    #[inline]
+                    fn eq(&self, other: &MathOp) -> bool {
+                        {
+                            let __self_vi =
+                                unsafe { ::std::intrinsics::discriminant_value(&*self) } as isize;
+                            let __arg_1_vi =
+                                unsafe { ::std::intrinsics::discriminant_value(&*other) } as isize;
+                            if true && __self_vi == __arg_1_vi {
+                                match (&*self, &*other) {
+                                    _ => true,
+                                }
+                            } else {
+                                false
+                            }
+                        }
+                    }
+                }
+                #[allow(non_upper_case_globals, unused_attributes, unused_qualifications)]
+                const _IMPL_DESERIALIZE_FOR_MathOp: () = {
+                    extern crate serde as _serde;
+                    #[allow(unused_macros)]
+                    macro_rules! try(( $ __expr : expr ) => {
+                                         match $ __expr {
+                                         _serde :: export :: Ok ( __val ) =>
+                                         __val , _serde :: export :: Err (
+                                         __err ) => {
+                                         return _serde :: export :: Err (
+                                         __err ) ; } } });
+                    #[automatically_derived]
+                    impl<'de> _serde::Deserialize<'de> for MathOp {
+                        fn deserialize<__D>(
+                            __deserializer: __D,
+                        ) -> _serde::export::Result<Self, __D::Error>
+                        where
+                            __D: _serde::Deserializer<'de>,
+                        {
+                            #[allow(non_camel_case_types)]
+                            enum __Field {
+                                __field0,
+                                __field1,
+                                __field2,
+                                __field3,
+                                __field4,
+                                __field5,
+                                __field6,
+                                __field7,
+                                __field8,
+                                __field9,
+                                __field10,
+                                __field11,
+                                __field12,
+                                __field13,
+                                __field14,
+                                __field15,
+                                __field16,
+                                __field17,
+                                __field18,
+                                __field19,
+                                __field20,
+                                __field21,
+                                __field22,
+                                __field23,
+                                __field24,
+                            }
+                            struct __FieldVisitor;
+                            impl<'de> _serde::de::Visitor<'de> for __FieldVisitor {
+                                type Value = __Field;
+                                fn expecting(
+                                    &self,
+                                    __formatter: &mut _serde::export::Formatter,
+                                ) -> _serde::export::fmt::Result {
+                                    _serde::export::Formatter::write_str(
+                                        __formatter,
+                                        "variant identifier",
+                                    )
+                                }
+                                fn visit_u64<__E>(
+                                    self,
+                                    __value: u64,
+                                ) -> _serde::export::Result<Self::Value, __E>
+                                where
+                                    __E: _serde::de::Error,
+                                {
+                                    match __value {
+                                        0u64 => _serde::export::Ok(__Field::__field0),
+                                        1u64 => _serde::export::Ok(__Field::__field1),
+                                        2u64 => _serde::export::Ok(__Field::__field2),
+                                        3u64 => _serde::export::Ok(__Field::__field3),
+                                        4u64 => _serde::export::Ok(__Field::__field4),
+                                        5u64 => _serde::export::Ok(__Field::__field5),
+                                        6u64 => _serde::export::Ok(__Field::__field6),
+                                        7u64 => _serde::export::Ok(__Field::__field7),
+                                        8u64 => _serde::export::Ok(__Field::__field8),
+                                        9u64 => _serde::export::Ok(__Field::__field9),
+                                        10u64 => _serde::export::Ok(__Field::__field10),
+                                        11u64 => _serde::export::Ok(__Field::__field11),
+                                        12u64 => _serde::export::Ok(__Field::__field12),
+                                        13u64 => _serde::export::Ok(__Field::__field13),
+                                        14u64 => _serde::export::Ok(__Field::__field14),
+                                        15u64 => _serde::export::Ok(__Field::__field15),
+                                        16u64 => _serde::export::Ok(__Field::__field16),
+                                        17u64 => _serde::export::Ok(__Field::__field17),
+                                        18u64 => _serde::export::Ok(__Field::__field18),
+                                        19u64 => _serde::export::Ok(__Field::__field19),
+                                        20u64 => _serde::export::Ok(__Field::__field20),
+                                        21u64 => _serde::export::Ok(__Field::__field21),
+                                        22u64 => _serde::export::Ok(__Field::__field22),
+                                        23u64 => _serde::export::Ok(__Field::__field23),
+                                        24u64 => _serde::export::Ok(__Field::__field24),
+                                        _ => _serde::export::Err(_serde::de::Error::invalid_value(
+                                            _serde::de::Unexpected::Unsigned(__value),
+                                            &"variant index 0 <= i < 25",
+                                        )),
+                                    }
+                                }
+                                fn visit_str<__E>(
+                                    self,
+                                    __value: &str,
+                                ) -> _serde::export::Result<Self::Value, __E>
+                                where
+                                    __E: _serde::de::Error,
+                                {
+                                    match __value {
+                                        "-" => _serde::export::Ok(__Field::__field0),
+                                        "*" => _serde::export::Ok(__Field::__field1),
+                                        "/" => _serde::export::Ok(__Field::__field2),
+                                        "%" => _serde::export::Ok(__Field::__field3),
+                                        "^" => _serde::export::Ok(__Field::__field4),
+                                        "+" => _serde::export::Ok(__Field::__field5),
+                                        "abs" => _serde::export::Ok(__Field::__field6),
+                                        "acos" => _serde::export::Ok(__Field::__field7),
+                                        "asin" => _serde::export::Ok(__Field::__field8),
+                                        "atan" => _serde::export::Ok(__Field::__field9),
+                                        "ceil" => _serde::export::Ok(__Field::__field10),
+                                        "cos" => _serde::export::Ok(__Field::__field11),
+                                        "e" => _serde::export::Ok(__Field::__field12),
+                                        "floor" => _serde::export::Ok(__Field::__field13),
+                                        "ln" => _serde::export::Ok(__Field::__field14),
+                                        "ln2" => _serde::export::Ok(__Field::__field15),
+                                        "log10" => _serde::export::Ok(__Field::__field16),
+                                        "log2" => _serde::export::Ok(__Field::__field17),
+                                        "max" => _serde::export::Ok(__Field::__field18),
+                                        "min" => _serde::export::Ok(__Field::__field19),
+                                        "pi" => _serde::export::Ok(__Field::__field20),
+                                        "round" => _serde::export::Ok(__Field::__field21),
+                                        "sin" => _serde::export::Ok(__Field::__field22),
+                                        "sqrt" => _serde::export::Ok(__Field::__field23),
+                                        "tan" => _serde::export::Ok(__Field::__field24),
+                                        _ => _serde::export::Err(
+                                            _serde::de::Error::unknown_variant(__value, VARIANTS),
+                                        ),
+                                    }
+                                }
+                                fn visit_bytes<__E>(
+                                    self,
+                                    __value: &[u8],
+                                ) -> _serde::export::Result<Self::Value, __E>
+                                where
+                                    __E: _serde::de::Error,
+                                {
+                                    match __value {
+                                        b"-" => _serde::export::Ok(__Field::__field0),
+                                        b"*" => _serde::export::Ok(__Field::__field1),
+                                        b"/" => _serde::export::Ok(__Field::__field2),
+                                        b"%" => _serde::export::Ok(__Field::__field3),
+                                        b"^" => _serde::export::Ok(__Field::__field4),
+                                        b"+" => _serde::export::Ok(__Field::__field5),
+                                        b"abs" => _serde::export::Ok(__Field::__field6),
+                                        b"acos" => _serde::export::Ok(__Field::__field7),
+                                        b"asin" => _serde::export::Ok(__Field::__field8),
+                                        b"atan" => _serde::export::Ok(__Field::__field9),
+                                        b"ceil" => _serde::export::Ok(__Field::__field10),
+                                        b"cos" => _serde::export::Ok(__Field::__field11),
+                                        b"e" => _serde::export::Ok(__Field::__field12),
+                                        b"floor" => _serde::export::Ok(__Field::__field13),
+                                        b"ln" => _serde::export::Ok(__Field::__field14),
+                                        b"ln2" => _serde::export::Ok(__Field::__field15),
+                                        b"log10" => _serde::export::Ok(__Field::__field16),
+                                        b"log2" => _serde::export::Ok(__Field::__field17),
+                                        b"max" => _serde::export::Ok(__Field::__field18),
+                                        b"min" => _serde::export::Ok(__Field::__field19),
+                                        b"pi" => _serde::export::Ok(__Field::__field20),
+                                        b"round" => _serde::export::Ok(__Field::__field21),
+                                        b"sin" => _serde::export::Ok(__Field::__field22),
+                                        b"sqrt" => _serde::export::Ok(__Field::__field23),
+                                        b"tan" => _serde::export::Ok(__Field::__field24),
+                                        _ => {
+                                            let __value = &_serde::export::from_utf8_lossy(__value);
+                                            _serde::export::Err(_serde::de::Error::unknown_variant(
+                                                __value, VARIANTS,
+                                            ))
+                                        }
+                                    }
+                                }
+                            }
+                            impl<'de> _serde::Deserialize<'de> for __Field {
+                                #[inline]
+                                fn deserialize<__D>(
+                                    __deserializer: __D,
+                                ) -> _serde::export::Result<Self, __D::Error>
+                                where
+                                    __D: _serde::Deserializer<'de>,
+                                {
+                                    _serde::Deserializer::deserialize_identifier(
+                                        __deserializer,
+                                        __FieldVisitor,
+                                    )
+                                }
+                            }
+                            struct __Visitor<'de> {
+                                marker: _serde::export::PhantomData<MathOp>,
+                                lifetime: _serde::export::PhantomData<&'de ()>,
+                            }
+                            impl<'de> _serde::de::Visitor<'de> for __Visitor<'de> {
+                                type Value = MathOp;
+                                fn expecting(
+                                    &self,
+                                    __formatter: &mut _serde::export::Formatter,
+                                ) -> _serde::export::fmt::Result {
+                                    _serde::export::Formatter::write_str(__formatter, "enum MathOp")
+                                }
+                                fn visit_enum<__A>(
+                                    self,
+                                    __data: __A,
+                                ) -> _serde::export::Result<Self::Value, __A::Error>
+                                where
+                                    __A: _serde::de::EnumAccess<'de>,
+                                {
+                                    match match _serde::de::EnumAccess::variant(__data) {
+                                        _serde::export::Ok(__val) => __val,
+                                        _serde::export::Err(__err) => {
+                                            return _serde::export::Err(__err);
+                                        }
+                                    } {
+                                        (__Field::__field0, __variant) => {
+                                            match _serde::de::VariantAccess::unit_variant(__variant)
+                                            {
+                                                _serde::export::Ok(__val) => __val,
+                                                _serde::export::Err(__err) => {
+                                                    return _serde::export::Err(__err);
+                                                }
+                                            };
+                                            _serde::export::Ok(MathOp::Minus)
+                                        }
+                                        (__Field::__field1, __variant) => {
+                                            match _serde::de::VariantAccess::unit_variant(__variant)
+                                            {
+                                                _serde::export::Ok(__val) => __val,
+                                                _serde::export::Err(__err) => {
+                                                    return _serde::export::Err(__err);
+                                                }
+                                            };
+                                            _serde::export::Ok(MathOp::Times)
+                                        }
+                                        (__Field::__field2, __variant) => {
+                                            match _serde::de::VariantAccess::unit_variant(__variant)
+                                            {
+                                                _serde::export::Ok(__val) => __val,
+                                                _serde::export::Err(__err) => {
+                                                    return _serde::export::Err(__err);
+                                                }
+                                            };
+                                            _serde::export::Ok(MathOp::Div)
+                                        }
+                                        (__Field::__field3, __variant) => {
+                                            match _serde::de::VariantAccess::unit_variant(__variant)
+                                            {
+                                                _serde::export::Ok(__val) => __val,
+                                                _serde::export::Err(__err) => {
+                                                    return _serde::export::Err(__err);
+                                                }
+                                            };
+                                            _serde::export::Ok(MathOp::Remainder)
+                                        }
+                                        (__Field::__field4, __variant) => {
+                                            match _serde::de::VariantAccess::unit_variant(__variant)
+                                            {
+                                                _serde::export::Ok(__val) => __val,
+                                                _serde::export::Err(__err) => {
+                                                    return _serde::export::Err(__err);
+                                                }
+                                            };
+                                            _serde::export::Ok(MathOp::Power)
+                                        }
+                                        (__Field::__field5, __variant) => {
+                                            match _serde::de::VariantAccess::unit_variant(__variant)
+                                            {
+                                                _serde::export::Ok(__val) => __val,
+                                                _serde::export::Err(__err) => {
+                                                    return _serde::export::Err(__err);
+                                                }
+                                            };
+                                            _serde::export::Ok(MathOp::Sum)
+                                        }
+                                        (__Field::__field6, __variant) => {
+                                            match _serde::de::VariantAccess::unit_variant(__variant)
+                                            {
+                                                _serde::export::Ok(__val) => __val,
+                                                _serde::export::Err(__err) => {
+                                                    return _serde::export::Err(__err);
+                                                }
+                                            };
+                                            _serde::export::Ok(MathOp::Abs)
+                                        }
+                                        (__Field::__field7, __variant) => {
+                                            match _serde::de::VariantAccess::unit_variant(__variant)
+                                            {
+                                                _serde::export::Ok(__val) => __val,
+                                                _serde::export::Err(__err) => {
+                                                    return _serde::export::Err(__err);
+                                                }
+                                            };
+                                            _serde::export::Ok(MathOp::Acos)
+                                        }
+                                        (__Field::__field8, __variant) => {
+                                            match _serde::de::VariantAccess::unit_variant(__variant)
+                                            {
+                                                _serde::export::Ok(__val) => __val,
+                                                _serde::export::Err(__err) => {
+                                                    return _serde::export::Err(__err);
+                                                }
+                                            };
+                                            _serde::export::Ok(MathOp::Asin)
+                                        }
+                                        (__Field::__field9, __variant) => {
+                                            match _serde::de::VariantAccess::unit_variant(__variant)
+                                            {
+                                                _serde::export::Ok(__val) => __val,
+                                                _serde::export::Err(__err) => {
+                                                    return _serde::export::Err(__err);
+                                                }
+                                            };
+                                            _serde::export::Ok(MathOp::Atan)
+                                        }
+                                        (__Field::__field10, __variant) => {
+                                            match _serde::de::VariantAccess::unit_variant(__variant)
+                                            {
+                                                _serde::export::Ok(__val) => __val,
+                                                _serde::export::Err(__err) => {
+                                                    return _serde::export::Err(__err);
+                                                }
+                                            };
+                                            _serde::export::Ok(MathOp::Ceil)
+                                        }
+                                        (__Field::__field11, __variant) => {
+                                            match _serde::de::VariantAccess::unit_variant(__variant)
+                                            {
+                                                _serde::export::Ok(__val) => __val,
+                                                _serde::export::Err(__err) => {
+                                                    return _serde::export::Err(__err);
+                                                }
+                                            };
+                                            _serde::export::Ok(MathOp::Cos)
+                                        }
+                                        (__Field::__field12, __variant) => {
+                                            match _serde::de::VariantAccess::unit_variant(__variant)
+                                            {
+                                                _serde::export::Ok(__val) => __val,
+                                                _serde::export::Err(__err) => {
+                                                    return _serde::export::Err(__err);
+                                                }
+                                            };
+                                            _serde::export::Ok(MathOp::E)
+                                        }
+                                        (__Field::__field13, __variant) => {
+                                            match _serde::de::VariantAccess::unit_variant(__variant)
+                                            {
+                                                _serde::export::Ok(__val) => __val,
+                                                _serde::export::Err(__err) => {
+                                                    return _serde::export::Err(__err);
+                                                }
+                                            };
+                                            _serde::export::Ok(MathOp::Floor)
+                                        }
+                                        (__Field::__field14, __variant) => {
+                                            match _serde::de::VariantAccess::unit_variant(__variant)
+                                            {
+                                                _serde::export::Ok(__val) => __val,
+                                                _serde::export::Err(__err) => {
+                                                    return _serde::export::Err(__err);
+                                                }
+                                            };
+                                            _serde::export::Ok(MathOp::Ln)
+                                        }
+                                        (__Field::__field15, __variant) => {
+                                            match _serde::de::VariantAccess::unit_variant(__variant)
+                                            {
+                                                _serde::export::Ok(__val) => __val,
+                                                _serde::export::Err(__err) => {
+                                                    return _serde::export::Err(__err);
+                                                }
+                                            };
+                                            _serde::export::Ok(MathOp::Ln2)
+                                        }
+                                        (__Field::__field16, __variant) => {
+                                            match _serde::de::VariantAccess::unit_variant(__variant)
+                                            {
+                                                _serde::export::Ok(__val) => __val,
+                                                _serde::export::Err(__err) => {
+                                                    return _serde::export::Err(__err);
+                                                }
+                                            };
+                                            _serde::export::Ok(MathOp::Log10)
+                                        }
+                                        (__Field::__field17, __variant) => {
+                                            match _serde::de::VariantAccess::unit_variant(__variant)
+                                            {
+                                                _serde::export::Ok(__val) => __val,
+                                                _serde::export::Err(__err) => {
+                                                    return _serde::export::Err(__err);
+                                                }
+                                            };
+                                            _serde::export::Ok(MathOp::Log2)
+                                        }
+                                        (__Field::__field18, __variant) => {
+                                            match _serde::de::VariantAccess::unit_variant(__variant)
+                                            {
+                                                _serde::export::Ok(__val) => __val,
+                                                _serde::export::Err(__err) => {
+                                                    return _serde::export::Err(__err);
+                                                }
+                                            };
+                                            _serde::export::Ok(MathOp::Max)
+                                        }
+                                        (__Field::__field19, __variant) => {
+                                            match _serde::de::VariantAccess::unit_variant(__variant)
+                                            {
+                                                _serde::export::Ok(__val) => __val,
+                                                _serde::export::Err(__err) => {
+                                                    return _serde::export::Err(__err);
+                                                }
+                                            };
+                                            _serde::export::Ok(MathOp::Min)
+                                        }
+                                        (__Field::__field20, __variant) => {
+                                            match _serde::de::VariantAccess::unit_variant(__variant)
+                                            {
+                                                _serde::export::Ok(__val) => __val,
+                                                _serde::export::Err(__err) => {
+                                                    return _serde::export::Err(__err);
+                                                }
+                                            };
+                                            _serde::export::Ok(MathOp::Pi)
+                                        }
+                                        (__Field::__field21, __variant) => {
+                                            match _serde::de::VariantAccess::unit_variant(__variant)
+                                            {
+                                                _serde::export::Ok(__val) => __val,
+                                                _serde::export::Err(__err) => {
+                                                    return _serde::export::Err(__err);
+                                                }
+                                            };
+                                            _serde::export::Ok(MathOp::Round)
+                                        }
+                                        (__Field::__field22, __variant) => {
+                                            match _serde::de::VariantAccess::unit_variant(__variant)
+                                            {
+                                                _serde::export::Ok(__val) => __val,
+                                                _serde::export::Err(__err) => {
+                                                    return _serde::export::Err(__err);
+                                                }
+                                            };
+                                            _serde::export::Ok(MathOp::Sin)
+                                        }
+                                        (__Field::__field23, __variant) => {
+                                            match _serde::de::VariantAccess::unit_variant(__variant)
+                                            {
+                                                _serde::export::Ok(__val) => __val,
+                                                _serde::export::Err(__err) => {
+                                                    return _serde::export::Err(__err);
+                                                }
+                                            };
+                                            _serde::export::Ok(MathOp::Sqrt)
+                                        }
+                                        (__Field::__field24, __variant) => {
+                                            match _serde::de::VariantAccess::unit_variant(__variant)
+                                            {
+                                                _serde::export::Ok(__val) => __val,
+                                                _serde::export::Err(__err) => {
+                                                    return _serde::export::Err(__err);
+                                                }
+                                            };
+                                            _serde::export::Ok(MathOp::Tan)
+                                        }
+                                    }
+                                }
+                            }
+                            const VARIANTS: &'static [&'static str] = &[
+                                "-", "*", "/", "%", "^", "+", "abs", "acos", "asin", "atan",
+                                "ceil", "cos", "e", "floor", "ln", "ln2", "log10", "log2", "max",
+                                "min", "pi", "round", "sin", "sqrt", "tan",
+                            ];
+                            _serde::Deserializer::deserialize_enum(
+                                __deserializer,
+                                "MathOp",
+                                VARIANTS,
+                                __Visitor {
+                                    marker: _serde::export::PhantomData::<MathOp>,
+                                    lifetime: _serde::export::PhantomData,
+                                },
+                            )
+                        }
+                    }
+                };
+                pub struct Math(MathOp, Vec<BaseExpr>);
+                #[automatically_derived]
+                #[allow(unused_qualifications)]
+                impl ::std::fmt::Debug for Math {
+                    fn fmt(&self, f: &mut ::std::fmt::Formatter) -> ::std::fmt::Result {
+                        match *self {
+                            Math(ref __self_0_0, ref __self_0_1) => {
+                                let mut debug_trait_builder = f.debug_tuple("Math");
+                                let _ = debug_trait_builder.field(&&(*__self_0_0));
+                                let _ = debug_trait_builder.field(&&(*__self_0_1));
+                                debug_trait_builder.finish()
+                            }
+                        }
+                    }
+                }
+                #[automatically_derived]
+                #[allow(unused_qualifications)]
+                impl ::std::clone::Clone for Math {
+                    #[inline]
+                    fn clone(&self) -> Math {
+                        match *self {
+                            Math(ref __self_0_0, ref __self_0_1) => Math(
+                                ::std::clone::Clone::clone(&(*__self_0_0)),
+                                ::std::clone::Clone::clone(&(*__self_0_1)),
+                            ),
+                        }
+                    }
+                }
+                #[automatically_derived]
+                #[allow(unused_qualifications)]
+                impl ::std::cmp::PartialEq for Math {
+                    #[inline]
+                    fn eq(&self, other: &Math) -> bool {
+                        match *other {
+                            Math(ref __self_1_0, ref __self_1_1) => match *self {
+                                Math(ref __self_0_0, ref __self_0_1) => {
+                                    (*__self_0_0) == (*__self_1_0) && (*__self_0_1) == (*__self_1_1)
+                                }
+                            },
+                        }
+                    }
+                    #[inline]
+                    fn ne(&self, other: &Math) -> bool {
+                        match *other {
+                            Math(ref __self_1_0, ref __self_1_1) => match *self {
+                                Math(ref __self_0_0, ref __self_0_1) => {
+                                    (*__self_0_0) != (*__self_1_0) || (*__self_0_1) != (*__self_1_1)
+                                }
+                            },
+                        }
+                    }
+                }
+                impl<'de> Deserialize<'de> for Math {
+                    fn deserialize<D>(
+                        deserializer: D,
+                    ) -> StdResult<Self, <D as Deserializer<'de>>::Error>
+                    where
+                        D: Deserializer<'de>,
+                    {
+                        use serde::de::Error;
+                        let PrefixHelper(op, exprs) = Deserialize::deserialize(deserializer)?;
+                        return Ok(Math(op, exprs));
+                    }
+                }
+                impl Math {
+                    fn min_args(&self) -> usize {
+                        return match self.0 {
+                            MathOp::Minus => 1,
+                            MathOp::Times => 2,
+                            MathOp::Div => 2,
+                            MathOp::Remainder => 2,
+                            MathOp::Power => 2,
+                            MathOp::Sum => 2,
+                            MathOp::Abs => 1,
+                            MathOp::Acos => 1,
+                            MathOp::Asin => 1,
+                            MathOp::Atan => 1,
+                            MathOp::Ceil => 1,
+                            MathOp::Cos => 1,
+                            MathOp::E => 0,
+                            MathOp::Floor => 1,
+                            MathOp::Ln => 1,
+                            MathOp::Ln2 => 0,
+                            MathOp::Log10 => 1,
+                            MathOp::Log2 => 1,
+                            MathOp::Max => 1,
+                            MathOp::Min => 1,
+                            MathOp::Pi => 0,
+                            MathOp::Round => 1,
+                            MathOp::Sin => 1,
+                            MathOp::Sqrt => 1,
+                            MathOp::Tan => 1,
+                        };
+                    }
+                }
+                fn eval_num(
+                    e: &BaseExpr,
+                    ctx: &EvaluationContext,
+                ) -> StdResult<f64, ExprEvalError> {
+                    let e = e.eval(ctx)?;
+                    return Ok(e.as_number().unwrap());
+                }
+                impl Expr for Math {
+                    fn is_zoom(&self) -> bool {
+                        return self.1.iter().any(|e| e.is_zoom());
+                    }
+                    fn is_feature(&self) -> bool {
+                        return self.1.iter().any(|e| e.is_feature());
+                    }
+                    fn eval(&self, ctx: &EvaluationContext) -> ExprResult {
+                        let _ = expect_len(&self.1, self.min_args())?;
+                        return Ok(match (&self.0, &self.1[..]) {
+                            (MathOp::Minus, [e]) => (-eval_num(e, ctx)?),
+                            (MathOp::Minus, [a, b]) => (eval_num(a, ctx)? - eval_num(b, ctx)?),
+                            (MathOp::Times, [a, rest..]) => {
+                                let mut r = eval_num(a, ctx)?;
+                                for b in rest {
+                                    r *= eval_num(b, ctx)?;
+                                }
+                                r
+                            }
+                            (MathOp::Div, [a, b]) => eval_num(a, ctx)? / eval_num(b, ctx)?,
+                            (MathOp::Remainder, [a, b]) => {
+                                (eval_num(a, ctx)? as i64 % eval_num(b, ctx)? as i64) as f64
+                            }
+                            (MathOp::Power, [a, b]) => {
+                                f64::powf(eval_num(a, ctx)?, eval_num(b, ctx)?)
+                            }
+                            (MathOp::Sum, [a, rest..]) => {
+                                let mut r = eval_num(a, ctx)?;
+                                for b in rest {
+                                    r += eval_num(b, ctx)?;
+                                }
+                                r
+                            }
+                            (MathOp::Abs, [a]) => f64::abs(eval_num(a, ctx)?),
+                            (MathOp::Acos, [a]) => f64::acos(eval_num(a, ctx)?),
+                            (MathOp::Asin, [a]) => f64::asin(eval_num(a, ctx)?),
+                            (MathOp::Atan, [a]) => f64::atan(eval_num(a, ctx)?),
+                            (MathOp::Ceil, [a]) => f64::ceil(eval_num(a, ctx)?),
+                            (MathOp::Cos, [a]) => f64::cos(eval_num(a, ctx)?),
+                            (MathOp::E, []) => ::std::f64::consts::E,
+                            (MathOp::Floor, [a]) => f64::floor(eval_num(a, ctx)?),
+                            (MathOp::Ln, [a]) => f64::log(eval_num(a, ctx)?, ::std::f64::consts::E),
+                            (MathOp::Ln2, []) => f64::log(2., ::std::f64::consts::E),
+                            (MathOp::Log10, [a]) => f64::log10(eval_num(a, ctx)?),
+                            (MathOp::Log2, [a]) => f64::log2(eval_num(a, ctx)?),
+                            (MathOp::Max, [a, rest..]) => {
+                                let mut r = eval_num(a, ctx)?;
+                                for b in rest {
+                                    r = f64::max(r, eval_num(b, ctx)?);
+                                }
+                                r
+                            }
+                            (MathOp::Min, [a, rest..]) => {
+                                let mut r = eval_num(a, ctx)?;
+                                for b in rest {
+                                    r = f64::min(r, eval_num(b, ctx)?);
+                                }
+                                r
+                            }
+                            (MathOp::Pi, []) => ::std::f64::consts::PI,
+                            (MathOp::Round, [a]) => f64::round(eval_num(a, ctx)?),
+                            (MathOp::Sin, [a]) => f64::sin(eval_num(a, ctx)?),
+                            (MathOp::Sqrt, [a]) => f64::sqrt(eval_num(a, ctx)?),
+                            (MathOp::Tan, [a]) => f64::tan(eval_num(a, ctx)?),
+                            _ => {
+                                return Err(ExprEvalError::custom(::fmt::format(
+                                    ::std::fmt::Arguments::new_v1_formatted(
+                                        &[
+                                            "Mismatchet math operation and arguments : ",
+                                            " used on ",
+                                        ],
+                                        &match (&self.0, &self.1) {
+                                            (arg0, arg1) => [
+                                                ::std::fmt::ArgumentV1::new(
+                                                    arg0,
+                                                    ::std::fmt::Debug::fmt,
+                                                ),
+                                                ::std::fmt::ArgumentV1::new(
+                                                    arg1,
+                                                    ::std::fmt::Debug::fmt,
+                                                ),
+                                            ],
+                                        },
+                                        &[
+                                            ::std::fmt::rt::v1::Argument {
+                                                position: ::std::fmt::rt::v1::Position::At(0usize),
+                                                format: ::std::fmt::rt::v1::FormatSpec {
+                                                    fill: ' ',
+                                                    align: ::std::fmt::rt::v1::Alignment::Unknown,
+                                                    flags: 0u32,
+                                                    precision: ::std::fmt::rt::v1::Count::Implied,
+                                                    width: ::std::fmt::rt::v1::Count::Implied,
+                                                },
+                                            },
+                                            ::std::fmt::rt::v1::Argument {
+                                                position: ::std::fmt::rt::v1::Position::At(1usize),
+                                                format: ::std::fmt::rt::v1::FormatSpec {
+                                                    fill: ' ',
+                                                    align: ::std::fmt::rt::v1::Alignment::Unknown,
+                                                    flags: 0u32,
+                                                    precision: ::std::fmt::rt::v1::Count::Implied,
+                                                    width: ::std::fmt::rt::v1::Count::Implied,
+                                                },
+                                            },
+                                        ],
+                                    ),
+                                )));
+                            }
+                        }.into());
+                    }
+                }
+            }
+            pub mod string {
+                use super::*;
+                use prelude::*;
+                pub enum Str {
+                    Concat(Vec<BaseExpr>),
+                    Downcase(BaseExpr),
+                    Upcase(BaseExpr),
+                }
+                #[automatically_derived]
+                #[allow(unused_qualifications)]
+                impl ::std::fmt::Debug for Str {
+                    fn fmt(&self, f: &mut ::std::fmt::Formatter) -> ::std::fmt::Result {
+                        match (&*self,) {
+                            (&Str::Concat(ref __self_0),) => {
+                                let mut debug_trait_builder = f.debug_tuple("Concat");
+                                let _ = debug_trait_builder.field(&&(*__self_0));
+                                debug_trait_builder.finish()
+                            }
+                            (&Str::Downcase(ref __self_0),) => {
+                                let mut debug_trait_builder = f.debug_tuple("Downcase");
+                                let _ = debug_trait_builder.field(&&(*__self_0));
+                                debug_trait_builder.finish()
+                            }
+                            (&Str::Upcase(ref __self_0),) => {
+                                let mut debug_trait_builder = f.debug_tuple("Upcase");
+                                let _ = debug_trait_builder.field(&&(*__self_0));
+                                debug_trait_builder.finish()
+                            }
+                        }
+                    }
+                }
+                #[automatically_derived]
+                #[allow(unused_qualifications)]
+                impl ::std::clone::Clone for Str {
+                    #[inline]
+                    fn clone(&self) -> Str {
+                        match (&*self,) {
+                            (&Str::Concat(ref __self_0),) => {
+                                Str::Concat(::std::clone::Clone::clone(&(*__self_0)))
+                            }
+                            (&Str::Downcase(ref __self_0),) => {
+                                Str::Downcase(::std::clone::Clone::clone(&(*__self_0)))
+                            }
+                            (&Str::Upcase(ref __self_0),) => {
+                                Str::Upcase(::std::clone::Clone::clone(&(*__self_0)))
+                            }
+                        }
+                    }
+                }
+                #[automatically_derived]
+                #[allow(unused_qualifications)]
+                impl ::std::cmp::PartialEq for Str {
+                    #[inline]
+                    fn eq(&self, other: &Str) -> bool {
+                        {
+                            let __self_vi =
+                                unsafe { ::std::intrinsics::discriminant_value(&*self) } as isize;
+                            let __arg_1_vi =
+                                unsafe { ::std::intrinsics::discriminant_value(&*other) } as isize;
+                            if true && __self_vi == __arg_1_vi {
+                                match (&*self, &*other) {
+                                    (&Str::Concat(ref __self_0), &Str::Concat(ref __arg_1_0)) => {
+                                        (*__self_0) == (*__arg_1_0)
+                                    }
+                                    (
+                                        &Str::Downcase(ref __self_0),
+                                        &Str::Downcase(ref __arg_1_0),
+                                    ) => (*__self_0) == (*__arg_1_0),
+                                    (&Str::Upcase(ref __self_0), &Str::Upcase(ref __arg_1_0)) => {
+                                        (*__self_0) == (*__arg_1_0)
+                                    }
+                                    _ => unsafe { ::std::intrinsics::unreachable() },
+                                }
+                            } else {
+                                false
+                            }
+                        }
+                    }
+                    #[inline]
+                    fn ne(&self, other: &Str) -> bool {
+                        {
+                            let __self_vi =
+                                unsafe { ::std::intrinsics::discriminant_value(&*self) } as isize;
+                            let __arg_1_vi =
+                                unsafe { ::std::intrinsics::discriminant_value(&*other) } as isize;
+                            if true && __self_vi == __arg_1_vi {
+                                match (&*self, &*other) {
+                                    (&Str::Concat(ref __self_0), &Str::Concat(ref __arg_1_0)) => {
+                                        (*__self_0) != (*__arg_1_0)
+                                    }
+                                    (
+                                        &Str::Downcase(ref __self_0),
+                                        &Str::Downcase(ref __arg_1_0),
+                                    ) => (*__self_0) != (*__arg_1_0),
+                                    (&Str::Upcase(ref __self_0), &Str::Upcase(ref __arg_1_0)) => {
+                                        (*__self_0) != (*__arg_1_0)
+                                    }
+                                    _ => unsafe { ::std::intrinsics::unreachable() },
+                                }
+                            } else {
+                                true
+                            }
+                        }
+                    }
+                }
+                impl<'de> Deserialize<'de> for Str {
+                    fn deserialize<D>(deserializer: D) -> StdResult<Self, D::Error>
+                    where
+                        D: Deserializer<'de>,
+                    {
+                        enum _Marker {
+                            #[serde(rename = "concat")]
+                            Concat,
+
+                            #[serde(rename = "concat")]
+                            Downcase,
+
+                            #[serde(rename = "concat")]
+                            Upcase,
+                        }
+                        #[allow(non_upper_case_globals, unused_attributes, unused_qualifications)]
+                        const _IMPL_DESERIALIZE_FOR__Marker: () = {
+                            extern crate serde as _serde;
+                            #[allow(unused_macros)]
+                            macro_rules! try(( $ __expr : expr ) => {
+                                                 match $ __expr {
+                                                 _serde :: export :: Ok (
+                                                 __val ) => __val , _serde ::
+                                                 export :: Err ( __err ) => {
+                                                 return _serde :: export ::
+                                                 Err ( __err ) ; } } });
+                            #[automatically_derived]
+                            impl<'de> _serde::Deserialize<'de> for _Marker {
+                                fn deserialize<__D>(
+                                    __deserializer: __D,
+                                ) -> _serde::export::Result<Self, __D::Error>
+                                where
+                                    __D: _serde::Deserializer<'de>,
+                                {
+                                    #[allow(non_camel_case_types)]
+                                    enum __Field {
+                                        __field0,
+                                        __field1,
+                                        __field2,
+                                    }
+                                    struct __FieldVisitor;
+                                    impl<'de> _serde::de::Visitor<'de> for __FieldVisitor {
+                                        type Value = __Field;
+                                        fn expecting(
+                                            &self,
+                                            __formatter: &mut _serde::export::Formatter,
+                                        ) -> _serde::export::fmt::Result
+                                        {
+                                            _serde::export::Formatter::write_str(
+                                                __formatter,
+                                                "variant identifier",
+                                            )
+                                        }
+                                        fn visit_u64<__E>(
+                                            self,
+                                            __value: u64,
+                                        ) -> _serde::export::Result<Self::Value, __E>
+                                        where
+                                            __E: _serde::de::Error,
+                                        {
+                                            match __value {
+                                                0u64 => _serde::export::Ok(__Field::__field0),
+                                                1u64 => _serde::export::Ok(__Field::__field1),
+                                                2u64 => _serde::export::Ok(__Field::__field2),
+                                                _ => _serde::export::Err(
+                                                    _serde::de::Error::invalid_value(
+                                                        _serde::de::Unexpected::Unsigned(__value),
+                                                        &"variant index 0 <= i < 3",
+                                                    ),
+                                                ),
+                                            }
+                                        }
+                                        fn visit_str<__E>(
+                                            self,
+                                            __value: &str,
+                                        ) -> _serde::export::Result<Self::Value, __E>
+                                        where
+                                            __E: _serde::de::Error,
+                                        {
+                                            match __value {
+                                                "concat" => _serde::export::Ok(__Field::__field0),
+                                                "concat" => _serde::export::Ok(__Field::__field1),
+                                                "concat" => _serde::export::Ok(__Field::__field2),
+                                                _ => _serde::export::Err(
+                                                    _serde::de::Error::unknown_variant(
+                                                        __value, VARIANTS,
+                                                    ),
+                                                ),
+                                            }
+                                        }
+                                        fn visit_bytes<__E>(
+                                            self,
+                                            __value: &[u8],
+                                        ) -> _serde::export::Result<Self::Value, __E>
+                                        where
+                                            __E: _serde::de::Error,
+                                        {
+                                            match __value {
+                                                b"concat" => _serde::export::Ok(__Field::__field0),
+                                                b"concat" => _serde::export::Ok(__Field::__field1),
+                                                b"concat" => _serde::export::Ok(__Field::__field2),
+                                                _ => {
+                                                    let __value =
+                                                        &_serde::export::from_utf8_lossy(__value);
+                                                    _serde::export::Err(
+                                                        _serde::de::Error::unknown_variant(
+                                                            __value, VARIANTS,
+                                                        ),
+                                                    )
+                                                }
+                                            }
+                                        }
+                                    }
+                                    impl<'de> _serde::Deserialize<'de> for __Field {
+                                        #[inline]
+                                        fn deserialize<__D>(
+                                            __deserializer: __D,
+                                        ) -> _serde::export::Result<Self, __D::Error>
+                                        where
+                                            __D: _serde::Deserializer<'de>,
+                                        {
+                                            _serde::Deserializer::deserialize_identifier(
+                                                __deserializer,
+                                                __FieldVisitor,
+                                            )
+                                        }
+                                    }
+                                    struct __Visitor<'de> {
+                                        marker: _serde::export::PhantomData<_Marker>,
+                                        lifetime: _serde::export::PhantomData<&'de ()>,
+                                    }
+                                    impl<'de> _serde::de::Visitor<'de> for __Visitor<'de> {
+                                        type Value = _Marker;
+                                        fn expecting(
+                                            &self,
+                                            __formatter: &mut _serde::export::Formatter,
+                                        ) -> _serde::export::fmt::Result
+                                        {
+                                            _serde::export::Formatter::write_str(
+                                                __formatter,
+                                                "enum _Marker",
+                                            )
+                                        }
+                                        fn visit_enum<__A>(
+                                            self,
+                                            __data: __A,
+                                        ) -> _serde::export::Result<Self::Value, __A::Error>
+                                        where
+                                            __A: _serde::de::EnumAccess<'de>,
+                                        {
+                                            match match _serde::de::EnumAccess::variant(__data) {
+                                                _serde::export::Ok(__val) => __val,
+                                                _serde::export::Err(__err) => {
+                                                    return _serde::export::Err(__err);
+                                                }
+                                            } {
+                                                (__Field::__field0, __variant) => {
+                                                    match _serde::de::VariantAccess::unit_variant(
+                                                        __variant,
+                                                    ) {
+                                                        _serde::export::Ok(__val) => __val,
+                                                        _serde::export::Err(__err) => {
+                                                            return _serde::export::Err(__err);
+                                                        }
+                                                    };
+                                                    _serde::export::Ok(_Marker::Concat)
+                                                }
+                                                (__Field::__field1, __variant) => {
+                                                    match _serde::de::VariantAccess::unit_variant(
+                                                        __variant,
+                                                    ) {
+                                                        _serde::export::Ok(__val) => __val,
+                                                        _serde::export::Err(__err) => {
+                                                            return _serde::export::Err(__err);
+                                                        }
+                                                    };
+                                                    _serde::export::Ok(_Marker::Downcase)
+                                                }
+                                                (__Field::__field2, __variant) => {
+                                                    match _serde::de::VariantAccess::unit_variant(
+                                                        __variant,
+                                                    ) {
+                                                        _serde::export::Ok(__val) => __val,
+                                                        _serde::export::Err(__err) => {
+                                                            return _serde::export::Err(__err);
+                                                        }
+                                                    };
+                                                    _serde::export::Ok(_Marker::Upcase)
+                                                }
+                                            }
+                                        }
+                                    }
+                                    const VARIANTS: &'static [&'static str] =
+                                        &["concat", "concat", "concat"];
+                                    _serde::Deserializer::deserialize_enum(
+                                        __deserializer,
+                                        "_Marker",
+                                        VARIANTS,
+                                        __Visitor {
+                                            marker: _serde::export::PhantomData::<_Marker>,
+                                            lifetime: _serde::export::PhantomData,
+                                        },
+                                    )
+                                }
+                            }
+                        };
+                        let PrefixHelper(mark, mut exprs) = Deserialize::deserialize(deserializer)?;
+                        match mark {
+                            _Marker::Concat => Ok(Str::Concat(exprs)),
+                            _Marker::Downcase => Ok(Str::Downcase(exprs.remove(0))),
+                            _Marker::Upcase => Ok(Str::Upcase(exprs.remove(0))),
+                        }
+                    }
+                }
+                impl Expr for Str {
+                    fn is_zoom(&self) -> bool {
+                        return match self {
+                            Str::Concat(v) => v.iter().any(|e| e.is_zoom()),
+                            Str::Downcase(e) => e.is_zoom(),
+                            Str::Upcase(e) => e.is_zoom(),
+                        };
+                    }
+                    fn is_feature(&self) -> bool {
+                        return match self {
+                            Str::Concat(v) => v.iter().any(|e| e.is_feature()),
+                            Str::Downcase(e) => e.is_feature(),
+                            Str::Upcase(e) => e.is_feature(),
+                        };
+                    }
+                    fn eval(&self, ctx: &EvaluationContext) -> ExprResult {
+                        return match self {
+                            Str::Concat(exprs) => {
+                                let mut res = String::new();
+                                for e in exprs {
+                                    let v = expect_type(Type::String, e.eval(ctx)?)?;
+                                    if let ExprVal::String(s) = v {
+                                        res.push_str(&s);
+                                    }
+                                }
+                                Ok(ExprVal::String(res))
+                            }
+                            Str::Downcase(e) => {
+                                let mut v = expect_type(Type::String, e.eval(ctx)?)?;
+                                if let ExprVal::String(s) = v {
+                                    return Ok(ExprVal::String(s.to_lowercase()));
+                                };
+                                {
+                                    ::rt::begin_panic(
+                                        "Unexpected expression value ",
+                                        &("rmaps/src/map/style/expr/string.rs", 70u32, 17u32),
+                                    )
+                                }
+                            }
+                            Str::Upcase(e) => {
+                                let mut v = expect_type(Type::String, e.eval(ctx)?)?;
+                                if let ExprVal::String(s) = v {
+                                    return Ok(ExprVal::String(s.to_uppercase()));
+                                };
+                                {
+                                    ::rt::begin_panic(
+                                        "Unexpected expression value ",
+                                        &("rmaps/src/map/style/expr/string.rs", 77u32, 17u32),
+                                    )
+                                }
+                            }
+                        };
+                    }
+                }
+            }
+            pub mod color {
+                use super::*;
+                use prelude::*;
+                pub enum _RgbMarker {
+                    #[serde(rename = "rgb")]
+                    _Mark,
+                }
+                #[automatically_derived]
+                #[allow(unused_qualifications)]
+                impl ::std::fmt::Debug for _RgbMarker {
+                    fn fmt(&self, f: &mut ::std::fmt::Formatter) -> ::std::fmt::Result {
+                        match (&*self,) {
+                            (&_RgbMarker::_Mark,) => {
+                                let mut debug_trait_builder = f.debug_tuple("_Mark");
+                                debug_trait_builder.finish()
+                            }
+                        }
+                    }
+                }
+                #[automatically_derived]
+                #[allow(unused_qualifications)]
+                impl ::std::clone::Clone for _RgbMarker {
+                    #[inline]
+                    fn clone(&self) -> _RgbMarker {
+                        match (&*self,) {
+                            (&_RgbMarker::_Mark,) => _RgbMarker::_Mark,
+                        }
+                    }
+                }
+                #[automatically_derived]
+                #[allow(unused_qualifications)]
+                impl ::std::cmp::PartialEq for _RgbMarker {
+                    #[inline]
+                    fn eq(&self, other: &_RgbMarker) -> bool {
+                        match (&*self, &*other) {
+                            _ => true,
+                        }
+                    }
+                }
+                #[allow(non_upper_case_globals, unused_attributes, unused_qualifications)]
+                const _IMPL_DESERIALIZE_FOR__RgbMarker: () = {
+                    extern crate serde as _serde;
+                    #[allow(unused_macros)]
+                    macro_rules! try(( $ __expr : expr ) => {
+                                         match $ __expr {
+                                         _serde :: export :: Ok ( __val ) =>
+                                         __val , _serde :: export :: Err (
+                                         __err ) => {
+                                         return _serde :: export :: Err (
+                                         __err ) ; } } });
+                    #[automatically_derived]
+                    impl<'de> _serde::Deserialize<'de> for _RgbMarker {
+                        fn deserialize<__D>(
+                            __deserializer: __D,
+                        ) -> _serde::export::Result<Self, __D::Error>
+                        where
+                            __D: _serde::Deserializer<'de>,
+                        {
+                            #[allow(non_camel_case_types)]
+                            enum __Field {
+                                __field0,
+                            }
+                            struct __FieldVisitor;
+                            impl<'de> _serde::de::Visitor<'de> for __FieldVisitor {
+                                type Value = __Field;
+                                fn expecting(
+                                    &self,
+                                    __formatter: &mut _serde::export::Formatter,
+                                ) -> _serde::export::fmt::Result {
+                                    _serde::export::Formatter::write_str(
+                                        __formatter,
+                                        "variant identifier",
+                                    )
+                                }
+                                fn visit_u64<__E>(
+                                    self,
+                                    __value: u64,
+                                ) -> _serde::export::Result<Self::Value, __E>
+                                where
+                                    __E: _serde::de::Error,
+                                {
+                                    match __value {
+                                        0u64 => _serde::export::Ok(__Field::__field0),
+                                        _ => _serde::export::Err(_serde::de::Error::invalid_value(
+                                            _serde::de::Unexpected::Unsigned(__value),
+                                            &"variant index 0 <= i < 1",
+                                        )),
+                                    }
+                                }
+                                fn visit_str<__E>(
+                                    self,
+                                    __value: &str,
+                                ) -> _serde::export::Result<Self::Value, __E>
+                                where
+                                    __E: _serde::de::Error,
+                                {
+                                    match __value {
+                                        "rgb" => _serde::export::Ok(__Field::__field0),
+                                        _ => _serde::export::Err(
+                                            _serde::de::Error::unknown_variant(__value, VARIANTS),
+                                        ),
+                                    }
+                                }
+                                fn visit_bytes<__E>(
+                                    self,
+                                    __value: &[u8],
+                                ) -> _serde::export::Result<Self::Value, __E>
+                                where
+                                    __E: _serde::de::Error,
+                                {
+                                    match __value {
+                                        b"rgb" => _serde::export::Ok(__Field::__field0),
+                                        _ => {
+                                            let __value = &_serde::export::from_utf8_lossy(__value);
+                                            _serde::export::Err(_serde::de::Error::unknown_variant(
+                                                __value, VARIANTS,
+                                            ))
+                                        }
+                                    }
+                                }
+                            }
+                            impl<'de> _serde::Deserialize<'de> for __Field {
+                                #[inline]
+                                fn deserialize<__D>(
+                                    __deserializer: __D,
+                                ) -> _serde::export::Result<Self, __D::Error>
+                                where
+                                    __D: _serde::Deserializer<'de>,
+                                {
+                                    _serde::Deserializer::deserialize_identifier(
+                                        __deserializer,
+                                        __FieldVisitor,
+                                    )
+                                }
+                            }
+                            struct __Visitor<'de> {
+                                marker: _serde::export::PhantomData<_RgbMarker>,
+                                lifetime: _serde::export::PhantomData<&'de ()>,
+                            }
+                            impl<'de> _serde::de::Visitor<'de> for __Visitor<'de> {
+                                type Value = _RgbMarker;
+                                fn expecting(
+                                    &self,
+                                    __formatter: &mut _serde::export::Formatter,
+                                ) -> _serde::export::fmt::Result {
+                                    _serde::export::Formatter::write_str(
+                                        __formatter,
+                                        "enum _RgbMarker",
+                                    )
+                                }
+                                fn visit_enum<__A>(
+                                    self,
+                                    __data: __A,
+                                ) -> _serde::export::Result<Self::Value, __A::Error>
+                                where
+                                    __A: _serde::de::EnumAccess<'de>,
+                                {
+                                    match match _serde::de::EnumAccess::variant(__data) {
+                                        _serde::export::Ok(__val) => __val,
+                                        _serde::export::Err(__err) => {
+                                            return _serde::export::Err(__err);
+                                        }
+                                    } {
+                                        (__Field::__field0, __variant) => {
+                                            match _serde::de::VariantAccess::unit_variant(__variant)
+                                            {
+                                                _serde::export::Ok(__val) => __val,
+                                                _serde::export::Err(__err) => {
+                                                    return _serde::export::Err(__err);
+                                                }
+                                            };
+                                            _serde::export::Ok(_RgbMarker::_Mark)
+                                        }
+                                    }
+                                }
+                            }
+                            const VARIANTS: &'static [&'static str] = &["rgb"];
+                            _serde::Deserializer::deserialize_enum(
+                                __deserializer,
+                                "_RgbMarker",
+                                VARIANTS,
+                                __Visitor {
+                                    marker: _serde::export::PhantomData::<_RgbMarker>,
+                                    lifetime: _serde::export::PhantomData,
+                                },
+                            )
+                        }
+                    }
+                };
+                pub enum _RgbaMarker {
+                    #[serde(rename = "rgba")]
+                    _Mark,
+                }
+                #[automatically_derived]
+                #[allow(unused_qualifications)]
+                impl ::std::fmt::Debug for _RgbaMarker {
+                    fn fmt(&self, f: &mut ::std::fmt::Formatter) -> ::std::fmt::Result {
+                        match (&*self,) {
+                            (&_RgbaMarker::_Mark,) => {
+                                let mut debug_trait_builder = f.debug_tuple("_Mark");
+                                debug_trait_builder.finish()
+                            }
+                        }
+                    }
+                }
+                #[automatically_derived]
+                #[allow(unused_qualifications)]
+                impl ::std::clone::Clone for _RgbaMarker {
+                    #[inline]
+                    fn clone(&self) -> _RgbaMarker {
+                        match (&*self,) {
+                            (&_RgbaMarker::_Mark,) => _RgbaMarker::_Mark,
+                        }
+                    }
+                }
+                #[automatically_derived]
+                #[allow(unused_qualifications)]
+                impl ::std::cmp::PartialEq for _RgbaMarker {
+                    #[inline]
+                    fn eq(&self, other: &_RgbaMarker) -> bool {
+                        match (&*self, &*other) {
+                            _ => true,
+                        }
+                    }
+                }
+                #[allow(non_upper_case_globals, unused_attributes, unused_qualifications)]
+                const _IMPL_DESERIALIZE_FOR__RgbaMarker: () = {
+                    extern crate serde as _serde;
+                    #[allow(unused_macros)]
+                    macro_rules! try(( $ __expr : expr ) => {
+                                         match $ __expr {
+                                         _serde :: export :: Ok ( __val ) =>
+                                         __val , _serde :: export :: Err (
+                                         __err ) => {
+                                         return _serde :: export :: Err (
+                                         __err ) ; } } });
+                    #[automatically_derived]
+                    impl<'de> _serde::Deserialize<'de> for _RgbaMarker {
+                        fn deserialize<__D>(
+                            __deserializer: __D,
+                        ) -> _serde::export::Result<Self, __D::Error>
+                        where
+                            __D: _serde::Deserializer<'de>,
+                        {
+                            #[allow(non_camel_case_types)]
+                            enum __Field {
+                                __field0,
+                            }
+                            struct __FieldVisitor;
+                            impl<'de> _serde::de::Visitor<'de> for __FieldVisitor {
+                                type Value = __Field;
+                                fn expecting(
+                                    &self,
+                                    __formatter: &mut _serde::export::Formatter,
+                                ) -> _serde::export::fmt::Result {
+                                    _serde::export::Formatter::write_str(
+                                        __formatter,
+                                        "variant identifier",
+                                    )
+                                }
+                                fn visit_u64<__E>(
+                                    self,
+                                    __value: u64,
+                                ) -> _serde::export::Result<Self::Value, __E>
+                                where
+                                    __E: _serde::de::Error,
+                                {
+                                    match __value {
+                                        0u64 => _serde::export::Ok(__Field::__field0),
+                                        _ => _serde::export::Err(_serde::de::Error::invalid_value(
+                                            _serde::de::Unexpected::Unsigned(__value),
+                                            &"variant index 0 <= i < 1",
+                                        )),
+                                    }
+                                }
+                                fn visit_str<__E>(
+                                    self,
+                                    __value: &str,
+                                ) -> _serde::export::Result<Self::Value, __E>
+                                where
+                                    __E: _serde::de::Error,
+                                {
+                                    match __value {
+                                        "rgba" => _serde::export::Ok(__Field::__field0),
+                                        _ => _serde::export::Err(
+                                            _serde::de::Error::unknown_variant(__value, VARIANTS),
+                                        ),
+                                    }
+                                }
+                                fn visit_bytes<__E>(
+                                    self,
+                                    __value: &[u8],
+                                ) -> _serde::export::Result<Self::Value, __E>
+                                where
+                                    __E: _serde::de::Error,
+                                {
+                                    match __value {
+                                        b"rgba" => _serde::export::Ok(__Field::__field0),
+                                        _ => {
+                                            let __value = &_serde::export::from_utf8_lossy(__value);
+                                            _serde::export::Err(_serde::de::Error::unknown_variant(
+                                                __value, VARIANTS,
+                                            ))
+                                        }
+                                    }
+                                }
+                            }
+                            impl<'de> _serde::Deserialize<'de> for __Field {
+                                #[inline]
+                                fn deserialize<__D>(
+                                    __deserializer: __D,
+                                ) -> _serde::export::Result<Self, __D::Error>
+                                where
+                                    __D: _serde::Deserializer<'de>,
+                                {
+                                    _serde::Deserializer::deserialize_identifier(
+                                        __deserializer,
+                                        __FieldVisitor,
+                                    )
+                                }
+                            }
+                            struct __Visitor<'de> {
+                                marker: _serde::export::PhantomData<_RgbaMarker>,
+                                lifetime: _serde::export::PhantomData<&'de ()>,
+                            }
+                            impl<'de> _serde::de::Visitor<'de> for __Visitor<'de> {
+                                type Value = _RgbaMarker;
+                                fn expecting(
+                                    &self,
+                                    __formatter: &mut _serde::export::Formatter,
+                                ) -> _serde::export::fmt::Result {
+                                    _serde::export::Formatter::write_str(
+                                        __formatter,
+                                        "enum _RgbaMarker",
+                                    )
+                                }
+                                fn visit_enum<__A>(
+                                    self,
+                                    __data: __A,
+                                ) -> _serde::export::Result<Self::Value, __A::Error>
+                                where
+                                    __A: _serde::de::EnumAccess<'de>,
+                                {
+                                    match match _serde::de::EnumAccess::variant(__data) {
+                                        _serde::export::Ok(__val) => __val,
+                                        _serde::export::Err(__err) => {
+                                            return _serde::export::Err(__err);
+                                        }
+                                    } {
+                                        (__Field::__field0, __variant) => {
+                                            match _serde::de::VariantAccess::unit_variant(__variant)
+                                            {
+                                                _serde::export::Ok(__val) => __val,
+                                                _serde::export::Err(__err) => {
+                                                    return _serde::export::Err(__err);
+                                                }
+                                            };
+                                            _serde::export::Ok(_RgbaMarker::_Mark)
+                                        }
+                                    }
+                                }
+                            }
+                            const VARIANTS: &'static [&'static str] = &["rgba"];
+                            _serde::Deserializer::deserialize_enum(
+                                __deserializer,
+                                "_RgbaMarker",
+                                VARIANTS,
+                                __Visitor {
+                                    marker: _serde::export::PhantomData::<_RgbaMarker>,
+                                    lifetime: _serde::export::PhantomData,
+                                },
+                            )
+                        }
+                    }
+                };
+                pub enum _ToRgbaMarker {
+                    #[serde(rename = "to-rgba")]
+                    _Mark,
+                }
+                #[automatically_derived]
+                #[allow(unused_qualifications)]
+                impl ::std::fmt::Debug for _ToRgbaMarker {
+                    fn fmt(&self, f: &mut ::std::fmt::Formatter) -> ::std::fmt::Result {
+                        match (&*self,) {
+                            (&_ToRgbaMarker::_Mark,) => {
+                                let mut debug_trait_builder = f.debug_tuple("_Mark");
+                                debug_trait_builder.finish()
+                            }
+                        }
+                    }
+                }
+                #[automatically_derived]
+                #[allow(unused_qualifications)]
+                impl ::std::clone::Clone for _ToRgbaMarker {
+                    #[inline]
+                    fn clone(&self) -> _ToRgbaMarker {
+                        match (&*self,) {
+                            (&_ToRgbaMarker::_Mark,) => _ToRgbaMarker::_Mark,
+                        }
+                    }
+                }
+                #[automatically_derived]
+                #[allow(unused_qualifications)]
+                impl ::std::cmp::PartialEq for _ToRgbaMarker {
+                    #[inline]
+                    fn eq(&self, other: &_ToRgbaMarker) -> bool {
+                        match (&*self, &*other) {
+                            _ => true,
+                        }
+                    }
+                }
+                #[allow(non_upper_case_globals, unused_attributes, unused_qualifications)]
+                const _IMPL_DESERIALIZE_FOR__ToRgbaMarker: () = {
+                    extern crate serde as _serde;
+                    #[allow(unused_macros)]
+                    macro_rules! try(( $ __expr : expr ) => {
+                                         match $ __expr {
+                                         _serde :: export :: Ok ( __val ) =>
+                                         __val , _serde :: export :: Err (
+                                         __err ) => {
+                                         return _serde :: export :: Err (
+                                         __err ) ; } } });
+                    #[automatically_derived]
+                    impl<'de> _serde::Deserialize<'de> for _ToRgbaMarker {
+                        fn deserialize<__D>(
+                            __deserializer: __D,
+                        ) -> _serde::export::Result<Self, __D::Error>
+                        where
+                            __D: _serde::Deserializer<'de>,
+                        {
+                            #[allow(non_camel_case_types)]
+                            enum __Field {
+                                __field0,
+                            }
+                            struct __FieldVisitor;
+                            impl<'de> _serde::de::Visitor<'de> for __FieldVisitor {
+                                type Value = __Field;
+                                fn expecting(
+                                    &self,
+                                    __formatter: &mut _serde::export::Formatter,
+                                ) -> _serde::export::fmt::Result {
+                                    _serde::export::Formatter::write_str(
+                                        __formatter,
+                                        "variant identifier",
+                                    )
+                                }
+                                fn visit_u64<__E>(
+                                    self,
+                                    __value: u64,
+                                ) -> _serde::export::Result<Self::Value, __E>
+                                where
+                                    __E: _serde::de::Error,
+                                {
+                                    match __value {
+                                        0u64 => _serde::export::Ok(__Field::__field0),
+                                        _ => _serde::export::Err(_serde::de::Error::invalid_value(
+                                            _serde::de::Unexpected::Unsigned(__value),
+                                            &"variant index 0 <= i < 1",
+                                        )),
+                                    }
+                                }
+                                fn visit_str<__E>(
+                                    self,
+                                    __value: &str,
+                                ) -> _serde::export::Result<Self::Value, __E>
+                                where
+                                    __E: _serde::de::Error,
+                                {
+                                    match __value {
+                                        "to-rgba" => _serde::export::Ok(__Field::__field0),
+                                        _ => _serde::export::Err(
+                                            _serde::de::Error::unknown_variant(__value, VARIANTS),
+                                        ),
+                                    }
+                                }
+                                fn visit_bytes<__E>(
+                                    self,
+                                    __value: &[u8],
+                                ) -> _serde::export::Result<Self::Value, __E>
+                                where
+                                    __E: _serde::de::Error,
+                                {
+                                    match __value {
+                                        b"to-rgba" => _serde::export::Ok(__Field::__field0),
+                                        _ => {
+                                            let __value = &_serde::export::from_utf8_lossy(__value);
+                                            _serde::export::Err(_serde::de::Error::unknown_variant(
+                                                __value, VARIANTS,
+                                            ))
+                                        }
+                                    }
+                                }
+                            }
+                            impl<'de> _serde::Deserialize<'de> for __Field {
+                                #[inline]
+                                fn deserialize<__D>(
+                                    __deserializer: __D,
+                                ) -> _serde::export::Result<Self, __D::Error>
+                                where
+                                    __D: _serde::Deserializer<'de>,
+                                {
+                                    _serde::Deserializer::deserialize_identifier(
+                                        __deserializer,
+                                        __FieldVisitor,
+                                    )
+                                }
+                            }
+                            struct __Visitor<'de> {
+                                marker: _serde::export::PhantomData<_ToRgbaMarker>,
+                                lifetime: _serde::export::PhantomData<&'de ()>,
+                            }
+                            impl<'de> _serde::de::Visitor<'de> for __Visitor<'de> {
+                                type Value = _ToRgbaMarker;
+                                fn expecting(
+                                    &self,
+                                    __formatter: &mut _serde::export::Formatter,
+                                ) -> _serde::export::fmt::Result {
+                                    _serde::export::Formatter::write_str(
+                                        __formatter,
+                                        "enum _ToRgbaMarker",
+                                    )
+                                }
+                                fn visit_enum<__A>(
+                                    self,
+                                    __data: __A,
+                                ) -> _serde::export::Result<Self::Value, __A::Error>
+                                where
+                                    __A: _serde::de::EnumAccess<'de>,
+                                {
+                                    match match _serde::de::EnumAccess::variant(__data) {
+                                        _serde::export::Ok(__val) => __val,
+                                        _serde::export::Err(__err) => {
+                                            return _serde::export::Err(__err);
+                                        }
+                                    } {
+                                        (__Field::__field0, __variant) => {
+                                            match _serde::de::VariantAccess::unit_variant(__variant)
+                                            {
+                                                _serde::export::Ok(__val) => __val,
+                                                _serde::export::Err(__err) => {
+                                                    return _serde::export::Err(__err);
+                                                }
+                                            };
+                                            _serde::export::Ok(_ToRgbaMarker::_Mark)
+                                        }
+                                    }
+                                }
+                            }
+                            const VARIANTS: &'static [&'static str] = &["to-rgba"];
+                            _serde::Deserializer::deserialize_enum(
+                                __deserializer,
+                                "_ToRgbaMarker",
+                                VARIANTS,
+                                __Visitor {
+                                    marker: _serde::export::PhantomData::<_ToRgbaMarker>,
+                                    lifetime: _serde::export::PhantomData,
+                                },
+                            )
+                        }
+                    }
+                };
+                #[serde(untagged)]
+                pub enum ColorExpr {
+                    Rgb(_RgbMarker, BaseExpr, BaseExpr, BaseExpr),
+                    Rgba(_RgbaMarker, BaseExpr, BaseExpr, BaseExpr, BaseExpr),
+                    ToRgba(_ToRgbaMarker, BaseExpr),
+                }
+                #[automatically_derived]
+                #[allow(unused_qualifications)]
+                impl ::std::fmt::Debug for ColorExpr {
+                    fn fmt(&self, f: &mut ::std::fmt::Formatter) -> ::std::fmt::Result {
+                        match (&*self,) {
+                            (&ColorExpr::Rgb(
+                                ref __self_0,
+                                ref __self_1,
+                                ref __self_2,
+                                ref __self_3,
+                            ),) => {
+                                let mut debug_trait_builder = f.debug_tuple("Rgb");
+                                let _ = debug_trait_builder.field(&&(*__self_0));
+                                let _ = debug_trait_builder.field(&&(*__self_1));
+                                let _ = debug_trait_builder.field(&&(*__self_2));
+                                let _ = debug_trait_builder.field(&&(*__self_3));
+                                debug_trait_builder.finish()
+                            }
+                            (&ColorExpr::Rgba(
+                                ref __self_0,
+                                ref __self_1,
+                                ref __self_2,
+                                ref __self_3,
+                                ref __self_4,
+                            ),) => {
+                                let mut debug_trait_builder = f.debug_tuple("Rgba");
+                                let _ = debug_trait_builder.field(&&(*__self_0));
+                                let _ = debug_trait_builder.field(&&(*__self_1));
+                                let _ = debug_trait_builder.field(&&(*__self_2));
+                                let _ = debug_trait_builder.field(&&(*__self_3));
+                                let _ = debug_trait_builder.field(&&(*__self_4));
+                                debug_trait_builder.finish()
+                            }
+                            (&ColorExpr::ToRgba(ref __self_0, ref __self_1),) => {
+                                let mut debug_trait_builder = f.debug_tuple("ToRgba");
+                                let _ = debug_trait_builder.field(&&(*__self_0));
+                                let _ = debug_trait_builder.field(&&(*__self_1));
+                                debug_trait_builder.finish()
+                            }
+                        }
+                    }
+                }
+                #[automatically_derived]
+                #[allow(unused_qualifications)]
+                impl ::std::clone::Clone for ColorExpr {
+                    #[inline]
+                    fn clone(&self) -> ColorExpr {
+                        match (&*self,) {
+                            (&ColorExpr::Rgb(
+                                ref __self_0,
+                                ref __self_1,
+                                ref __self_2,
+                                ref __self_3,
+                            ),) => ColorExpr::Rgb(
+                                ::std::clone::Clone::clone(&(*__self_0)),
+                                ::std::clone::Clone::clone(&(*__self_1)),
+                                ::std::clone::Clone::clone(&(*__self_2)),
+                                ::std::clone::Clone::clone(&(*__self_3)),
+                            ),
+                            (&ColorExpr::Rgba(
+                                ref __self_0,
+                                ref __self_1,
+                                ref __self_2,
+                                ref __self_3,
+                                ref __self_4,
+                            ),) => ColorExpr::Rgba(
+                                ::std::clone::Clone::clone(&(*__self_0)),
+                                ::std::clone::Clone::clone(&(*__self_1)),
+                                ::std::clone::Clone::clone(&(*__self_2)),
+                                ::std::clone::Clone::clone(&(*__self_3)),
+                                ::std::clone::Clone::clone(&(*__self_4)),
+                            ),
+                            (&ColorExpr::ToRgba(ref __self_0, ref __self_1),) => ColorExpr::ToRgba(
+                                ::std::clone::Clone::clone(&(*__self_0)),
+                                ::std::clone::Clone::clone(&(*__self_1)),
+                            ),
+                        }
+                    }
+                }
+                #[automatically_derived]
+                #[allow(unused_qualifications)]
+                impl ::std::cmp::PartialEq for ColorExpr {
+                    #[inline]
+                    fn eq(&self, other: &ColorExpr) -> bool {
+                        {
+                            let __self_vi =
+                                unsafe { ::std::intrinsics::discriminant_value(&*self) } as isize;
+                            let __arg_1_vi =
+                                unsafe { ::std::intrinsics::discriminant_value(&*other) } as isize;
+                            if true && __self_vi == __arg_1_vi {
+                                match (&*self, &*other) {
+                                    (
+                                        &ColorExpr::Rgb(
+                                            ref __self_0,
+                                            ref __self_1,
+                                            ref __self_2,
+                                            ref __self_3,
+                                        ),
+                                        &ColorExpr::Rgb(
+                                            ref __arg_1_0,
+                                            ref __arg_1_1,
+                                            ref __arg_1_2,
+                                            ref __arg_1_3,
+                                        ),
+                                    ) => {
+                                        (*__self_0) == (*__arg_1_0)
+                                            && (*__self_1) == (*__arg_1_1)
+                                            && (*__self_2) == (*__arg_1_2)
+                                            && (*__self_3) == (*__arg_1_3)
+                                    }
+                                    (
+                                        &ColorExpr::Rgba(
+                                            ref __self_0,
+                                            ref __self_1,
+                                            ref __self_2,
+                                            ref __self_3,
+                                            ref __self_4,
+                                        ),
+                                        &ColorExpr::Rgba(
+                                            ref __arg_1_0,
+                                            ref __arg_1_1,
+                                            ref __arg_1_2,
+                                            ref __arg_1_3,
+                                            ref __arg_1_4,
+                                        ),
+                                    ) => {
+                                        (*__self_0) == (*__arg_1_0)
+                                            && (*__self_1) == (*__arg_1_1)
+                                            && (*__self_2) == (*__arg_1_2)
+                                            && (*__self_3) == (*__arg_1_3)
+                                            && (*__self_4) == (*__arg_1_4)
+                                    }
+                                    (
+                                        &ColorExpr::ToRgba(ref __self_0, ref __self_1),
+                                        &ColorExpr::ToRgba(ref __arg_1_0, ref __arg_1_1),
+                                    ) => (*__self_0) == (*__arg_1_0) && (*__self_1) == (*__arg_1_1),
+                                    _ => unsafe { ::std::intrinsics::unreachable() },
+                                }
+                            } else {
+                                false
+                            }
+                        }
+                    }
+                    #[inline]
+                    fn ne(&self, other: &ColorExpr) -> bool {
+                        {
+                            let __self_vi =
+                                unsafe { ::std::intrinsics::discriminant_value(&*self) } as isize;
+                            let __arg_1_vi =
+                                unsafe { ::std::intrinsics::discriminant_value(&*other) } as isize;
+                            if true && __self_vi == __arg_1_vi {
+                                match (&*self, &*other) {
+                                    (
+                                        &ColorExpr::Rgb(
+                                            ref __self_0,
+                                            ref __self_1,
+                                            ref __self_2,
+                                            ref __self_3,
+                                        ),
+                                        &ColorExpr::Rgb(
+                                            ref __arg_1_0,
+                                            ref __arg_1_1,
+                                            ref __arg_1_2,
+                                            ref __arg_1_3,
+                                        ),
+                                    ) => {
+                                        (*__self_0) != (*__arg_1_0)
+                                            || (*__self_1) != (*__arg_1_1)
+                                            || (*__self_2) != (*__arg_1_2)
+                                            || (*__self_3) != (*__arg_1_3)
+                                    }
+                                    (
+                                        &ColorExpr::Rgba(
+                                            ref __self_0,
+                                            ref __self_1,
+                                            ref __self_2,
+                                            ref __self_3,
+                                            ref __self_4,
+                                        ),
+                                        &ColorExpr::Rgba(
+                                            ref __arg_1_0,
+                                            ref __arg_1_1,
+                                            ref __arg_1_2,
+                                            ref __arg_1_3,
+                                            ref __arg_1_4,
+                                        ),
+                                    ) => {
+                                        (*__self_0) != (*__arg_1_0)
+                                            || (*__self_1) != (*__arg_1_1)
+                                            || (*__self_2) != (*__arg_1_2)
+                                            || (*__self_3) != (*__arg_1_3)
+                                            || (*__self_4) != (*__arg_1_4)
+                                    }
+                                    (
+                                        &ColorExpr::ToRgba(ref __self_0, ref __self_1),
+                                        &ColorExpr::ToRgba(ref __arg_1_0, ref __arg_1_1),
+                                    ) => (*__self_0) != (*__arg_1_0) || (*__self_1) != (*__arg_1_1),
+                                    _ => unsafe { ::std::intrinsics::unreachable() },
+                                }
+                            } else {
+                                true
+                            }
+                        }
+                    }
+                }
+                #[allow(non_upper_case_globals, unused_attributes, unused_qualifications)]
+                const _IMPL_DESERIALIZE_FOR_ColorExpr: () = {
+                    extern crate serde as _serde;
+                    #[allow(unused_macros)]
+                    macro_rules! try(( $ __expr : expr ) => {
+                                         match $ __expr {
+                                         _serde :: export :: Ok ( __val ) =>
+                                         __val , _serde :: export :: Err (
+                                         __err ) => {
+                                         return _serde :: export :: Err (
+                                         __err ) ; } } });
+                    #[automatically_derived]
+                    impl<'de> _serde::Deserialize<'de> for ColorExpr {
+                        fn deserialize<__D>(
+                            __deserializer: __D,
+                        ) -> _serde::export::Result<Self, __D::Error>
+                        where
+                            __D: _serde::Deserializer<'de>,
+                        {
+                            let __content =
+                                    match <_serde::private::de::Content as
+                                              _serde::Deserialize>::deserialize(__deserializer)
+                                        {
+                                        _serde::export::Ok(__val) => __val,
+                                        _serde::export::Err(__err) => {
+                                            return _serde::export::Err(__err);
+                                        }
+                                    };
+                            if let _serde::export::Ok(__ok) = {
+                                struct __Visitor<'de> {
+                                    marker: _serde::export::PhantomData<ColorExpr>,
+                                    lifetime: _serde::export::PhantomData<&'de ()>,
+                                }
+                                impl<'de> _serde::de::Visitor<'de> for __Visitor<'de> {
+                                    type Value = ColorExpr;
+                                    fn expecting(
+                                        &self,
+                                        __formatter: &mut _serde::export::Formatter,
+                                    ) -> _serde::export::fmt::Result
+                                    {
+                                        _serde::export::Formatter::write_str(
+                                            __formatter,
+                                            "tuple variant ColorExpr::Rgb",
+                                        )
+                                    }
+                                    #[inline]
+                                    fn visit_seq<__A>(
+                                        self,
+                                        mut __seq: __A,
+                                    ) -> _serde::export::Result<Self::Value, __A::Error>
+                                    where
+                                        __A: _serde::de::SeqAccess<'de>,
+                                    {
+                                        let __field0 =
+                                            match match _serde::de::SeqAccess::next_element::<
+                                                _RgbMarker,
+                                            >(
+                                                &mut __seq
+                                            ) {
+                                                _serde::export::Ok(__val) => __val,
+                                                _serde::export::Err(__err) => {
+                                                    return _serde::export::Err(__err);
+                                                }
+                                            } {
+                                                _serde::export::Some(__value) => __value,
+                                                _serde::export::None => {
+                                                    return _serde::export::Err(_serde::de::Error::invalid_length(0usize,
+                                                                                                                            &"tuple variant ColorExpr::Rgb with 4 elements"));
+                                                }
+                                            };
+                                        let __field1 =
+                                            match match _serde::de::SeqAccess::next_element::<
+                                                BaseExpr,
+                                            >(
+                                                &mut __seq
+                                            ) {
+                                                _serde::export::Ok(__val) => __val,
+                                                _serde::export::Err(__err) => {
+                                                    return _serde::export::Err(__err);
+                                                }
+                                            } {
+                                                _serde::export::Some(__value) => __value,
+                                                _serde::export::None => {
+                                                    return _serde::export::Err(_serde::de::Error::invalid_length(1usize,
+                                                                                                                            &"tuple variant ColorExpr::Rgb with 4 elements"));
+                                                }
+                                            };
+                                        let __field2 =
+                                            match match _serde::de::SeqAccess::next_element::<
+                                                BaseExpr,
+                                            >(
+                                                &mut __seq
+                                            ) {
+                                                _serde::export::Ok(__val) => __val,
+                                                _serde::export::Err(__err) => {
+                                                    return _serde::export::Err(__err);
+                                                }
+                                            } {
+                                                _serde::export::Some(__value) => __value,
+                                                _serde::export::None => {
+                                                    return _serde::export::Err(_serde::de::Error::invalid_length(2usize,
+                                                                                                                            &"tuple variant ColorExpr::Rgb with 4 elements"));
+                                                }
+                                            };
+                                        let __field3 =
+                                            match match _serde::de::SeqAccess::next_element::<
+                                                BaseExpr,
+                                            >(
+                                                &mut __seq
+                                            ) {
+                                                _serde::export::Ok(__val) => __val,
+                                                _serde::export::Err(__err) => {
+                                                    return _serde::export::Err(__err);
+                                                }
+                                            } {
+                                                _serde::export::Some(__value) => __value,
+                                                _serde::export::None => {
+                                                    return _serde::export::Err(_serde::de::Error::invalid_length(3usize,
+                                                                                                                            &"tuple variant ColorExpr::Rgb with 4 elements"));
+                                                }
+                                            };
+                                        _serde::export::Ok(ColorExpr::Rgb(
+                                            __field0, __field1, __field2, __field3,
+                                        ))
+                                    }
+                                }
+                                _serde::Deserializer::deserialize_tuple(
+                                    _serde::private::de::ContentRefDeserializer::<__D::Error>::new(
+                                        &__content,
+                                    ),
+                                    4usize,
+                                    __Visitor {
+                                        marker: _serde::export::PhantomData::<ColorExpr>,
+                                        lifetime: _serde::export::PhantomData,
+                                    },
+                                )
+                            } {
+                                return _serde::export::Ok(__ok);
+                            }
+                            if let _serde::export::Ok(__ok) = {
+                                struct __Visitor<'de> {
+                                    marker: _serde::export::PhantomData<ColorExpr>,
+                                    lifetime: _serde::export::PhantomData<&'de ()>,
+                                }
+                                impl<'de> _serde::de::Visitor<'de> for __Visitor<'de> {
+                                    type Value = ColorExpr;
+                                    fn expecting(
+                                        &self,
+                                        __formatter: &mut _serde::export::Formatter,
+                                    ) -> _serde::export::fmt::Result
+                                    {
+                                        _serde::export::Formatter::write_str(
+                                            __formatter,
+                                            "tuple variant ColorExpr::Rgba",
+                                        )
+                                    }
+                                    #[inline]
+                                    fn visit_seq<__A>(
+                                        self,
+                                        mut __seq: __A,
+                                    ) -> _serde::export::Result<Self::Value, __A::Error>
+                                    where
+                                        __A: _serde::de::SeqAccess<'de>,
+                                    {
+                                        let __field0 =
+                                            match match _serde::de::SeqAccess::next_element::<
+                                                _RgbaMarker,
+                                            >(
+                                                &mut __seq
+                                            ) {
+                                                _serde::export::Ok(__val) => __val,
+                                                _serde::export::Err(__err) => {
+                                                    return _serde::export::Err(__err);
+                                                }
+                                            } {
+                                                _serde::export::Some(__value) => __value,
+                                                _serde::export::None => {
+                                                    return _serde::export::Err(_serde::de::Error::invalid_length(0usize,
+                                                                                                                            &"tuple variant ColorExpr::Rgba with 5 elements"));
+                                                }
+                                            };
+                                        let __field1 =
+                                            match match _serde::de::SeqAccess::next_element::<
+                                                BaseExpr,
+                                            >(
+                                                &mut __seq
+                                            ) {
+                                                _serde::export::Ok(__val) => __val,
+                                                _serde::export::Err(__err) => {
+                                                    return _serde::export::Err(__err);
+                                                }
+                                            } {
+                                                _serde::export::Some(__value) => __value,
+                                                _serde::export::None => {
+                                                    return _serde::export::Err(_serde::de::Error::invalid_length(1usize,
+                                                                                                                            &"tuple variant ColorExpr::Rgba with 5 elements"));
+                                                }
+                                            };
+                                        let __field2 =
+                                            match match _serde::de::SeqAccess::next_element::<
+                                                BaseExpr,
+                                            >(
+                                                &mut __seq
+                                            ) {
+                                                _serde::export::Ok(__val) => __val,
+                                                _serde::export::Err(__err) => {
+                                                    return _serde::export::Err(__err);
+                                                }
+                                            } {
+                                                _serde::export::Some(__value) => __value,
+                                                _serde::export::None => {
+                                                    return _serde::export::Err(_serde::de::Error::invalid_length(2usize,
+                                                                                                                            &"tuple variant ColorExpr::Rgba with 5 elements"));
+                                                }
+                                            };
+                                        let __field3 =
+                                            match match _serde::de::SeqAccess::next_element::<
+                                                BaseExpr,
+                                            >(
+                                                &mut __seq
+                                            ) {
+                                                _serde::export::Ok(__val) => __val,
+                                                _serde::export::Err(__err) => {
+                                                    return _serde::export::Err(__err);
+                                                }
+                                            } {
+                                                _serde::export::Some(__value) => __value,
+                                                _serde::export::None => {
+                                                    return _serde::export::Err(_serde::de::Error::invalid_length(3usize,
+                                                                                                                            &"tuple variant ColorExpr::Rgba with 5 elements"));
+                                                }
+                                            };
+                                        let __field4 =
+                                            match match _serde::de::SeqAccess::next_element::<
+                                                BaseExpr,
+                                            >(
+                                                &mut __seq
+                                            ) {
+                                                _serde::export::Ok(__val) => __val,
+                                                _serde::export::Err(__err) => {
+                                                    return _serde::export::Err(__err);
+                                                }
+                                            } {
+                                                _serde::export::Some(__value) => __value,
+                                                _serde::export::None => {
+                                                    return _serde::export::Err(_serde::de::Error::invalid_length(4usize,
+                                                                                                                            &"tuple variant ColorExpr::Rgba with 5 elements"));
+                                                }
+                                            };
+                                        _serde::export::Ok(ColorExpr::Rgba(
+                                            __field0, __field1, __field2, __field3, __field4,
+                                        ))
+                                    }
+                                }
+                                _serde::Deserializer::deserialize_tuple(
+                                    _serde::private::de::ContentRefDeserializer::<__D::Error>::new(
+                                        &__content,
+                                    ),
+                                    5usize,
+                                    __Visitor {
+                                        marker: _serde::export::PhantomData::<ColorExpr>,
+                                        lifetime: _serde::export::PhantomData,
+                                    },
+                                )
+                            } {
+                                return _serde::export::Ok(__ok);
+                            }
+                            if let _serde::export::Ok(__ok) = {
+                                struct __Visitor<'de> {
+                                    marker: _serde::export::PhantomData<ColorExpr>,
+                                    lifetime: _serde::export::PhantomData<&'de ()>,
+                                }
+                                impl<'de> _serde::de::Visitor<'de> for __Visitor<'de> {
+                                    type Value = ColorExpr;
+                                    fn expecting(
+                                        &self,
+                                        __formatter: &mut _serde::export::Formatter,
+                                    ) -> _serde::export::fmt::Result
+                                    {
+                                        _serde::export::Formatter::write_str(
+                                            __formatter,
+                                            "tuple variant ColorExpr::ToRgba",
+                                        )
+                                    }
+                                    #[inline]
+                                    fn visit_seq<__A>(
+                                        self,
+                                        mut __seq: __A,
+                                    ) -> _serde::export::Result<Self::Value, __A::Error>
+                                    where
+                                        __A: _serde::de::SeqAccess<'de>,
+                                    {
+                                        let __field0 =
+                                            match match _serde::de::SeqAccess::next_element::<
+                                                _ToRgbaMarker,
+                                            >(
+                                                &mut __seq
+                                            ) {
+                                                _serde::export::Ok(__val) => __val,
+                                                _serde::export::Err(__err) => {
+                                                    return _serde::export::Err(__err);
+                                                }
+                                            } {
+                                                _serde::export::Some(__value) => __value,
+                                                _serde::export::None => {
+                                                    return _serde::export::Err(_serde::de::Error::invalid_length(0usize,
+                                                                                                                            &"tuple variant ColorExpr::ToRgba with 2 elements"));
+                                                }
+                                            };
+                                        let __field1 =
+                                            match match _serde::de::SeqAccess::next_element::<
+                                                BaseExpr,
+                                            >(
+                                                &mut __seq
+                                            ) {
+                                                _serde::export::Ok(__val) => __val,
+                                                _serde::export::Err(__err) => {
+                                                    return _serde::export::Err(__err);
+                                                }
+                                            } {
+                                                _serde::export::Some(__value) => __value,
+                                                _serde::export::None => {
+                                                    return _serde::export::Err(_serde::de::Error::invalid_length(1usize,
+                                                                                                                            &"tuple variant ColorExpr::ToRgba with 2 elements"));
+                                                }
+                                            };
+                                        _serde::export::Ok(ColorExpr::ToRgba(__field0, __field1))
+                                    }
+                                }
+                                _serde::Deserializer::deserialize_tuple(
+                                    _serde::private::de::ContentRefDeserializer::<__D::Error>::new(
+                                        &__content,
+                                    ),
+                                    2usize,
+                                    __Visitor {
+                                        marker: _serde::export::PhantomData::<ColorExpr>,
+                                        lifetime: _serde::export::PhantomData,
+                                    },
+                                )
+                            } {
+                                return _serde::export::Ok(__ok);
+                            }
+                            _serde::export::Err(_serde::de::Error::custom(
+                                "data did not match any variant of untagged enum ColorExpr",
+                            ))
+                        }
+                    }
+                };
+                impl Expr for ColorExpr {
+                    fn is_zoom(&self) -> bool {
+                        match self {
+                            ColorExpr::Rgb(_, a, b, c) => a.is_zoom() || b.is_zoom() || c.is_zoom(),
+                            ColorExpr::Rgba(_, a, b, c, d) => {
+                                a.is_zoom() || b.is_zoom() || c.is_zoom() || d.is_zoom()
+                            }
+                            ColorExpr::ToRgba(_, x) => x.is_zoom(),
+                        }
+                    }
+                    fn is_feature(&self) -> bool {
+                        match self {
+                            ColorExpr::Rgb(_, a, b, c) => {
+                                a.is_feature() || b.is_feature() || c.is_feature()
+                            }
+                            ColorExpr::Rgba(_, a, b, c, d) => {
+                                a.is_feature() || b.is_feature() || c.is_feature() || d.is_feature()
+                            }
+                            ColorExpr::ToRgba(_, x) => x.is_feature(),
+                        }
+                    }
+                    fn eval(&self, ctx: &EvaluationContext) -> ExprResult {
+                        match self {
+                            ColorExpr::Rgb(_, a, b, c) => {
+                                let ea = expect_num(a.eval(ctx)?)?;
+                                let eb = expect_num(b.eval(ctx)?)?;
+                                let ec = expect_num(c.eval(ctx)?)?;
+                                return Ok(ExprVal::Color(Color::new(
+                                    ea as f32, eb as f32, ec as f32, 1.,
+                                )));
+                            }
+                            ColorExpr::Rgba(_, a, b, c, d) => {
+                                let ea = expect_num(a.eval(ctx)?)?;
+                                let eb = expect_num(b.eval(ctx)?)?;
+                                let ec = expect_num(c.eval(ctx)?)?;
+                                let ed = expect_num(d.eval(ctx)?)?;
+                                return Ok(ExprVal::Color(Color::new(
+                                    ea as f32, eb as f32, ec as f32, ed as f32,
+                                )));
+                            }
+                            ColorExpr::ToRgba(_, x) => {
+                                let ea = expect_color(x.eval(ctx)?)?;
+                                return Ok(ExprVal::List(<[_]>::into_vec(box [
+                                    ea.r().into(),
+                                    ea.g().into(),
+                                    ea.b().into(),
+                                    ea.a().into(),
+                                ])));
+                            }
+                        }
+                    }
+                }
+            }
+            pub mod zoom {
+                use super::*;
+                use prelude::*;
+                use serde::Deserialize;
+                pub struct Zoom {}
+                #[automatically_derived]
+                #[allow(unused_qualifications)]
+                impl ::std::fmt::Debug for Zoom {
+                    fn fmt(&self, f: &mut ::std::fmt::Formatter) -> ::std::fmt::Result {
+                        match *self {
+                            Zoom {} => {
+                                let mut debug_trait_builder = f.debug_struct("Zoom");
+                                debug_trait_builder.finish()
+                            }
+                        }
+                    }
+                }
+                #[automatically_derived]
+                #[allow(unused_qualifications)]
+                impl ::std::clone::Clone for Zoom {
+                    #[inline]
+                    fn clone(&self) -> Zoom {
+                        match *self {
+                            Zoom {} => Zoom {},
+                        }
+                    }
+                }
+                #[automatically_derived]
+                #[allow(unused_qualifications)]
+                impl ::std::cmp::PartialEq for Zoom {
+                    #[inline]
+                    fn eq(&self, other: &Zoom) -> bool {
+                        match *other {
+                            Zoom {} => match *self {
+                                Zoom {} => true,
+                            },
+                        }
+                    }
+                }
+                impl<'de> Deserialize<'de> for Zoom {
+                    fn deserialize<D>(deserializer: D) -> StdResult<Self, D::Error>
+                    where
+                        D: Deserializer<'de>,
+                    {
+                        enum _Marker {
+                            #[serde(rename = "zoom")]
+                            _Mark,
+                        }
+                        #[allow(non_upper_case_globals, unused_attributes, unused_qualifications)]
+                        const _IMPL_DESERIALIZE_FOR__Marker: () = {
+                            extern crate serde as _serde;
+                            #[allow(unused_macros)]
+                            macro_rules! try(( $ __expr : expr ) => {
+                                                 match $ __expr {
+                                                 _serde :: export :: Ok (
+                                                 __val ) => __val , _serde ::
+                                                 export :: Err ( __err ) => {
+                                                 return _serde :: export ::
+                                                 Err ( __err ) ; } } });
+                            #[automatically_derived]
+                            impl<'de> _serde::Deserialize<'de> for _Marker {
+                                fn deserialize<__D>(
+                                    __deserializer: __D,
+                                ) -> _serde::export::Result<Self, __D::Error>
+                                where
+                                    __D: _serde::Deserializer<'de>,
+                                {
+                                    #[allow(non_camel_case_types)]
+                                    enum __Field {
+                                        __field0,
+                                    }
+                                    struct __FieldVisitor;
+                                    impl<'de> _serde::de::Visitor<'de> for __FieldVisitor {
+                                        type Value = __Field;
+                                        fn expecting(
+                                            &self,
+                                            __formatter: &mut _serde::export::Formatter,
+                                        ) -> _serde::export::fmt::Result
+                                        {
+                                            _serde::export::Formatter::write_str(
+                                                __formatter,
+                                                "variant identifier",
+                                            )
+                                        }
+                                        fn visit_u64<__E>(
+                                            self,
+                                            __value: u64,
+                                        ) -> _serde::export::Result<Self::Value, __E>
+                                        where
+                                            __E: _serde::de::Error,
+                                        {
+                                            match __value {
+                                                0u64 => _serde::export::Ok(__Field::__field0),
+                                                _ => _serde::export::Err(
+                                                    _serde::de::Error::invalid_value(
+                                                        _serde::de::Unexpected::Unsigned(__value),
+                                                        &"variant index 0 <= i < 1",
+                                                    ),
+                                                ),
+                                            }
+                                        }
+                                        fn visit_str<__E>(
+                                            self,
+                                            __value: &str,
+                                        ) -> _serde::export::Result<Self::Value, __E>
+                                        where
+                                            __E: _serde::de::Error,
+                                        {
+                                            match __value {
+                                                "zoom" => _serde::export::Ok(__Field::__field0),
+                                                _ => _serde::export::Err(
+                                                    _serde::de::Error::unknown_variant(
+                                                        __value, VARIANTS,
+                                                    ),
+                                                ),
+                                            }
+                                        }
+                                        fn visit_bytes<__E>(
+                                            self,
+                                            __value: &[u8],
+                                        ) -> _serde::export::Result<Self::Value, __E>
+                                        where
+                                            __E: _serde::de::Error,
+                                        {
+                                            match __value {
+                                                b"zoom" => _serde::export::Ok(__Field::__field0),
+                                                _ => {
+                                                    let __value =
+                                                        &_serde::export::from_utf8_lossy(__value);
+                                                    _serde::export::Err(
+                                                        _serde::de::Error::unknown_variant(
+                                                            __value, VARIANTS,
+                                                        ),
+                                                    )
+                                                }
+                                            }
+                                        }
+                                    }
+                                    impl<'de> _serde::Deserialize<'de> for __Field {
+                                        #[inline]
+                                        fn deserialize<__D>(
+                                            __deserializer: __D,
+                                        ) -> _serde::export::Result<Self, __D::Error>
+                                        where
+                                            __D: _serde::Deserializer<'de>,
+                                        {
+                                            _serde::Deserializer::deserialize_identifier(
+                                                __deserializer,
+                                                __FieldVisitor,
+                                            )
+                                        }
+                                    }
+                                    struct __Visitor<'de> {
+                                        marker: _serde::export::PhantomData<_Marker>,
+                                        lifetime: _serde::export::PhantomData<&'de ()>,
+                                    }
+                                    impl<'de> _serde::de::Visitor<'de> for __Visitor<'de> {
+                                        type Value = _Marker;
+                                        fn expecting(
+                                            &self,
+                                            __formatter: &mut _serde::export::Formatter,
+                                        ) -> _serde::export::fmt::Result
+                                        {
+                                            _serde::export::Formatter::write_str(
+                                                __formatter,
+                                                "enum _Marker",
+                                            )
+                                        }
+                                        fn visit_enum<__A>(
+                                            self,
+                                            __data: __A,
+                                        ) -> _serde::export::Result<Self::Value, __A::Error>
+                                        where
+                                            __A: _serde::de::EnumAccess<'de>,
+                                        {
+                                            match match _serde::de::EnumAccess::variant(__data) {
+                                                _serde::export::Ok(__val) => __val,
+                                                _serde::export::Err(__err) => {
+                                                    return _serde::export::Err(__err);
+                                                }
+                                            } {
+                                                (__Field::__field0, __variant) => {
+                                                    match _serde::de::VariantAccess::unit_variant(
+                                                        __variant,
+                                                    ) {
+                                                        _serde::export::Ok(__val) => __val,
+                                                        _serde::export::Err(__err) => {
+                                                            return _serde::export::Err(__err);
+                                                        }
+                                                    };
+                                                    _serde::export::Ok(_Marker::_Mark)
+                                                }
+                                            }
+                                        }
+                                    }
+                                    const VARIANTS: &'static [&'static str] = &["zoom"];
+                                    _serde::Deserializer::deserialize_enum(
+                                        __deserializer,
+                                        "_Marker",
+                                        VARIANTS,
+                                        __Visitor {
+                                            marker: _serde::export::PhantomData::<_Marker>,
+                                            lifetime: _serde::export::PhantomData,
+                                        },
+                                    )
+                                }
+                            }
+                        };
+                        let PrefixHelper(mark, _): PrefixHelper<
+                            _Marker,
+                            BaseExpr,
+                        > = Deserialize::deserialize(deserializer)?;
+                        return Ok(Zoom {});
+                    }
+                }
+                impl Expr for Zoom {
+                    fn is_zoom(&self) -> bool {
+                        true
+                    }
+                    fn is_feature(&self) -> bool {
+                        false
+                    }
+                    fn eval(&self, ctx: &EvaluationContext) -> ExprResult {
+                        Ok(ExprVal::Num(ctx.zoom.unwrap() as _))
+                    }
+                }
+            }
+            pub type Array = Vec<ExprVal>;
+            pub type Object = BTreeMap<String, ExprVal>;
             #[serde(untagged)]
-            pub enum Value {
-                String(String),
-                Num(f32),
+            pub enum ExprVal {
+                Null,
                 Bool(bool),
+                Num(f64),
+                String(String),
+                Color(Color),
+                List(Array),
+                Object(Object),
             }
             #[automatically_derived]
             #[allow(unused_qualifications)]
-            impl ::std::fmt::Debug for Value {
+            impl ::std::fmt::Debug for ExprVal {
                 fn fmt(&self, f: &mut ::std::fmt::Formatter) -> ::std::fmt::Result {
                     match (&*self,) {
-                        (&Value::String(ref __self_0),) => {
-                            let mut debug_trait_builder = f.debug_tuple("String");
+                        (&ExprVal::Null,) => {
+                            let mut debug_trait_builder = f.debug_tuple("Null");
+                            debug_trait_builder.finish()
+                        }
+                        (&ExprVal::Bool(ref __self_0),) => {
+                            let mut debug_trait_builder = f.debug_tuple("Bool");
                             let _ = debug_trait_builder.field(&&(*__self_0));
                             debug_trait_builder.finish()
                         }
-                        (&Value::Num(ref __self_0),) => {
+                        (&ExprVal::Num(ref __self_0),) => {
                             let mut debug_trait_builder = f.debug_tuple("Num");
                             let _ = debug_trait_builder.field(&&(*__self_0));
                             debug_trait_builder.finish()
                         }
-                        (&Value::Bool(ref __self_0),) => {
-                            let mut debug_trait_builder = f.debug_tuple("Bool");
+                        (&ExprVal::String(ref __self_0),) => {
+                            let mut debug_trait_builder = f.debug_tuple("String");
+                            let _ = debug_trait_builder.field(&&(*__self_0));
+                            debug_trait_builder.finish()
+                        }
+                        (&ExprVal::Color(ref __self_0),) => {
+                            let mut debug_trait_builder = f.debug_tuple("Color");
+                            let _ = debug_trait_builder.field(&&(*__self_0));
+                            debug_trait_builder.finish()
+                        }
+                        (&ExprVal::List(ref __self_0),) => {
+                            let mut debug_trait_builder = f.debug_tuple("List");
+                            let _ = debug_trait_builder.field(&&(*__self_0));
+                            debug_trait_builder.finish()
+                        }
+                        (&ExprVal::Object(ref __self_0),) => {
+                            let mut debug_trait_builder = f.debug_tuple("Object");
                             let _ = debug_trait_builder.field(&&(*__self_0));
                             debug_trait_builder.finish()
                         }
@@ -299,7 +10021,7 @@ pub mod map {
                 }
             }
             #[allow(non_upper_case_globals, unused_attributes, unused_qualifications)]
-            const _IMPL_DESERIALIZE_FOR_Value: () = {
+            const _IMPL_DESERIALIZE_FOR_ExprVal: () = {
                 extern crate serde as _serde;
                 #[allow(unused_macros)]
                 macro_rules! try(( $ __expr : expr ) => {
@@ -309,7 +10031,1227 @@ pub mod map {
                                      return _serde :: export :: Err ( __err )
                                      ; } } });
                 #[automatically_derived]
-                impl<'de> _serde::Deserialize<'de> for Value {
+                impl<'de> _serde::Deserialize<'de> for ExprVal {
+                    fn deserialize<__D>(
+                        __deserializer: __D,
+                    ) -> _serde::export::Result<Self, __D::Error>
+                    where
+                        __D: _serde::Deserializer<'de>,
+                    {
+                        let __content =
+                            match <_serde::private::de::Content as _serde::Deserialize>::deserialize(
+                                __deserializer,
+                            ) {
+                                _serde::export::Ok(__val) => __val,
+                                _serde::export::Err(__err) => {
+                                    return _serde::export::Err(__err);
+                                }
+                            };
+                        if let _serde::export::Ok(__ok) =
+                            match _serde::Deserializer::deserialize_any(
+                                _serde::private::de::ContentRefDeserializer::<__D::Error>::new(
+                                    &__content,
+                                ),
+                                _serde::private::de::UntaggedUnitVisitor::new("ExprVal", "Null"),
+                            ) {
+                                _serde::export::Ok(()) => _serde::export::Ok(ExprVal::Null),
+                                _serde::export::Err(__err) => _serde::export::Err(__err),
+                            } {
+                            return _serde::export::Ok(__ok);
+                        }
+                        if let _serde::export::Ok(__ok) = _serde::export::Result::map(
+                            <bool as _serde::Deserialize>::deserialize(
+                                _serde::private::de::ContentRefDeserializer::<__D::Error>::new(
+                                    &__content,
+                                ),
+                            ),
+                            ExprVal::Bool,
+                        ) {
+                            return _serde::export::Ok(__ok);
+                        }
+                        if let _serde::export::Ok(__ok) = _serde::export::Result::map(
+                            <f64 as _serde::Deserialize>::deserialize(
+                                _serde::private::de::ContentRefDeserializer::<__D::Error>::new(
+                                    &__content,
+                                ),
+                            ),
+                            ExprVal::Num,
+                        ) {
+                            return _serde::export::Ok(__ok);
+                        }
+                        if let _serde::export::Ok(__ok) = _serde::export::Result::map(
+                            <String as _serde::Deserialize>::deserialize(
+                                _serde::private::de::ContentRefDeserializer::<__D::Error>::new(
+                                    &__content,
+                                ),
+                            ),
+                            ExprVal::String,
+                        ) {
+                            return _serde::export::Ok(__ok);
+                        }
+                        if let _serde::export::Ok(__ok) = _serde::export::Result::map(
+                            <Color as _serde::Deserialize>::deserialize(
+                                _serde::private::de::ContentRefDeserializer::<__D::Error>::new(
+                                    &__content,
+                                ),
+                            ),
+                            ExprVal::Color,
+                        ) {
+                            return _serde::export::Ok(__ok);
+                        }
+                        if let _serde::export::Ok(__ok) = _serde::export::Result::map(
+                            <Array as _serde::Deserialize>::deserialize(
+                                _serde::private::de::ContentRefDeserializer::<__D::Error>::new(
+                                    &__content,
+                                ),
+                            ),
+                            ExprVal::List,
+                        ) {
+                            return _serde::export::Ok(__ok);
+                        }
+                        if let _serde::export::Ok(__ok) = _serde::export::Result::map(
+                            <Object as _serde::Deserialize>::deserialize(
+                                _serde::private::de::ContentRefDeserializer::<__D::Error>::new(
+                                    &__content,
+                                ),
+                            ),
+                            ExprVal::Object,
+                        ) {
+                            return _serde::export::Ok(__ok);
+                        }
+                        _serde::export::Err(_serde::de::Error::custom(
+                            "data did not match any variant of untagged enum ExprVal",
+                        ))
+                    }
+                }
+            };
+            #[automatically_derived]
+            #[allow(unused_qualifications)]
+            impl ::std::clone::Clone for ExprVal {
+                #[inline]
+                fn clone(&self) -> ExprVal {
+                    match (&*self,) {
+                        (&ExprVal::Null,) => ExprVal::Null,
+                        (&ExprVal::Bool(ref __self_0),) => {
+                            ExprVal::Bool(::std::clone::Clone::clone(&(*__self_0)))
+                        }
+                        (&ExprVal::Num(ref __self_0),) => {
+                            ExprVal::Num(::std::clone::Clone::clone(&(*__self_0)))
+                        }
+                        (&ExprVal::String(ref __self_0),) => {
+                            ExprVal::String(::std::clone::Clone::clone(&(*__self_0)))
+                        }
+                        (&ExprVal::Color(ref __self_0),) => {
+                            ExprVal::Color(::std::clone::Clone::clone(&(*__self_0)))
+                        }
+                        (&ExprVal::List(ref __self_0),) => {
+                            ExprVal::List(::std::clone::Clone::clone(&(*__self_0)))
+                        }
+                        (&ExprVal::Object(ref __self_0),) => {
+                            ExprVal::Object(::std::clone::Clone::clone(&(*__self_0)))
+                        }
+                    }
+                }
+            }
+            #[automatically_derived]
+            #[allow(unused_qualifications)]
+            impl ::std::cmp::PartialEq for ExprVal {
+                #[inline]
+                fn eq(&self, other: &ExprVal) -> bool {
+                    {
+                        let __self_vi =
+                            unsafe { ::std::intrinsics::discriminant_value(&*self) } as isize;
+                        let __arg_1_vi =
+                            unsafe { ::std::intrinsics::discriminant_value(&*other) } as isize;
+                        if true && __self_vi == __arg_1_vi {
+                            match (&*self, &*other) {
+                                (&ExprVal::Bool(ref __self_0), &ExprVal::Bool(ref __arg_1_0)) => {
+                                    (*__self_0) == (*__arg_1_0)
+                                }
+                                (&ExprVal::Num(ref __self_0), &ExprVal::Num(ref __arg_1_0)) => {
+                                    (*__self_0) == (*__arg_1_0)
+                                }
+                                (
+                                    &ExprVal::String(ref __self_0),
+                                    &ExprVal::String(ref __arg_1_0),
+                                ) => (*__self_0) == (*__arg_1_0),
+                                (&ExprVal::Color(ref __self_0), &ExprVal::Color(ref __arg_1_0)) => {
+                                    (*__self_0) == (*__arg_1_0)
+                                }
+                                (&ExprVal::List(ref __self_0), &ExprVal::List(ref __arg_1_0)) => {
+                                    (*__self_0) == (*__arg_1_0)
+                                }
+                                (
+                                    &ExprVal::Object(ref __self_0),
+                                    &ExprVal::Object(ref __arg_1_0),
+                                ) => (*__self_0) == (*__arg_1_0),
+                                _ => true,
+                            }
+                        } else {
+                            false
+                        }
+                    }
+                }
+                #[inline]
+                fn ne(&self, other: &ExprVal) -> bool {
+                    {
+                        let __self_vi =
+                            unsafe { ::std::intrinsics::discriminant_value(&*self) } as isize;
+                        let __arg_1_vi =
+                            unsafe { ::std::intrinsics::discriminant_value(&*other) } as isize;
+                        if true && __self_vi == __arg_1_vi {
+                            match (&*self, &*other) {
+                                (&ExprVal::Bool(ref __self_0), &ExprVal::Bool(ref __arg_1_0)) => {
+                                    (*__self_0) != (*__arg_1_0)
+                                }
+                                (&ExprVal::Num(ref __self_0), &ExprVal::Num(ref __arg_1_0)) => {
+                                    (*__self_0) != (*__arg_1_0)
+                                }
+                                (
+                                    &ExprVal::String(ref __self_0),
+                                    &ExprVal::String(ref __arg_1_0),
+                                ) => (*__self_0) != (*__arg_1_0),
+                                (&ExprVal::Color(ref __self_0), &ExprVal::Color(ref __arg_1_0)) => {
+                                    (*__self_0) != (*__arg_1_0)
+                                }
+                                (&ExprVal::List(ref __self_0), &ExprVal::List(ref __arg_1_0)) => {
+                                    (*__self_0) != (*__arg_1_0)
+                                }
+                                (
+                                    &ExprVal::Object(ref __self_0),
+                                    &ExprVal::Object(ref __arg_1_0),
+                                ) => (*__self_0) != (*__arg_1_0),
+                                _ => false,
+                            }
+                        } else {
+                            true
+                        }
+                    }
+                }
+            }
+            #[automatically_derived]
+            #[allow(unused_qualifications)]
+            impl ::std::cmp::PartialOrd for ExprVal {
+                #[inline]
+                fn partial_cmp(
+                    &self,
+                    other: &ExprVal,
+                ) -> ::std::option::Option<::std::cmp::Ordering> {
+                    {
+                        let __self_vi =
+                            unsafe { ::std::intrinsics::discriminant_value(&*self) } as isize;
+                        let __arg_1_vi =
+                            unsafe { ::std::intrinsics::discriminant_value(&*other) } as isize;
+                        if true && __self_vi == __arg_1_vi {
+                            match (&*self, &*other) {
+                                (&ExprVal::Bool(ref __self_0), &ExprVal::Bool(ref __arg_1_0)) => {
+                                    match ::std::cmp::PartialOrd::partial_cmp(
+                                        &(*__self_0),
+                                        &(*__arg_1_0),
+                                    ) {
+                                        ::std::option::Option::Some(
+                                            ::std::cmp::Ordering::Equal,
+                                        ) => {
+                                            ::std::option::Option::Some(::std::cmp::Ordering::Equal)
+                                        }
+                                        cmp => cmp,
+                                    }
+                                }
+                                (&ExprVal::Num(ref __self_0), &ExprVal::Num(ref __arg_1_0)) => {
+                                    match ::std::cmp::PartialOrd::partial_cmp(
+                                        &(*__self_0),
+                                        &(*__arg_1_0),
+                                    ) {
+                                        ::std::option::Option::Some(
+                                            ::std::cmp::Ordering::Equal,
+                                        ) => {
+                                            ::std::option::Option::Some(::std::cmp::Ordering::Equal)
+                                        }
+                                        cmp => cmp,
+                                    }
+                                }
+                                (
+                                    &ExprVal::String(ref __self_0),
+                                    &ExprVal::String(ref __arg_1_0),
+                                ) => match ::std::cmp::PartialOrd::partial_cmp(
+                                    &(*__self_0),
+                                    &(*__arg_1_0),
+                                ) {
+                                    ::std::option::Option::Some(::std::cmp::Ordering::Equal) => {
+                                        ::std::option::Option::Some(::std::cmp::Ordering::Equal)
+                                    }
+                                    cmp => cmp,
+                                },
+                                (&ExprVal::Color(ref __self_0), &ExprVal::Color(ref __arg_1_0)) => {
+                                    match ::std::cmp::PartialOrd::partial_cmp(
+                                        &(*__self_0),
+                                        &(*__arg_1_0),
+                                    ) {
+                                        ::std::option::Option::Some(
+                                            ::std::cmp::Ordering::Equal,
+                                        ) => {
+                                            ::std::option::Option::Some(::std::cmp::Ordering::Equal)
+                                        }
+                                        cmp => cmp,
+                                    }
+                                }
+                                (&ExprVal::List(ref __self_0), &ExprVal::List(ref __arg_1_0)) => {
+                                    match ::std::cmp::PartialOrd::partial_cmp(
+                                        &(*__self_0),
+                                        &(*__arg_1_0),
+                                    ) {
+                                        ::std::option::Option::Some(
+                                            ::std::cmp::Ordering::Equal,
+                                        ) => {
+                                            ::std::option::Option::Some(::std::cmp::Ordering::Equal)
+                                        }
+                                        cmp => cmp,
+                                    }
+                                }
+                                (
+                                    &ExprVal::Object(ref __self_0),
+                                    &ExprVal::Object(ref __arg_1_0),
+                                ) => match ::std::cmp::PartialOrd::partial_cmp(
+                                    &(*__self_0),
+                                    &(*__arg_1_0),
+                                ) {
+                                    ::std::option::Option::Some(::std::cmp::Ordering::Equal) => {
+                                        ::std::option::Option::Some(::std::cmp::Ordering::Equal)
+                                    }
+                                    cmp => cmp,
+                                },
+                                _ => ::std::option::Option::Some(::std::cmp::Ordering::Equal),
+                            }
+                        } else {
+                            __self_vi.partial_cmp(&__arg_1_vi)
+                        }
+                    }
+                }
+                #[inline]
+                fn lt(&self, other: &ExprVal) -> bool {
+                    {
+                        let __self_vi =
+                            unsafe { ::std::intrinsics::discriminant_value(&*self) } as isize;
+                        let __arg_1_vi =
+                            unsafe { ::std::intrinsics::discriminant_value(&*other) } as isize;
+                        if true && __self_vi == __arg_1_vi {
+                            match (&*self, &*other) {
+                                (&ExprVal::Bool(ref __self_0), &ExprVal::Bool(ref __arg_1_0)) => {
+                                    ::std::option::Option::unwrap_or(
+                                        ::std::cmp::PartialOrd::partial_cmp(
+                                            &(*__self_0),
+                                            &(*__arg_1_0),
+                                        ),
+                                        ::std::cmp::Ordering::Greater,
+                                    )
+                                        == ::std::cmp::Ordering::Less
+                                }
+                                (&ExprVal::Num(ref __self_0), &ExprVal::Num(ref __arg_1_0)) => {
+                                    ::std::option::Option::unwrap_or(
+                                        ::std::cmp::PartialOrd::partial_cmp(
+                                            &(*__self_0),
+                                            &(*__arg_1_0),
+                                        ),
+                                        ::std::cmp::Ordering::Greater,
+                                    )
+                                        == ::std::cmp::Ordering::Less
+                                }
+                                (
+                                    &ExprVal::String(ref __self_0),
+                                    &ExprVal::String(ref __arg_1_0),
+                                ) => {
+                                    ::std::option::Option::unwrap_or(
+                                        ::std::cmp::PartialOrd::partial_cmp(
+                                            &(*__self_0),
+                                            &(*__arg_1_0),
+                                        ),
+                                        ::std::cmp::Ordering::Greater,
+                                    )
+                                        == ::std::cmp::Ordering::Less
+                                }
+                                (&ExprVal::Color(ref __self_0), &ExprVal::Color(ref __arg_1_0)) => {
+                                    ::std::option::Option::unwrap_or(
+                                        ::std::cmp::PartialOrd::partial_cmp(
+                                            &(*__self_0),
+                                            &(*__arg_1_0),
+                                        ),
+                                        ::std::cmp::Ordering::Greater,
+                                    )
+                                        == ::std::cmp::Ordering::Less
+                                }
+                                (&ExprVal::List(ref __self_0), &ExprVal::List(ref __arg_1_0)) => {
+                                    ::std::option::Option::unwrap_or(
+                                        ::std::cmp::PartialOrd::partial_cmp(
+                                            &(*__self_0),
+                                            &(*__arg_1_0),
+                                        ),
+                                        ::std::cmp::Ordering::Greater,
+                                    )
+                                        == ::std::cmp::Ordering::Less
+                                }
+                                (
+                                    &ExprVal::Object(ref __self_0),
+                                    &ExprVal::Object(ref __arg_1_0),
+                                ) => {
+                                    ::std::option::Option::unwrap_or(
+                                        ::std::cmp::PartialOrd::partial_cmp(
+                                            &(*__self_0),
+                                            &(*__arg_1_0),
+                                        ),
+                                        ::std::cmp::Ordering::Greater,
+                                    )
+                                        == ::std::cmp::Ordering::Less
+                                }
+                                _ => false,
+                            }
+                        } else {
+                            __self_vi.lt(&__arg_1_vi)
+                        }
+                    }
+                }
+                #[inline]
+                fn le(&self, other: &ExprVal) -> bool {
+                    {
+                        let __self_vi =
+                            unsafe { ::std::intrinsics::discriminant_value(&*self) } as isize;
+                        let __arg_1_vi =
+                            unsafe { ::std::intrinsics::discriminant_value(&*other) } as isize;
+                        if true && __self_vi == __arg_1_vi {
+                            match (&*self, &*other) {
+                                (&ExprVal::Bool(ref __self_0), &ExprVal::Bool(ref __arg_1_0)) => {
+                                    ::std::option::Option::unwrap_or(
+                                        ::std::cmp::PartialOrd::partial_cmp(
+                                            &(*__self_0),
+                                            &(*__arg_1_0),
+                                        ),
+                                        ::std::cmp::Ordering::Greater,
+                                    )
+                                        != ::std::cmp::Ordering::Greater
+                                }
+                                (&ExprVal::Num(ref __self_0), &ExprVal::Num(ref __arg_1_0)) => {
+                                    ::std::option::Option::unwrap_or(
+                                        ::std::cmp::PartialOrd::partial_cmp(
+                                            &(*__self_0),
+                                            &(*__arg_1_0),
+                                        ),
+                                        ::std::cmp::Ordering::Greater,
+                                    )
+                                        != ::std::cmp::Ordering::Greater
+                                }
+                                (
+                                    &ExprVal::String(ref __self_0),
+                                    &ExprVal::String(ref __arg_1_0),
+                                ) => {
+                                    ::std::option::Option::unwrap_or(
+                                        ::std::cmp::PartialOrd::partial_cmp(
+                                            &(*__self_0),
+                                            &(*__arg_1_0),
+                                        ),
+                                        ::std::cmp::Ordering::Greater,
+                                    )
+                                        != ::std::cmp::Ordering::Greater
+                                }
+                                (&ExprVal::Color(ref __self_0), &ExprVal::Color(ref __arg_1_0)) => {
+                                    ::std::option::Option::unwrap_or(
+                                        ::std::cmp::PartialOrd::partial_cmp(
+                                            &(*__self_0),
+                                            &(*__arg_1_0),
+                                        ),
+                                        ::std::cmp::Ordering::Greater,
+                                    )
+                                        != ::std::cmp::Ordering::Greater
+                                }
+                                (&ExprVal::List(ref __self_0), &ExprVal::List(ref __arg_1_0)) => {
+                                    ::std::option::Option::unwrap_or(
+                                        ::std::cmp::PartialOrd::partial_cmp(
+                                            &(*__self_0),
+                                            &(*__arg_1_0),
+                                        ),
+                                        ::std::cmp::Ordering::Greater,
+                                    )
+                                        != ::std::cmp::Ordering::Greater
+                                }
+                                (
+                                    &ExprVal::Object(ref __self_0),
+                                    &ExprVal::Object(ref __arg_1_0),
+                                ) => {
+                                    ::std::option::Option::unwrap_or(
+                                        ::std::cmp::PartialOrd::partial_cmp(
+                                            &(*__self_0),
+                                            &(*__arg_1_0),
+                                        ),
+                                        ::std::cmp::Ordering::Greater,
+                                    )
+                                        != ::std::cmp::Ordering::Greater
+                                }
+                                _ => true,
+                            }
+                        } else {
+                            __self_vi.le(&__arg_1_vi)
+                        }
+                    }
+                }
+                #[inline]
+                fn gt(&self, other: &ExprVal) -> bool {
+                    {
+                        let __self_vi =
+                            unsafe { ::std::intrinsics::discriminant_value(&*self) } as isize;
+                        let __arg_1_vi =
+                            unsafe { ::std::intrinsics::discriminant_value(&*other) } as isize;
+                        if true && __self_vi == __arg_1_vi {
+                            match (&*self, &*other) {
+                                (&ExprVal::Bool(ref __self_0), &ExprVal::Bool(ref __arg_1_0)) => {
+                                    ::std::option::Option::unwrap_or(
+                                        ::std::cmp::PartialOrd::partial_cmp(
+                                            &(*__self_0),
+                                            &(*__arg_1_0),
+                                        ),
+                                        ::std::cmp::Ordering::Less,
+                                    )
+                                        == ::std::cmp::Ordering::Greater
+                                }
+                                (&ExprVal::Num(ref __self_0), &ExprVal::Num(ref __arg_1_0)) => {
+                                    ::std::option::Option::unwrap_or(
+                                        ::std::cmp::PartialOrd::partial_cmp(
+                                            &(*__self_0),
+                                            &(*__arg_1_0),
+                                        ),
+                                        ::std::cmp::Ordering::Less,
+                                    )
+                                        == ::std::cmp::Ordering::Greater
+                                }
+                                (
+                                    &ExprVal::String(ref __self_0),
+                                    &ExprVal::String(ref __arg_1_0),
+                                ) => {
+                                    ::std::option::Option::unwrap_or(
+                                        ::std::cmp::PartialOrd::partial_cmp(
+                                            &(*__self_0),
+                                            &(*__arg_1_0),
+                                        ),
+                                        ::std::cmp::Ordering::Less,
+                                    )
+                                        == ::std::cmp::Ordering::Greater
+                                }
+                                (&ExprVal::Color(ref __self_0), &ExprVal::Color(ref __arg_1_0)) => {
+                                    ::std::option::Option::unwrap_or(
+                                        ::std::cmp::PartialOrd::partial_cmp(
+                                            &(*__self_0),
+                                            &(*__arg_1_0),
+                                        ),
+                                        ::std::cmp::Ordering::Less,
+                                    )
+                                        == ::std::cmp::Ordering::Greater
+                                }
+                                (&ExprVal::List(ref __self_0), &ExprVal::List(ref __arg_1_0)) => {
+                                    ::std::option::Option::unwrap_or(
+                                        ::std::cmp::PartialOrd::partial_cmp(
+                                            &(*__self_0),
+                                            &(*__arg_1_0),
+                                        ),
+                                        ::std::cmp::Ordering::Less,
+                                    )
+                                        == ::std::cmp::Ordering::Greater
+                                }
+                                (
+                                    &ExprVal::Object(ref __self_0),
+                                    &ExprVal::Object(ref __arg_1_0),
+                                ) => {
+                                    ::std::option::Option::unwrap_or(
+                                        ::std::cmp::PartialOrd::partial_cmp(
+                                            &(*__self_0),
+                                            &(*__arg_1_0),
+                                        ),
+                                        ::std::cmp::Ordering::Less,
+                                    )
+                                        == ::std::cmp::Ordering::Greater
+                                }
+                                _ => false,
+                            }
+                        } else {
+                            __self_vi.gt(&__arg_1_vi)
+                        }
+                    }
+                }
+                #[inline]
+                fn ge(&self, other: &ExprVal) -> bool {
+                    {
+                        let __self_vi =
+                            unsafe { ::std::intrinsics::discriminant_value(&*self) } as isize;
+                        let __arg_1_vi =
+                            unsafe { ::std::intrinsics::discriminant_value(&*other) } as isize;
+                        if true && __self_vi == __arg_1_vi {
+                            match (&*self, &*other) {
+                                (&ExprVal::Bool(ref __self_0), &ExprVal::Bool(ref __arg_1_0)) => {
+                                    ::std::option::Option::unwrap_or(
+                                        ::std::cmp::PartialOrd::partial_cmp(
+                                            &(*__self_0),
+                                            &(*__arg_1_0),
+                                        ),
+                                        ::std::cmp::Ordering::Less,
+                                    )
+                                        != ::std::cmp::Ordering::Less
+                                }
+                                (&ExprVal::Num(ref __self_0), &ExprVal::Num(ref __arg_1_0)) => {
+                                    ::std::option::Option::unwrap_or(
+                                        ::std::cmp::PartialOrd::partial_cmp(
+                                            &(*__self_0),
+                                            &(*__arg_1_0),
+                                        ),
+                                        ::std::cmp::Ordering::Less,
+                                    )
+                                        != ::std::cmp::Ordering::Less
+                                }
+                                (
+                                    &ExprVal::String(ref __self_0),
+                                    &ExprVal::String(ref __arg_1_0),
+                                ) => {
+                                    ::std::option::Option::unwrap_or(
+                                        ::std::cmp::PartialOrd::partial_cmp(
+                                            &(*__self_0),
+                                            &(*__arg_1_0),
+                                        ),
+                                        ::std::cmp::Ordering::Less,
+                                    )
+                                        != ::std::cmp::Ordering::Less
+                                }
+                                (&ExprVal::Color(ref __self_0), &ExprVal::Color(ref __arg_1_0)) => {
+                                    ::std::option::Option::unwrap_or(
+                                        ::std::cmp::PartialOrd::partial_cmp(
+                                            &(*__self_0),
+                                            &(*__arg_1_0),
+                                        ),
+                                        ::std::cmp::Ordering::Less,
+                                    )
+                                        != ::std::cmp::Ordering::Less
+                                }
+                                (&ExprVal::List(ref __self_0), &ExprVal::List(ref __arg_1_0)) => {
+                                    ::std::option::Option::unwrap_or(
+                                        ::std::cmp::PartialOrd::partial_cmp(
+                                            &(*__self_0),
+                                            &(*__arg_1_0),
+                                        ),
+                                        ::std::cmp::Ordering::Less,
+                                    )
+                                        != ::std::cmp::Ordering::Less
+                                }
+                                (
+                                    &ExprVal::Object(ref __self_0),
+                                    &ExprVal::Object(ref __arg_1_0),
+                                ) => {
+                                    ::std::option::Option::unwrap_or(
+                                        ::std::cmp::PartialOrd::partial_cmp(
+                                            &(*__self_0),
+                                            &(*__arg_1_0),
+                                        ),
+                                        ::std::cmp::Ordering::Less,
+                                    )
+                                        != ::std::cmp::Ordering::Less
+                                }
+                                _ => true,
+                            }
+                        } else {
+                            __self_vi.ge(&__arg_1_vi)
+                        }
+                    }
+                }
+            }
+            impl ExprVal {
+                fn as_bool(&self) -> Option<bool> {
+                    if let ExprVal::Bool(b) = self {
+                        Some(*b)
+                    } else {
+                        None
+                    }
+                }
+                fn as_number(&self) -> Option<f64> {
+                    if let ExprVal::Num(n) = self {
+                        Some(*n)
+                    } else {
+                        None
+                    }
+                }
+                fn as_str(&self) -> Option<&str> {
+                    if let ExprVal::String(s) = self {
+                        Some(s)
+                    } else {
+                        None
+                    }
+                }
+                fn as_array(&self) -> Option<&Array> {
+                    if let ExprVal::List(a) = self {
+                        Some(a)
+                    } else {
+                        None
+                    }
+                }
+                fn as_object(&self) -> Option<&Object> {
+                    if let ExprVal::Object(o) = self {
+                        Some(o)
+                    } else {
+                        None
+                    }
+                }
+            }
+            impl From<Value> for ExprVal {
+                fn from(v: Value) -> Self {
+                    match v {
+                        Value::Null => ExprVal::Null,
+                        Value::Bool(b) => ExprVal::Bool(b),
+                        Value::Int(a) => ExprVal::Num(a as _),
+                        Value::UInt(a) => ExprVal::Num(a as _),
+                        Value::Float(a) => ExprVal::Num(a as _),
+                        Value::String(s) => ExprVal::String(s),
+                        Value::List(a) => ExprVal::List(a.into_iter().map(|v| v.into()).collect()),
+                        Value::Object(o) => {
+                            ExprVal::Object(o.into_iter().map(|(k, v)| (k, v.into())).collect())
+                        }
+                    }
+                }
+            }
+            impl From<bool> for ExprVal {
+                fn from(b: bool) -> Self {
+                    ExprVal::Bool(b)
+                }
+            }
+            impl From<String> for ExprVal {
+                fn from(s: String) -> Self {
+                    ExprVal::String(s)
+                }
+            }
+            impl From<f32> for ExprVal {
+                fn from(v: f32) -> Self {
+                    ExprVal::Num(v as f64)
+                }
+            }
+            impl From<f64> for ExprVal {
+                fn from(v: f64) -> Self {
+                    ExprVal::Num(v)
+                }
+            }
+            impl ExprVal {
+                fn typ(&self) -> Type {
+                    return match self {
+                        ExprVal::Null => Type::Null,
+                        ExprVal::Bool(_) => Type::Boolean,
+                        ExprVal::Num(_) => Type::Number,
+                        ExprVal::String(_) => Type::String,
+                        ExprVal::Color(_) => Type::Color,
+                        ExprVal::List(_) => Type::Array,
+                        ExprVal::Object(_) => Type::Object,
+                    };
+                }
+            }
+            #[structural_match]
+            #[rustc_copy_clone_marker]
+            pub enum Type {
+                #[serde(rename = "null")]
+                Null,
+
+                #[serde(rename = "color")]
+                Color,
+
+                #[serde(rename = "object")]
+                Object,
+
+                #[serde(rename = "array")]
+                Array,
+
+                #[serde(rename = "string")]
+                String,
+
+                #[serde(rename = "number")]
+                Number,
+
+                #[serde(rename = "boolean")]
+                Boolean,
+            }
+            #[automatically_derived]
+            #[allow(unused_qualifications)]
+            impl ::std::fmt::Debug for Type {
+                fn fmt(&self, f: &mut ::std::fmt::Formatter) -> ::std::fmt::Result {
+                    match (&*self,) {
+                        (&Type::Null,) => {
+                            let mut debug_trait_builder = f.debug_tuple("Null");
+                            debug_trait_builder.finish()
+                        }
+                        (&Type::Color,) => {
+                            let mut debug_trait_builder = f.debug_tuple("Color");
+                            debug_trait_builder.finish()
+                        }
+                        (&Type::Object,) => {
+                            let mut debug_trait_builder = f.debug_tuple("Object");
+                            debug_trait_builder.finish()
+                        }
+                        (&Type::Array,) => {
+                            let mut debug_trait_builder = f.debug_tuple("Array");
+                            debug_trait_builder.finish()
+                        }
+                        (&Type::String,) => {
+                            let mut debug_trait_builder = f.debug_tuple("String");
+                            debug_trait_builder.finish()
+                        }
+                        (&Type::Number,) => {
+                            let mut debug_trait_builder = f.debug_tuple("Number");
+                            debug_trait_builder.finish()
+                        }
+                        (&Type::Boolean,) => {
+                            let mut debug_trait_builder = f.debug_tuple("Boolean");
+                            debug_trait_builder.finish()
+                        }
+                    }
+                }
+            }
+            #[allow(non_upper_case_globals, unused_attributes, unused_qualifications)]
+            const _IMPL_DESERIALIZE_FOR_Type: () = {
+                extern crate serde as _serde;
+                #[allow(unused_macros)]
+                macro_rules! try(( $ __expr : expr ) => {
+                                     match $ __expr {
+                                     _serde :: export :: Ok ( __val ) => __val
+                                     , _serde :: export :: Err ( __err ) => {
+                                     return _serde :: export :: Err ( __err )
+                                     ; } } });
+                #[automatically_derived]
+                impl<'de> _serde::Deserialize<'de> for Type {
+                    fn deserialize<__D>(
+                        __deserializer: __D,
+                    ) -> _serde::export::Result<Self, __D::Error>
+                    where
+                        __D: _serde::Deserializer<'de>,
+                    {
+                        #[allow(non_camel_case_types)]
+                        enum __Field {
+                            __field0,
+                            __field1,
+                            __field2,
+                            __field3,
+                            __field4,
+                            __field5,
+                            __field6,
+                        }
+                        struct __FieldVisitor;
+                        impl<'de> _serde::de::Visitor<'de> for __FieldVisitor {
+                            type Value = __Field;
+                            fn expecting(
+                                &self,
+                                __formatter: &mut _serde::export::Formatter,
+                            ) -> _serde::export::fmt::Result {
+                                _serde::export::Formatter::write_str(
+                                    __formatter,
+                                    "variant identifier",
+                                )
+                            }
+                            fn visit_u64<__E>(
+                                self,
+                                __value: u64,
+                            ) -> _serde::export::Result<Self::Value, __E>
+                            where
+                                __E: _serde::de::Error,
+                            {
+                                match __value {
+                                    0u64 => _serde::export::Ok(__Field::__field0),
+                                    1u64 => _serde::export::Ok(__Field::__field1),
+                                    2u64 => _serde::export::Ok(__Field::__field2),
+                                    3u64 => _serde::export::Ok(__Field::__field3),
+                                    4u64 => _serde::export::Ok(__Field::__field4),
+                                    5u64 => _serde::export::Ok(__Field::__field5),
+                                    6u64 => _serde::export::Ok(__Field::__field6),
+                                    _ => _serde::export::Err(_serde::de::Error::invalid_value(
+                                        _serde::de::Unexpected::Unsigned(__value),
+                                        &"variant index 0 <= i < 7",
+                                    )),
+                                }
+                            }
+                            fn visit_str<__E>(
+                                self,
+                                __value: &str,
+                            ) -> _serde::export::Result<Self::Value, __E>
+                            where
+                                __E: _serde::de::Error,
+                            {
+                                match __value {
+                                    "null" => _serde::export::Ok(__Field::__field0),
+                                    "color" => _serde::export::Ok(__Field::__field1),
+                                    "object" => _serde::export::Ok(__Field::__field2),
+                                    "array" => _serde::export::Ok(__Field::__field3),
+                                    "string" => _serde::export::Ok(__Field::__field4),
+                                    "number" => _serde::export::Ok(__Field::__field5),
+                                    "boolean" => _serde::export::Ok(__Field::__field6),
+                                    _ => _serde::export::Err(_serde::de::Error::unknown_variant(
+                                        __value, VARIANTS,
+                                    )),
+                                }
+                            }
+                            fn visit_bytes<__E>(
+                                self,
+                                __value: &[u8],
+                            ) -> _serde::export::Result<Self::Value, __E>
+                            where
+                                __E: _serde::de::Error,
+                            {
+                                match __value {
+                                    b"null" => _serde::export::Ok(__Field::__field0),
+                                    b"color" => _serde::export::Ok(__Field::__field1),
+                                    b"object" => _serde::export::Ok(__Field::__field2),
+                                    b"array" => _serde::export::Ok(__Field::__field3),
+                                    b"string" => _serde::export::Ok(__Field::__field4),
+                                    b"number" => _serde::export::Ok(__Field::__field5),
+                                    b"boolean" => _serde::export::Ok(__Field::__field6),
+                                    _ => {
+                                        let __value = &_serde::export::from_utf8_lossy(__value);
+                                        _serde::export::Err(_serde::de::Error::unknown_variant(
+                                            __value, VARIANTS,
+                                        ))
+                                    }
+                                }
+                            }
+                        }
+                        impl<'de> _serde::Deserialize<'de> for __Field {
+                            #[inline]
+                            fn deserialize<__D>(
+                                __deserializer: __D,
+                            ) -> _serde::export::Result<Self, __D::Error>
+                            where
+                                __D: _serde::Deserializer<'de>,
+                            {
+                                _serde::Deserializer::deserialize_identifier(
+                                    __deserializer,
+                                    __FieldVisitor,
+                                )
+                            }
+                        }
+                        struct __Visitor<'de> {
+                            marker: _serde::export::PhantomData<Type>,
+                            lifetime: _serde::export::PhantomData<&'de ()>,
+                        }
+                        impl<'de> _serde::de::Visitor<'de> for __Visitor<'de> {
+                            type Value = Type;
+                            fn expecting(
+                                &self,
+                                __formatter: &mut _serde::export::Formatter,
+                            ) -> _serde::export::fmt::Result {
+                                _serde::export::Formatter::write_str(__formatter, "enum Type")
+                            }
+                            fn visit_enum<__A>(
+                                self,
+                                __data: __A,
+                            ) -> _serde::export::Result<Self::Value, __A::Error>
+                            where
+                                __A: _serde::de::EnumAccess<'de>,
+                            {
+                                match match _serde::de::EnumAccess::variant(__data) {
+                                    _serde::export::Ok(__val) => __val,
+                                    _serde::export::Err(__err) => {
+                                        return _serde::export::Err(__err);
+                                    }
+                                } {
+                                    (__Field::__field0, __variant) => {
+                                        match _serde::de::VariantAccess::unit_variant(__variant) {
+                                            _serde::export::Ok(__val) => __val,
+                                            _serde::export::Err(__err) => {
+                                                return _serde::export::Err(__err);
+                                            }
+                                        };
+                                        _serde::export::Ok(Type::Null)
+                                    }
+                                    (__Field::__field1, __variant) => {
+                                        match _serde::de::VariantAccess::unit_variant(__variant) {
+                                            _serde::export::Ok(__val) => __val,
+                                            _serde::export::Err(__err) => {
+                                                return _serde::export::Err(__err);
+                                            }
+                                        };
+                                        _serde::export::Ok(Type::Color)
+                                    }
+                                    (__Field::__field2, __variant) => {
+                                        match _serde::de::VariantAccess::unit_variant(__variant) {
+                                            _serde::export::Ok(__val) => __val,
+                                            _serde::export::Err(__err) => {
+                                                return _serde::export::Err(__err);
+                                            }
+                                        };
+                                        _serde::export::Ok(Type::Object)
+                                    }
+                                    (__Field::__field3, __variant) => {
+                                        match _serde::de::VariantAccess::unit_variant(__variant) {
+                                            _serde::export::Ok(__val) => __val,
+                                            _serde::export::Err(__err) => {
+                                                return _serde::export::Err(__err);
+                                            }
+                                        };
+                                        _serde::export::Ok(Type::Array)
+                                    }
+                                    (__Field::__field4, __variant) => {
+                                        match _serde::de::VariantAccess::unit_variant(__variant) {
+                                            _serde::export::Ok(__val) => __val,
+                                            _serde::export::Err(__err) => {
+                                                return _serde::export::Err(__err);
+                                            }
+                                        };
+                                        _serde::export::Ok(Type::String)
+                                    }
+                                    (__Field::__field5, __variant) => {
+                                        match _serde::de::VariantAccess::unit_variant(__variant) {
+                                            _serde::export::Ok(__val) => __val,
+                                            _serde::export::Err(__err) => {
+                                                return _serde::export::Err(__err);
+                                            }
+                                        };
+                                        _serde::export::Ok(Type::Number)
+                                    }
+                                    (__Field::__field6, __variant) => {
+                                        match _serde::de::VariantAccess::unit_variant(__variant) {
+                                            _serde::export::Ok(__val) => __val,
+                                            _serde::export::Err(__err) => {
+                                                return _serde::export::Err(__err);
+                                            }
+                                        };
+                                        _serde::export::Ok(Type::Boolean)
+                                    }
+                                }
+                            }
+                        }
+                        const VARIANTS: &'static [&'static str] = &[
+                            "null", "color", "object", "array", "string", "number", "boolean",
+                        ];
+                        _serde::Deserializer::deserialize_enum(
+                            __deserializer,
+                            "Type",
+                            VARIANTS,
+                            __Visitor {
+                                marker: _serde::export::PhantomData::<Type>,
+                                lifetime: _serde::export::PhantomData,
+                            },
+                        )
+                    }
+                }
+            };
+            #[automatically_derived]
+            #[allow(unused_qualifications)]
+            impl ::std::clone::Clone for Type {
+                #[inline]
+                fn clone(&self) -> Type {
+                    {
+                        *self
+                    }
+                }
+            }
+            #[automatically_derived]
+            #[allow(unused_qualifications)]
+            impl ::std::marker::Copy for Type {}
+            #[automatically_derived]
+            #[allow(unused_qualifications)]
+            impl ::std::hash::Hash for Type {
+                fn hash<__H: ::std::hash::Hasher>(&self, state: &mut __H) -> () {
+                    match (&*self,) {
+                        _ => ::std::hash::Hash::hash(
+                            &unsafe { ::std::intrinsics::discriminant_value(self) },
+                            state,
+                        ),
+                    }
+                }
+            }
+            #[automatically_derived]
+            #[allow(unused_qualifications)]
+            impl ::std::cmp::PartialOrd for Type {
+                #[inline]
+                fn partial_cmp(&self, other: &Type) -> ::std::option::Option<::std::cmp::Ordering> {
+                    {
+                        let __self_vi =
+                            unsafe { ::std::intrinsics::discriminant_value(&*self) } as isize;
+                        let __arg_1_vi =
+                            unsafe { ::std::intrinsics::discriminant_value(&*other) } as isize;
+                        if true && __self_vi == __arg_1_vi {
+                            match (&*self, &*other) {
+                                _ => ::std::option::Option::Some(::std::cmp::Ordering::Equal),
+                            }
+                        } else {
+                            __self_vi.partial_cmp(&__arg_1_vi)
+                        }
+                    }
+                }
+            }
+            #[automatically_derived]
+            #[allow(unused_qualifications)]
+            impl ::std::cmp::PartialEq for Type {
+                #[inline]
+                fn eq(&self, other: &Type) -> bool {
+                    {
+                        let __self_vi =
+                            unsafe { ::std::intrinsics::discriminant_value(&*self) } as isize;
+                        let __arg_1_vi =
+                            unsafe { ::std::intrinsics::discriminant_value(&*other) } as isize;
+                        if true && __self_vi == __arg_1_vi {
+                            match (&*self, &*other) {
+                                _ => true,
+                            }
+                        } else {
+                            false
+                        }
+                    }
+                }
+            }
+            #[automatically_derived]
+            #[allow(unused_qualifications)]
+            impl ::std::cmp::Ord for Type {
+                #[inline]
+                fn cmp(&self, other: &Type) -> ::std::cmp::Ordering {
+                    {
+                        let __self_vi =
+                            unsafe { ::std::intrinsics::discriminant_value(&*self) } as isize;
+                        let __arg_1_vi =
+                            unsafe { ::std::intrinsics::discriminant_value(&*other) } as isize;
+                        if true && __self_vi == __arg_1_vi {
+                            match (&*self, &*other) {
+                                _ => ::std::cmp::Ordering::Equal,
+                            }
+                        } else {
+                            __self_vi.cmp(&__arg_1_vi)
+                        }
+                    }
+                }
+            }
+            #[automatically_derived]
+            #[allow(unused_qualifications)]
+            impl ::std::cmp::Eq for Type {
+                #[inline]
+                #[doc(hidden)]
+                fn assert_receiver_is_total_eq(&self) -> () {
+                    {}
+                }
+            }
+            #[serde(untagged)]
+            pub enum BaseExpr {
+                ArrayAssert(Box<assert::ArrayAssert>),
+                Assert(Box<assert::Assert>),
+                Color(Box<color::ColorExpr>),
+                Convert(Box<convert::Convert>),
+                TypeOf(Box<convert::TypeOf>),
+                GeomType(feature::GeomType),
+                Id(feature::Id),
+                Properties(feature::Properties),
+                Interpolate(Box<interp::Interpolate>),
+                Step(Box<interp::Step>),
+                Logic(Box<logic::Logic>),
+                Lookup(Box<lookup::Lookup>),
+                Decision(Box<decision::Decision>),
+                Math(Box<math::Math>),
+                String(Box<string::Str>),
+                Variable(Box<variables::Variable>),
+                Zoom(zoom::Zoom),
+                Value(ExprVal),
+            }
+            #[automatically_derived]
+            #[allow(unused_qualifications)]
+            impl ::std::fmt::Debug for BaseExpr {
+                fn fmt(&self, f: &mut ::std::fmt::Formatter) -> ::std::fmt::Result {
+                    match (&*self,) {
+                        (&BaseExpr::ArrayAssert(ref __self_0),) => {
+                            let mut debug_trait_builder = f.debug_tuple("ArrayAssert");
+                            let _ = debug_trait_builder.field(&&(*__self_0));
+                            debug_trait_builder.finish()
+                        }
+                        (&BaseExpr::Assert(ref __self_0),) => {
+                            let mut debug_trait_builder = f.debug_tuple("Assert");
+                            let _ = debug_trait_builder.field(&&(*__self_0));
+                            debug_trait_builder.finish()
+                        }
+                        (&BaseExpr::Color(ref __self_0),) => {
+                            let mut debug_trait_builder = f.debug_tuple("Color");
+                            let _ = debug_trait_builder.field(&&(*__self_0));
+                            debug_trait_builder.finish()
+                        }
+                        (&BaseExpr::Convert(ref __self_0),) => {
+                            let mut debug_trait_builder = f.debug_tuple("Convert");
+                            let _ = debug_trait_builder.field(&&(*__self_0));
+                            debug_trait_builder.finish()
+                        }
+                        (&BaseExpr::TypeOf(ref __self_0),) => {
+                            let mut debug_trait_builder = f.debug_tuple("TypeOf");
+                            let _ = debug_trait_builder.field(&&(*__self_0));
+                            debug_trait_builder.finish()
+                        }
+                        (&BaseExpr::GeomType(ref __self_0),) => {
+                            let mut debug_trait_builder = f.debug_tuple("GeomType");
+                            let _ = debug_trait_builder.field(&&(*__self_0));
+                            debug_trait_builder.finish()
+                        }
+                        (&BaseExpr::Id(ref __self_0),) => {
+                            let mut debug_trait_builder = f.debug_tuple("Id");
+                            let _ = debug_trait_builder.field(&&(*__self_0));
+                            debug_trait_builder.finish()
+                        }
+                        (&BaseExpr::Properties(ref __self_0),) => {
+                            let mut debug_trait_builder = f.debug_tuple("Properties");
+                            let _ = debug_trait_builder.field(&&(*__self_0));
+                            debug_trait_builder.finish()
+                        }
+                        (&BaseExpr::Interpolate(ref __self_0),) => {
+                            let mut debug_trait_builder = f.debug_tuple("Interpolate");
+                            let _ = debug_trait_builder.field(&&(*__self_0));
+                            debug_trait_builder.finish()
+                        }
+                        (&BaseExpr::Step(ref __self_0),) => {
+                            let mut debug_trait_builder = f.debug_tuple("Step");
+                            let _ = debug_trait_builder.field(&&(*__self_0));
+                            debug_trait_builder.finish()
+                        }
+                        (&BaseExpr::Logic(ref __self_0),) => {
+                            let mut debug_trait_builder = f.debug_tuple("Logic");
+                            let _ = debug_trait_builder.field(&&(*__self_0));
+                            debug_trait_builder.finish()
+                        }
+                        (&BaseExpr::Lookup(ref __self_0),) => {
+                            let mut debug_trait_builder = f.debug_tuple("Lookup");
+                            let _ = debug_trait_builder.field(&&(*__self_0));
+                            debug_trait_builder.finish()
+                        }
+                        (&BaseExpr::Decision(ref __self_0),) => {
+                            let mut debug_trait_builder = f.debug_tuple("Decision");
+                            let _ = debug_trait_builder.field(&&(*__self_0));
+                            debug_trait_builder.finish()
+                        }
+                        (&BaseExpr::Math(ref __self_0),) => {
+                            let mut debug_trait_builder = f.debug_tuple("Math");
+                            let _ = debug_trait_builder.field(&&(*__self_0));
+                            debug_trait_builder.finish()
+                        }
+                        (&BaseExpr::String(ref __self_0),) => {
+                            let mut debug_trait_builder = f.debug_tuple("String");
+                            let _ = debug_trait_builder.field(&&(*__self_0));
+                            debug_trait_builder.finish()
+                        }
+                        (&BaseExpr::Variable(ref __self_0),) => {
+                            let mut debug_trait_builder = f.debug_tuple("Variable");
+                            let _ = debug_trait_builder.field(&&(*__self_0));
+                            debug_trait_builder.finish()
+                        }
+                        (&BaseExpr::Zoom(ref __self_0),) => {
+                            let mut debug_trait_builder = f.debug_tuple("Zoom");
+                            let _ = debug_trait_builder.field(&&(*__self_0));
+                            debug_trait_builder.finish()
+                        }
+                        (&BaseExpr::Value(ref __self_0),) => {
+                            let mut debug_trait_builder = f.debug_tuple("Value");
+                            let _ = debug_trait_builder.field(&&(*__self_0));
+                            debug_trait_builder.finish()
+                        }
+                    }
+                }
+            }
+            #[allow(non_upper_case_globals, unused_attributes, unused_qualifications)]
+            const _IMPL_DESERIALIZE_FOR_BaseExpr: () = {
+                extern crate serde as _serde;
+                #[allow(unused_macros)]
+                macro_rules! try(( $ __expr : expr ) => {
+                                     match $ __expr {
+                                     _serde :: export :: Ok ( __val ) => __val
+                                     , _serde :: export :: Err ( __err ) => {
+                                     return _serde :: export :: Err ( __err )
+                                     ; } } });
+                #[automatically_derived]
+                impl<'de> _serde::Deserialize<'de> for BaseExpr {
                     fn deserialize<__D>(
                         __deserializer: __D,
                     ) -> _serde::export::Result<Self, __D::Error>
@@ -326,59 +11268,584 @@ pub mod map {
                                 }
                             };
                         if let _serde::export::Ok(__ok) = _serde::export::Result::map(
-                            <String as _serde::Deserialize>::deserialize(
+                            <Box<assert::ArrayAssert> as _serde::Deserialize>::deserialize(
                                 _serde::private::de::ContentRefDeserializer::<__D::Error>::new(
                                     &__content,
                                 ),
                             ),
-                            Value::String,
+                            BaseExpr::ArrayAssert,
                         ) {
                             return _serde::export::Ok(__ok);
                         }
                         if let _serde::export::Ok(__ok) = _serde::export::Result::map(
-                            <f32 as _serde::Deserialize>::deserialize(
+                            <Box<assert::Assert> as _serde::Deserialize>::deserialize(
                                 _serde::private::de::ContentRefDeserializer::<__D::Error>::new(
                                     &__content,
                                 ),
                             ),
-                            Value::Num,
+                            BaseExpr::Assert,
                         ) {
                             return _serde::export::Ok(__ok);
                         }
                         if let _serde::export::Ok(__ok) = _serde::export::Result::map(
-                            <bool as _serde::Deserialize>::deserialize(
+                            <Box<color::ColorExpr> as _serde::Deserialize>::deserialize(
                                 _serde::private::de::ContentRefDeserializer::<__D::Error>::new(
                                     &__content,
                                 ),
                             ),
-                            Value::Bool,
+                            BaseExpr::Color,
+                        ) {
+                            return _serde::export::Ok(__ok);
+                        }
+                        if let _serde::export::Ok(__ok) = _serde::export::Result::map(
+                            <Box<convert::Convert> as _serde::Deserialize>::deserialize(
+                                _serde::private::de::ContentRefDeserializer::<__D::Error>::new(
+                                    &__content,
+                                ),
+                            ),
+                            BaseExpr::Convert,
+                        ) {
+                            return _serde::export::Ok(__ok);
+                        }
+                        if let _serde::export::Ok(__ok) = _serde::export::Result::map(
+                            <Box<convert::TypeOf> as _serde::Deserialize>::deserialize(
+                                _serde::private::de::ContentRefDeserializer::<__D::Error>::new(
+                                    &__content,
+                                ),
+                            ),
+                            BaseExpr::TypeOf,
+                        ) {
+                            return _serde::export::Ok(__ok);
+                        }
+                        if let _serde::export::Ok(__ok) = _serde::export::Result::map(
+                            <feature::GeomType as _serde::Deserialize>::deserialize(
+                                _serde::private::de::ContentRefDeserializer::<__D::Error>::new(
+                                    &__content,
+                                ),
+                            ),
+                            BaseExpr::GeomType,
+                        ) {
+                            return _serde::export::Ok(__ok);
+                        }
+                        if let _serde::export::Ok(__ok) = _serde::export::Result::map(
+                            <feature::Id as _serde::Deserialize>::deserialize(
+                                _serde::private::de::ContentRefDeserializer::<__D::Error>::new(
+                                    &__content,
+                                ),
+                            ),
+                            BaseExpr::Id,
+                        ) {
+                            return _serde::export::Ok(__ok);
+                        }
+                        if let _serde::export::Ok(__ok) = _serde::export::Result::map(
+                            <feature::Properties as _serde::Deserialize>::deserialize(
+                                _serde::private::de::ContentRefDeserializer::<__D::Error>::new(
+                                    &__content,
+                                ),
+                            ),
+                            BaseExpr::Properties,
+                        ) {
+                            return _serde::export::Ok(__ok);
+                        }
+                        if let _serde::export::Ok(__ok) = _serde::export::Result::map(
+                            <Box<interp::Interpolate> as _serde::Deserialize>::deserialize(
+                                _serde::private::de::ContentRefDeserializer::<__D::Error>::new(
+                                    &__content,
+                                ),
+                            ),
+                            BaseExpr::Interpolate,
+                        ) {
+                            return _serde::export::Ok(__ok);
+                        }
+                        if let _serde::export::Ok(__ok) = _serde::export::Result::map(
+                            <Box<interp::Step> as _serde::Deserialize>::deserialize(
+                                _serde::private::de::ContentRefDeserializer::<__D::Error>::new(
+                                    &__content,
+                                ),
+                            ),
+                            BaseExpr::Step,
+                        ) {
+                            return _serde::export::Ok(__ok);
+                        }
+                        if let _serde::export::Ok(__ok) = _serde::export::Result::map(
+                            <Box<logic::Logic> as _serde::Deserialize>::deserialize(
+                                _serde::private::de::ContentRefDeserializer::<__D::Error>::new(
+                                    &__content,
+                                ),
+                            ),
+                            BaseExpr::Logic,
+                        ) {
+                            return _serde::export::Ok(__ok);
+                        }
+                        if let _serde::export::Ok(__ok) = _serde::export::Result::map(
+                            <Box<lookup::Lookup> as _serde::Deserialize>::deserialize(
+                                _serde::private::de::ContentRefDeserializer::<__D::Error>::new(
+                                    &__content,
+                                ),
+                            ),
+                            BaseExpr::Lookup,
+                        ) {
+                            return _serde::export::Ok(__ok);
+                        }
+                        if let _serde::export::Ok(__ok) = _serde::export::Result::map(
+                            <Box<decision::Decision> as _serde::Deserialize>::deserialize(
+                                _serde::private::de::ContentRefDeserializer::<__D::Error>::new(
+                                    &__content,
+                                ),
+                            ),
+                            BaseExpr::Decision,
+                        ) {
+                            return _serde::export::Ok(__ok);
+                        }
+                        if let _serde::export::Ok(__ok) = _serde::export::Result::map(
+                            <Box<math::Math> as _serde::Deserialize>::deserialize(
+                                _serde::private::de::ContentRefDeserializer::<__D::Error>::new(
+                                    &__content,
+                                ),
+                            ),
+                            BaseExpr::Math,
+                        ) {
+                            return _serde::export::Ok(__ok);
+                        }
+                        if let _serde::export::Ok(__ok) = _serde::export::Result::map(
+                            <Box<string::Str> as _serde::Deserialize>::deserialize(
+                                _serde::private::de::ContentRefDeserializer::<__D::Error>::new(
+                                    &__content,
+                                ),
+                            ),
+                            BaseExpr::String,
+                        ) {
+                            return _serde::export::Ok(__ok);
+                        }
+                        if let _serde::export::Ok(__ok) = _serde::export::Result::map(
+                            <Box<variables::Variable> as _serde::Deserialize>::deserialize(
+                                _serde::private::de::ContentRefDeserializer::<__D::Error>::new(
+                                    &__content,
+                                ),
+                            ),
+                            BaseExpr::Variable,
+                        ) {
+                            return _serde::export::Ok(__ok);
+                        }
+                        if let _serde::export::Ok(__ok) = _serde::export::Result::map(
+                            <zoom::Zoom as _serde::Deserialize>::deserialize(
+                                _serde::private::de::ContentRefDeserializer::<__D::Error>::new(
+                                    &__content,
+                                ),
+                            ),
+                            BaseExpr::Zoom,
+                        ) {
+                            return _serde::export::Ok(__ok);
+                        }
+                        if let _serde::export::Ok(__ok) = _serde::export::Result::map(
+                            <ExprVal as _serde::Deserialize>::deserialize(
+                                _serde::private::de::ContentRefDeserializer::<__D::Error>::new(
+                                    &__content,
+                                ),
+                            ),
+                            BaseExpr::Value,
                         ) {
                             return _serde::export::Ok(__ok);
                         }
                         _serde::export::Err(_serde::de::Error::custom(
-                            "data did not match any variant of untagged enum Value",
+                            "data did not match any variant of untagged enum BaseExpr",
                         ))
                     }
                 }
             };
             #[automatically_derived]
             #[allow(unused_qualifications)]
-            impl ::std::clone::Clone for Value {
+            impl ::std::clone::Clone for BaseExpr {
                 #[inline]
-                fn clone(&self) -> Value {
+                fn clone(&self) -> BaseExpr {
                     match (&*self,) {
-                        (&Value::String(ref __self_0),) => {
-                            Value::String(::std::clone::Clone::clone(&(*__self_0)))
+                        (&BaseExpr::ArrayAssert(ref __self_0),) => {
+                            BaseExpr::ArrayAssert(::std::clone::Clone::clone(&(*__self_0)))
                         }
-                        (&Value::Num(ref __self_0),) => {
-                            Value::Num(::std::clone::Clone::clone(&(*__self_0)))
+                        (&BaseExpr::Assert(ref __self_0),) => {
+                            BaseExpr::Assert(::std::clone::Clone::clone(&(*__self_0)))
                         }
-                        (&Value::Bool(ref __self_0),) => {
-                            Value::Bool(::std::clone::Clone::clone(&(*__self_0)))
+                        (&BaseExpr::Color(ref __self_0),) => {
+                            BaseExpr::Color(::std::clone::Clone::clone(&(*__self_0)))
+                        }
+                        (&BaseExpr::Convert(ref __self_0),) => {
+                            BaseExpr::Convert(::std::clone::Clone::clone(&(*__self_0)))
+                        }
+                        (&BaseExpr::TypeOf(ref __self_0),) => {
+                            BaseExpr::TypeOf(::std::clone::Clone::clone(&(*__self_0)))
+                        }
+                        (&BaseExpr::GeomType(ref __self_0),) => {
+                            BaseExpr::GeomType(::std::clone::Clone::clone(&(*__self_0)))
+                        }
+                        (&BaseExpr::Id(ref __self_0),) => {
+                            BaseExpr::Id(::std::clone::Clone::clone(&(*__self_0)))
+                        }
+                        (&BaseExpr::Properties(ref __self_0),) => {
+                            BaseExpr::Properties(::std::clone::Clone::clone(&(*__self_0)))
+                        }
+                        (&BaseExpr::Interpolate(ref __self_0),) => {
+                            BaseExpr::Interpolate(::std::clone::Clone::clone(&(*__self_0)))
+                        }
+                        (&BaseExpr::Step(ref __self_0),) => {
+                            BaseExpr::Step(::std::clone::Clone::clone(&(*__self_0)))
+                        }
+                        (&BaseExpr::Logic(ref __self_0),) => {
+                            BaseExpr::Logic(::std::clone::Clone::clone(&(*__self_0)))
+                        }
+                        (&BaseExpr::Lookup(ref __self_0),) => {
+                            BaseExpr::Lookup(::std::clone::Clone::clone(&(*__self_0)))
+                        }
+                        (&BaseExpr::Decision(ref __self_0),) => {
+                            BaseExpr::Decision(::std::clone::Clone::clone(&(*__self_0)))
+                        }
+                        (&BaseExpr::Math(ref __self_0),) => {
+                            BaseExpr::Math(::std::clone::Clone::clone(&(*__self_0)))
+                        }
+                        (&BaseExpr::String(ref __self_0),) => {
+                            BaseExpr::String(::std::clone::Clone::clone(&(*__self_0)))
+                        }
+                        (&BaseExpr::Variable(ref __self_0),) => {
+                            BaseExpr::Variable(::std::clone::Clone::clone(&(*__self_0)))
+                        }
+                        (&BaseExpr::Zoom(ref __self_0),) => {
+                            BaseExpr::Zoom(::std::clone::Clone::clone(&(*__self_0)))
+                        }
+                        (&BaseExpr::Value(ref __self_0),) => {
+                            BaseExpr::Value(::std::clone::Clone::clone(&(*__self_0)))
                         }
                     }
                 }
             }
+            #[automatically_derived]
+            #[allow(unused_qualifications)]
+            impl ::std::cmp::PartialEq for BaseExpr {
+                #[inline]
+                fn eq(&self, other: &BaseExpr) -> bool {
+                    {
+                        let __self_vi =
+                            unsafe { ::std::intrinsics::discriminant_value(&*self) } as isize;
+                        let __arg_1_vi =
+                            unsafe { ::std::intrinsics::discriminant_value(&*other) } as isize;
+                        if true && __self_vi == __arg_1_vi {
+                            match (&*self, &*other) {
+                                (
+                                    &BaseExpr::ArrayAssert(ref __self_0),
+                                    &BaseExpr::ArrayAssert(ref __arg_1_0),
+                                ) => (*__self_0) == (*__arg_1_0),
+                                (
+                                    &BaseExpr::Assert(ref __self_0),
+                                    &BaseExpr::Assert(ref __arg_1_0),
+                                ) => (*__self_0) == (*__arg_1_0),
+                                (
+                                    &BaseExpr::Color(ref __self_0),
+                                    &BaseExpr::Color(ref __arg_1_0),
+                                ) => (*__self_0) == (*__arg_1_0),
+                                (
+                                    &BaseExpr::Convert(ref __self_0),
+                                    &BaseExpr::Convert(ref __arg_1_0),
+                                ) => (*__self_0) == (*__arg_1_0),
+                                (
+                                    &BaseExpr::TypeOf(ref __self_0),
+                                    &BaseExpr::TypeOf(ref __arg_1_0),
+                                ) => (*__self_0) == (*__arg_1_0),
+                                (
+                                    &BaseExpr::GeomType(ref __self_0),
+                                    &BaseExpr::GeomType(ref __arg_1_0),
+                                ) => (*__self_0) == (*__arg_1_0),
+                                (&BaseExpr::Id(ref __self_0), &BaseExpr::Id(ref __arg_1_0)) => {
+                                    (*__self_0) == (*__arg_1_0)
+                                }
+                                (
+                                    &BaseExpr::Properties(ref __self_0),
+                                    &BaseExpr::Properties(ref __arg_1_0),
+                                ) => (*__self_0) == (*__arg_1_0),
+                                (
+                                    &BaseExpr::Interpolate(ref __self_0),
+                                    &BaseExpr::Interpolate(ref __arg_1_0),
+                                ) => (*__self_0) == (*__arg_1_0),
+                                (&BaseExpr::Step(ref __self_0), &BaseExpr::Step(ref __arg_1_0)) => {
+                                    (*__self_0) == (*__arg_1_0)
+                                }
+                                (
+                                    &BaseExpr::Logic(ref __self_0),
+                                    &BaseExpr::Logic(ref __arg_1_0),
+                                ) => (*__self_0) == (*__arg_1_0),
+                                (
+                                    &BaseExpr::Lookup(ref __self_0),
+                                    &BaseExpr::Lookup(ref __arg_1_0),
+                                ) => (*__self_0) == (*__arg_1_0),
+                                (
+                                    &BaseExpr::Decision(ref __self_0),
+                                    &BaseExpr::Decision(ref __arg_1_0),
+                                ) => (*__self_0) == (*__arg_1_0),
+                                (&BaseExpr::Math(ref __self_0), &BaseExpr::Math(ref __arg_1_0)) => {
+                                    (*__self_0) == (*__arg_1_0)
+                                }
+                                (
+                                    &BaseExpr::String(ref __self_0),
+                                    &BaseExpr::String(ref __arg_1_0),
+                                ) => (*__self_0) == (*__arg_1_0),
+                                (
+                                    &BaseExpr::Variable(ref __self_0),
+                                    &BaseExpr::Variable(ref __arg_1_0),
+                                ) => (*__self_0) == (*__arg_1_0),
+                                (&BaseExpr::Zoom(ref __self_0), &BaseExpr::Zoom(ref __arg_1_0)) => {
+                                    (*__self_0) == (*__arg_1_0)
+                                }
+                                (
+                                    &BaseExpr::Value(ref __self_0),
+                                    &BaseExpr::Value(ref __arg_1_0),
+                                ) => (*__self_0) == (*__arg_1_0),
+                                _ => unsafe { ::std::intrinsics::unreachable() },
+                            }
+                        } else {
+                            false
+                        }
+                    }
+                }
+                #[inline]
+                fn ne(&self, other: &BaseExpr) -> bool {
+                    {
+                        let __self_vi =
+                            unsafe { ::std::intrinsics::discriminant_value(&*self) } as isize;
+                        let __arg_1_vi =
+                            unsafe { ::std::intrinsics::discriminant_value(&*other) } as isize;
+                        if true && __self_vi == __arg_1_vi {
+                            match (&*self, &*other) {
+                                (
+                                    &BaseExpr::ArrayAssert(ref __self_0),
+                                    &BaseExpr::ArrayAssert(ref __arg_1_0),
+                                ) => (*__self_0) != (*__arg_1_0),
+                                (
+                                    &BaseExpr::Assert(ref __self_0),
+                                    &BaseExpr::Assert(ref __arg_1_0),
+                                ) => (*__self_0) != (*__arg_1_0),
+                                (
+                                    &BaseExpr::Color(ref __self_0),
+                                    &BaseExpr::Color(ref __arg_1_0),
+                                ) => (*__self_0) != (*__arg_1_0),
+                                (
+                                    &BaseExpr::Convert(ref __self_0),
+                                    &BaseExpr::Convert(ref __arg_1_0),
+                                ) => (*__self_0) != (*__arg_1_0),
+                                (
+                                    &BaseExpr::TypeOf(ref __self_0),
+                                    &BaseExpr::TypeOf(ref __arg_1_0),
+                                ) => (*__self_0) != (*__arg_1_0),
+                                (
+                                    &BaseExpr::GeomType(ref __self_0),
+                                    &BaseExpr::GeomType(ref __arg_1_0),
+                                ) => (*__self_0) != (*__arg_1_0),
+                                (&BaseExpr::Id(ref __self_0), &BaseExpr::Id(ref __arg_1_0)) => {
+                                    (*__self_0) != (*__arg_1_0)
+                                }
+                                (
+                                    &BaseExpr::Properties(ref __self_0),
+                                    &BaseExpr::Properties(ref __arg_1_0),
+                                ) => (*__self_0) != (*__arg_1_0),
+                                (
+                                    &BaseExpr::Interpolate(ref __self_0),
+                                    &BaseExpr::Interpolate(ref __arg_1_0),
+                                ) => (*__self_0) != (*__arg_1_0),
+                                (&BaseExpr::Step(ref __self_0), &BaseExpr::Step(ref __arg_1_0)) => {
+                                    (*__self_0) != (*__arg_1_0)
+                                }
+                                (
+                                    &BaseExpr::Logic(ref __self_0),
+                                    &BaseExpr::Logic(ref __arg_1_0),
+                                ) => (*__self_0) != (*__arg_1_0),
+                                (
+                                    &BaseExpr::Lookup(ref __self_0),
+                                    &BaseExpr::Lookup(ref __arg_1_0),
+                                ) => (*__self_0) != (*__arg_1_0),
+                                (
+                                    &BaseExpr::Decision(ref __self_0),
+                                    &BaseExpr::Decision(ref __arg_1_0),
+                                ) => (*__self_0) != (*__arg_1_0),
+                                (&BaseExpr::Math(ref __self_0), &BaseExpr::Math(ref __arg_1_0)) => {
+                                    (*__self_0) != (*__arg_1_0)
+                                }
+                                (
+                                    &BaseExpr::String(ref __self_0),
+                                    &BaseExpr::String(ref __arg_1_0),
+                                ) => (*__self_0) != (*__arg_1_0),
+                                (
+                                    &BaseExpr::Variable(ref __self_0),
+                                    &BaseExpr::Variable(ref __arg_1_0),
+                                ) => (*__self_0) != (*__arg_1_0),
+                                (&BaseExpr::Zoom(ref __self_0), &BaseExpr::Zoom(ref __arg_1_0)) => {
+                                    (*__self_0) != (*__arg_1_0)
+                                }
+                                (
+                                    &BaseExpr::Value(ref __self_0),
+                                    &BaseExpr::Value(ref __arg_1_0),
+                                ) => (*__self_0) != (*__arg_1_0),
+                                _ => unsafe { ::std::intrinsics::unreachable() },
+                            }
+                        } else {
+                            true
+                        }
+                    }
+                }
+            }
+            pub struct EvaluationContext {
+                zoom: Option<f32>,
+                feature_data: Option<()>,
+                bindings: RefCell<BTreeMap<String, BaseExpr>>,
+            }
+            impl EvaluationContext {
+                fn get(&self, name: &str) -> Option<ExprVal> {
+                    None
+                }
+            }
+            pub trait Expr {
+                fn is_zoom(&self) -> bool;
+                fn is_feature(&self) -> bool;
+                fn eval(&self, ctx: &EvaluationContext) -> ExprResult;
+            }
+            pub enum ExprEvalError {
+                InvalidType { expected: Type, got: Type },
+                InvalidNumberOfArguments { expected: usize, got: usize },
+                Custom(String),
+            }
+            impl ExprEvalError {
+                fn custom(m: impl Into<String>) -> ExprEvalError {
+                    ExprEvalError::Custom(m.into())
+                }
+            }
+            pub type ExprResult = StdResult<ExprVal, ExprEvalError>;
+            pub fn expect_type(t: Type, v: ExprVal) -> ExprResult {
+                return if v.typ() == t {
+                    Ok(v)
+                } else {
+                    Err(ExprEvalError::InvalidType {
+                        expected: t,
+                        got: v.typ(),
+                    })
+                };
+            }
+            pub fn expect_num(v: ExprVal) -> StdResult<f64, ExprEvalError> {
+                return if let ExprVal::Num(n) = v {
+                    Ok(n)
+                } else {
+                    Err(ExprEvalError::InvalidType {
+                        expected: Type::Number,
+                        got: v.typ(),
+                    })
+                };
+            }
+            pub fn expect_bool(v: ExprVal) -> StdResult<bool, ExprEvalError> {
+                return if let ExprVal::Bool(n) = v {
+                    Ok(n)
+                } else {
+                    Err(ExprEvalError::InvalidType {
+                        expected: Type::Boolean,
+                        got: v.typ(),
+                    })
+                };
+            }
+            pub fn expect_color(v: ExprVal) -> StdResult<Color, ExprEvalError> {
+                return if let ExprVal::Color(n) = v {
+                    Ok(n)
+                } else {
+                    Err(ExprEvalError::InvalidType {
+                        expected: Type::Color,
+                        got: v.typ(),
+                    })
+                };
+            }
+            pub fn expect_len<T>(a: &[T], count: usize) -> StdResult<(), ExprEvalError> {
+                if a.len() >= count {
+                    return Ok(());
+                } else {
+                    return Err(ExprEvalError::InvalidNumberOfArguments {
+                        got: a.len(),
+                        expected: count,
+                    });
+                }
+            }
+            impl Expr for ExprVal {
+                fn is_zoom(&self) -> bool {
+                    false
+                }
+                fn is_feature(&self) -> bool {
+                    false
+                }
+                fn eval(&self, ctx: &EvaluationContext) -> ExprResult {
+                    return Ok(self.clone());
+                }
+            }
+            impl Expr for BaseExpr {
+                fn is_zoom(&self) -> bool {
+                    return match self {
+                        BaseExpr::ArrayAssert(inner) => inner.deref().is_zoom(),
+                        BaseExpr::Assert(inner) => inner.deref().is_zoom(),
+                        BaseExpr::Color(inner) => inner.deref().is_zoom(),
+                        BaseExpr::Convert(inner) => inner.deref().is_zoom(),
+                        BaseExpr::TypeOf(inner) => inner.deref().is_zoom(),
+                        BaseExpr::GeomType(inner) => inner.deref().is_zoom(),
+                        BaseExpr::Id(inner) => inner.deref().is_zoom(),
+                        BaseExpr::Properties(inner) => inner.deref().is_zoom(),
+                        BaseExpr::Interpolate(inner) => inner.deref().is_zoom(),
+                        BaseExpr::Step(inner) => inner.deref().is_zoom(),
+                        BaseExpr::Logic(inner) => inner.deref().is_zoom(),
+                        BaseExpr::Lookup(inner) => inner.deref().is_zoom(),
+                        BaseExpr::Decision(inner) => inner.deref().is_zoom(),
+                        BaseExpr::Math(inner) => inner.deref().is_zoom(),
+                        BaseExpr::String(inner) => inner.deref().is_zoom(),
+                        BaseExpr::Variable(inner) => inner.deref().is_zoom(),
+                        BaseExpr::Zoom(inner) => inner.deref().is_zoom(),
+                        BaseExpr::Value(inner) => inner.deref().is_zoom(),
+                    };
+                }
+                fn is_feature(&self) -> bool {
+                    return match self {
+                        BaseExpr::ArrayAssert(inner) => inner.deref().is_feature(),
+                        BaseExpr::Assert(inner) => inner.deref().is_feature(),
+                        BaseExpr::Color(inner) => inner.deref().is_feature(),
+                        BaseExpr::Convert(inner) => inner.deref().is_feature(),
+                        BaseExpr::TypeOf(inner) => inner.deref().is_feature(),
+                        BaseExpr::GeomType(inner) => inner.deref().is_feature(),
+                        BaseExpr::Id(inner) => inner.deref().is_feature(),
+                        BaseExpr::Properties(inner) => inner.deref().is_feature(),
+                        BaseExpr::Interpolate(inner) => inner.deref().is_feature(),
+                        BaseExpr::Step(inner) => inner.deref().is_feature(),
+                        BaseExpr::Logic(inner) => inner.deref().is_feature(),
+                        BaseExpr::Lookup(inner) => inner.deref().is_feature(),
+                        BaseExpr::Decision(inner) => inner.deref().is_feature(),
+                        BaseExpr::Math(inner) => inner.deref().is_feature(),
+                        BaseExpr::String(inner) => inner.deref().is_feature(),
+                        BaseExpr::Variable(inner) => inner.deref().is_feature(),
+                        BaseExpr::Zoom(inner) => inner.deref().is_feature(),
+                        BaseExpr::Value(inner) => inner.is_feature(),
+                    };
+                }
+                fn eval(&self, ctx: &EvaluationContext) -> ExprResult {
+                    return match self {
+                        BaseExpr::ArrayAssert(inner) => inner.deref().eval(ctx),
+                        BaseExpr::Assert(inner) => inner.deref().eval(ctx),
+                        BaseExpr::Color(inner) => inner.deref().eval(ctx),
+                        BaseExpr::Convert(inner) => inner.deref().eval(ctx),
+                        BaseExpr::TypeOf(inner) => inner.deref().eval(ctx),
+                        BaseExpr::GeomType(inner) => inner.deref().eval(ctx),
+                        BaseExpr::Id(inner) => inner.deref().eval(ctx),
+                        BaseExpr::Properties(inner) => inner.deref().eval(ctx),
+                        BaseExpr::Interpolate(inner) => inner.deref().eval(ctx),
+                        BaseExpr::Step(inner) => inner.deref().eval(ctx),
+                        BaseExpr::Logic(inner) => inner.deref().eval(ctx),
+                        BaseExpr::Lookup(inner) => inner.deref().eval(ctx),
+                        BaseExpr::Decision(inner) => inner.deref().eval(ctx),
+                        BaseExpr::Math(inner) => inner.deref().eval(ctx),
+                        BaseExpr::String(inner) => inner.deref().eval(ctx),
+                        BaseExpr::Variable(inner) => inner.deref().eval(ctx),
+                        BaseExpr::Zoom(inner) => inner.deref().eval(ctx),
+                        BaseExpr::Value(inner) => inner.deref().eval(ctx),
+                    };
+                }
+            }
+        }
+        mod expr_old {
+            use prelude::*;
             #[serde(untagged)]
             pub enum PropKey {
                 #[serde(rename = "$type")]
@@ -732,12 +12199,12 @@ pub mod map {
                             {
                                 ::rt::begin_panic(
                                     "explicit panic",
-                                    &("rmaps/src/map/style/expr.rs", 69u32, 13u32),
+                                    &("rmaps/src/map/style/expr_old.rs", 60u32, 13u32),
                                 )
                             }
                         }
                     };
-                    let serde_err = |e| serde::de::Error::custom("Invalid filter");
+                    let serde_err = |_e| serde::de::Error::custom("Invalid filter");
                     match data[..] {
                         [json::Value::String(ref first), ref mut rest..] => {
                             return Ok(match (first.as_ref(), rest) {
@@ -814,813 +12281,57 @@ pub mod map {
                     {
                         ::rt::begin_panic(
                             "not yet implemented",
-                            &("rmaps/src/map/style/expr.rs", 163u32, 9u32),
+                            &("rmaps/src/map/style/expr_old.rs", 153u32, 9u32),
                         )
                     }
                 }
             }
-        }
-        mod function {
-            use common::json;
-            use common::serde::{self, de::DeserializeOwned, Deserialize, Deserializer, Serialize};
-            use prelude::*;
-            pub enum FunctionStop<T: DeserializeOwned + Clone> {
-                Value(f32, T),
-                ValueAndZoom { value: f32, zoom: f32, res: T },
+            pub struct FilterEvaluationContext {
+                feature: ::mapbox_tiles::Feature,
             }
-            #[automatically_derived]
-            #[allow(unused_qualifications)]
-            impl<T: ::std::fmt::Debug + DeserializeOwned + Clone> ::std::fmt::Debug for FunctionStop<T> {
-                fn fmt(&self, f: &mut ::std::fmt::Formatter) -> ::std::fmt::Result {
-                    match (&*self,) {
-                        (&FunctionStop::Value(ref __self_0, ref __self_1),) => {
-                            let mut debug_trait_builder = f.debug_tuple("Value");
-                            let _ = debug_trait_builder.field(&&(*__self_0));
-                            let _ = debug_trait_builder.field(&&(*__self_1));
-                            debug_trait_builder.finish()
-                        }
-                        (&FunctionStop::ValueAndZoom {
-                            value: ref __self_0,
-                            zoom: ref __self_1,
-                            res: ref __self_2,
-                        },) => {
-                            let mut debug_trait_builder = f.debug_struct("ValueAndZoom");
-                            let _ = debug_trait_builder.field("value", &&(*__self_0));
-                            let _ = debug_trait_builder.field("zoom", &&(*__self_1));
-                            let _ = debug_trait_builder.field("res", &&(*__self_2));
-                            debug_trait_builder.finish()
-                        }
+            impl FilterEvaluationContext {
+                fn id(&self) -> u64 {
+                    return self.feature.id;
+                }
+                fn typ(&self) -> String {
+                    return "".into();
+                }
+                fn get(&self, key: &PropKey) -> Option<Value> {
+                    match key {
+                        PropKey::Id => Some(Value::UInt(self.feature.id)),
+                        PropKey::Type => Some(Value::String(self.typ())),
+                        PropKey::Key(k) => self.feature.tags.get(k).map(|v| v.clone()),
                     }
                 }
-            }
-            #[automatically_derived]
-            #[allow(unused_qualifications)]
-            impl<T: ::std::clone::Clone + DeserializeOwned + Clone> ::std::clone::Clone for FunctionStop<T> {
-                #[inline]
-                fn clone(&self) -> FunctionStop<T> {
-                    match (&*self,) {
-                        (&FunctionStop::Value(ref __self_0, ref __self_1),) => FunctionStop::Value(
-                            ::std::clone::Clone::clone(&(*__self_0)),
-                            ::std::clone::Clone::clone(&(*__self_1)),
-                        ),
-                        (&FunctionStop::ValueAndZoom {
-                            value: ref __self_0,
-                            zoom: ref __self_1,
-                            res: ref __self_2,
-                        },) => FunctionStop::ValueAndZoom {
-                            value: ::std::clone::Clone::clone(&(*__self_0)),
-                            zoom: ::std::clone::Clone::clone(&(*__self_1)),
-                            res: ::std::clone::Clone::clone(&(*__self_2)),
-                        },
-                    }
-                }
-            }
-            fn from_jvalue<T: ::common::serde::de::DeserializeOwned>(
-                val: &json::Value,
-            ) -> StdResult<T, json::Error> {
-                return json::from_value(val.clone());
-            }
-            impl<'de, T: DeserializeOwned + Clone> Deserialize<'de> for FunctionStop<T> {
-                fn deserialize<D>(
-                    deserializer: D,
-                ) -> StdResult<Self, <D as Deserializer<'de>>::Error>
-                where
-                    D: Deserializer<'de>,
-                {
-                    let serde_err = |_e| serde::de::Error::custom("Invalid Function stop");
-                    let data: Vec<json::Value> = Deserialize::deserialize(deserializer)?;
-                    match data[..] {
-                        [json::Value::Object(ref obj), ref x] => {
-                            let zoom = obj.get("zoom").unwrap();
-                            let value = obj.get("value").unwrap();
-                            return Ok(FunctionStop::ValueAndZoom {
-                                value: from_jvalue(value).map_err(serde_err)?,
-                                zoom: from_jvalue(zoom).map_err(serde_err)?,
-                                res: from_jvalue(&x).map_err(serde_err)?,
-                            });
+                fn evaluate(&self, filter: &Filter) -> bool {
+                    return match filter {
+                        Filter::Raw(v) => *v,
+                        Filter::Has(PropKey::Id) => true,
+                        Filter::Has(PropKey::Type) => true,
+                        Filter::Has(PropKey::Key(ref key)) => self.feature.tags.contains_key(key),
+                        Filter::NotHas(k) => !self.evaluate(&Filter::Has(k.clone())),
+                        Filter::In(k, vals) => vals.iter().any(|v| Some(v) == self.get(k).as_ref()),
+                        Filter::NotIn(k, vals) => {
+                            !vals.iter().any(|v| Some(v) == self.get(k).as_ref())
                         }
-                        [json::Value::Number(ref n), ref x] => {
-                            return Ok(FunctionStop::Value(
-                                n.as_f64().unwrap() as _,
-                                from_jvalue(&x).map_err(serde_err)?,
-                            ));
-                        }
-                        _ => {
-                            return Err(serde::de::Error::custom("Invalid Function stop"));
-                        }
-                    }
-                }
-            }
-            #[serde(untagged)]
-            pub enum FunctionType {
-                Identity,
-                Exponential,
-                Interval,
-                Categorical,
-            }
-            #[automatically_derived]
-            #[allow(unused_qualifications)]
-            impl ::std::fmt::Debug for FunctionType {
-                fn fmt(&self, f: &mut ::std::fmt::Formatter) -> ::std::fmt::Result {
-                    match (&*self,) {
-                        (&FunctionType::Identity,) => {
-                            let mut debug_trait_builder = f.debug_tuple("Identity");
-                            debug_trait_builder.finish()
-                        }
-                        (&FunctionType::Exponential,) => {
-                            let mut debug_trait_builder = f.debug_tuple("Exponential");
-                            debug_trait_builder.finish()
-                        }
-                        (&FunctionType::Interval,) => {
-                            let mut debug_trait_builder = f.debug_tuple("Interval");
-                            debug_trait_builder.finish()
-                        }
-                        (&FunctionType::Categorical,) => {
-                            let mut debug_trait_builder = f.debug_tuple("Categorical");
-                            debug_trait_builder.finish()
-                        }
-                    }
-                }
-            }
-            #[allow(non_upper_case_globals, unused_attributes, unused_qualifications)]
-            const _IMPL_DESERIALIZE_FOR_FunctionType: () = {
-                extern crate serde as _serde;
-                #[allow(unused_macros)]
-                macro_rules! try(( $ __expr : expr ) => {
-                                     match $ __expr {
-                                     _serde :: export :: Ok ( __val ) => __val
-                                     , _serde :: export :: Err ( __err ) => {
-                                     return _serde :: export :: Err ( __err )
-                                     ; } } });
-                #[automatically_derived]
-                impl<'de> _serde::Deserialize<'de> for FunctionType {
-                    fn deserialize<__D>(
-                        __deserializer: __D,
-                    ) -> _serde::export::Result<Self, __D::Error>
-                    where
-                        __D: _serde::Deserializer<'de>,
-                    {
-                        let __content =
-                            match <_serde::private::de::Content as _serde::Deserialize>::deserialize(
-                                __deserializer,
-                            ) {
-                                _serde::export::Ok(__val) => __val,
-                                _serde::export::Err(__err) => {
-                                    return _serde::export::Err(__err);
-                                }
-                            };
-                        if let _serde::export::Ok(__ok) =
-                            match _serde::Deserializer::deserialize_any(
-                                _serde::private::de::ContentRefDeserializer::<__D::Error>::new(
-                                    &__content,
-                                ),
-                                _serde::private::de::UntaggedUnitVisitor::new(
-                                    "FunctionType",
-                                    "Identity",
-                                ),
-                            ) {
-                                _serde::export::Ok(()) => {
-                                    _serde::export::Ok(FunctionType::Identity)
-                                }
-                                _serde::export::Err(__err) => _serde::export::Err(__err),
-                            } {
-                            return _serde::export::Ok(__ok);
-                        }
-                        if let _serde::export::Ok(__ok) =
-                            match _serde::Deserializer::deserialize_any(
-                                _serde::private::de::ContentRefDeserializer::<__D::Error>::new(
-                                    &__content,
-                                ),
-                                _serde::private::de::UntaggedUnitVisitor::new(
-                                    "FunctionType",
-                                    "Exponential",
-                                ),
-                            ) {
-                                _serde::export::Ok(()) => {
-                                    _serde::export::Ok(FunctionType::Exponential)
-                                }
-                                _serde::export::Err(__err) => _serde::export::Err(__err),
-                            } {
-                            return _serde::export::Ok(__ok);
-                        }
-                        if let _serde::export::Ok(__ok) =
-                            match _serde::Deserializer::deserialize_any(
-                                _serde::private::de::ContentRefDeserializer::<__D::Error>::new(
-                                    &__content,
-                                ),
-                                _serde::private::de::UntaggedUnitVisitor::new(
-                                    "FunctionType",
-                                    "Interval",
-                                ),
-                            ) {
-                                _serde::export::Ok(()) => {
-                                    _serde::export::Ok(FunctionType::Interval)
-                                }
-                                _serde::export::Err(__err) => _serde::export::Err(__err),
-                            } {
-                            return _serde::export::Ok(__ok);
-                        }
-                        if let _serde::export::Ok(__ok) =
-                            match _serde::Deserializer::deserialize_any(
-                                _serde::private::de::ContentRefDeserializer::<__D::Error>::new(
-                                    &__content,
-                                ),
-                                _serde::private::de::UntaggedUnitVisitor::new(
-                                    "FunctionType",
-                                    "Categorical",
-                                ),
-                            ) {
-                                _serde::export::Ok(()) => {
-                                    _serde::export::Ok(FunctionType::Categorical)
-                                }
-                                _serde::export::Err(__err) => _serde::export::Err(__err),
-                            } {
-                            return _serde::export::Ok(__ok);
-                        }
-                        _serde::export::Err(_serde::de::Error::custom(
-                            "data did not match any variant of untagged enum FunctionType",
-                        ))
-                    }
-                }
-            };
-            #[automatically_derived]
-            #[allow(unused_qualifications)]
-            impl ::std::clone::Clone for FunctionType {
-                #[inline]
-                fn clone(&self) -> FunctionType {
-                    match (&*self,) {
-                        (&FunctionType::Identity,) => FunctionType::Identity,
-                        (&FunctionType::Exponential,) => FunctionType::Exponential,
-                        (&FunctionType::Interval,) => FunctionType::Interval,
-                        (&FunctionType::Categorical,) => FunctionType::Categorical,
-                    }
-                }
-            }
-            #[serde(untagged)]
-            pub enum Function<T: DeserializeOwned + Clone> {
-                #[serde(bound(deserialize = "T : DeserializeOwned"))]
-                Raw(T),
-                Interpolated {
-                    property: Option<String>,
-                    base: Option<f32>,
-                    #[serde(rename = "type")]
-                    typ: Option<String>,
-                    #[serde(bound(deserialize = "T : DeserializeOwned"))]
-                    default: Option<T>,
-                    #[serde(rename = "colorSpace")]
-                    color_space: Option<String>,
-                    #[serde(bound(deserialize = "T : DeserializeOwned"))]
-                    stops: Vec<FunctionStop<T>>,
-                },
-            }
-            #[automatically_derived]
-            #[allow(unused_qualifications)]
-            impl<T: ::std::fmt::Debug + DeserializeOwned + Clone> ::std::fmt::Debug for Function<T> {
-                fn fmt(&self, f: &mut ::std::fmt::Formatter) -> ::std::fmt::Result {
-                    match (&*self,) {
-                        (&Function::Raw(ref __self_0),) => {
-                            let mut debug_trait_builder = f.debug_tuple("Raw");
-                            let _ = debug_trait_builder.field(&&(*__self_0));
-                            debug_trait_builder.finish()
-                        }
-                        (&Function::Interpolated {
-                            property: ref __self_0,
-                            base: ref __self_1,
-                            typ: ref __self_2,
-                            default: ref __self_3,
-                            color_space: ref __self_4,
-                            stops: ref __self_5,
-                        },) => {
-                            let mut debug_trait_builder = f.debug_struct("Interpolated");
-                            let _ = debug_trait_builder.field("property", &&(*__self_0));
-                            let _ = debug_trait_builder.field("base", &&(*__self_1));
-                            let _ = debug_trait_builder.field("typ", &&(*__self_2));
-                            let _ = debug_trait_builder.field("default", &&(*__self_3));
-                            let _ = debug_trait_builder.field("color_space", &&(*__self_4));
-                            let _ = debug_trait_builder.field("stops", &&(*__self_5));
-                            debug_trait_builder.finish()
-                        }
-                    }
-                }
-            }
-            #[allow(non_upper_case_globals, unused_attributes, unused_qualifications)]
-            const _IMPL_DESERIALIZE_FOR_Function: () = {
-                extern crate serde as _serde;
-                #[allow(unused_macros)]
-                macro_rules! try(( $ __expr : expr ) => {
-                                     match $ __expr {
-                                     _serde :: export :: Ok ( __val ) => __val
-                                     , _serde :: export :: Err ( __err ) => {
-                                     return _serde :: export :: Err ( __err )
-                                     ; } } });
-                #[automatically_derived]
-                impl<'de, T: DeserializeOwned + Clone> _serde::Deserialize<'de> for Function<T>
-                where
-                    T: DeserializeOwned,
-                    T: DeserializeOwned,
-                    T: DeserializeOwned,
-                {
-                    fn deserialize<__D>(
-                        __deserializer: __D,
-                    ) -> _serde::export::Result<Self, __D::Error>
-                    where
-                        __D: _serde::Deserializer<'de>,
-                    {
-                        let __content =
-                            match <_serde::private::de::Content as _serde::Deserialize>::deserialize(
-                                __deserializer,
-                            ) {
-                                _serde::export::Ok(__val) => __val,
-                                _serde::export::Err(__err) => {
-                                    return _serde::export::Err(__err);
-                                }
-                            };
-                        if let _serde::export::Ok(__ok) = _serde::export::Result::map(
-                            <T as _serde::Deserialize>::deserialize(
-                                _serde::private::de::ContentRefDeserializer::<__D::Error>::new(
-                                    &__content,
-                                ),
-                            ),
-                            Function::Raw,
-                        ) {
-                            return _serde::export::Ok(__ok);
-                        }
-                        if let _serde::export::Ok(__ok) = {
-                            #[allow(non_camel_case_types)]
-                            enum __Field {
-                                __field0,
-                                __field1,
-                                __field2,
-                                __field3,
-                                __field4,
-                                __field5,
-                                __ignore,
-                            }
-                            struct __FieldVisitor;
-                            impl<'de> _serde::de::Visitor<'de> for __FieldVisitor {
-                                type Value = __Field;
-                                fn expecting(
-                                    &self,
-                                    __formatter: &mut _serde::export::Formatter,
-                                ) -> _serde::export::fmt::Result {
-                                    _serde::export::Formatter::write_str(
-                                        __formatter,
-                                        "field identifier",
-                                    )
-                                }
-                                fn visit_u64<__E>(
-                                    self,
-                                    __value: u64,
-                                ) -> _serde::export::Result<Self::Value, __E>
-                                where
-                                    __E: _serde::de::Error,
-                                {
-                                    match __value {
-                                        0u64 => _serde::export::Ok(__Field::__field0),
-                                        1u64 => _serde::export::Ok(__Field::__field1),
-                                        2u64 => _serde::export::Ok(__Field::__field2),
-                                        3u64 => _serde::export::Ok(__Field::__field3),
-                                        4u64 => _serde::export::Ok(__Field::__field4),
-                                        5u64 => _serde::export::Ok(__Field::__field5),
-                                        _ => _serde::export::Err(_serde::de::Error::invalid_value(
-                                            _serde::de::Unexpected::Unsigned(__value),
-                                            &"field index 0 <= i < 6",
-                                        )),
-                                    }
-                                }
-                                fn visit_str<__E>(
-                                    self,
-                                    __value: &str,
-                                ) -> _serde::export::Result<Self::Value, __E>
-                                where
-                                    __E: _serde::de::Error,
-                                {
-                                    match __value {
-                                        "property" => _serde::export::Ok(__Field::__field0),
-                                        "base" => _serde::export::Ok(__Field::__field1),
-                                        "type" => _serde::export::Ok(__Field::__field2),
-                                        "default" => _serde::export::Ok(__Field::__field3),
-                                        "colorSpace" => _serde::export::Ok(__Field::__field4),
-                                        "stops" => _serde::export::Ok(__Field::__field5),
-                                        _ => _serde::export::Ok(__Field::__ignore),
-                                    }
-                                }
-                                fn visit_bytes<__E>(
-                                    self,
-                                    __value: &[u8],
-                                ) -> _serde::export::Result<Self::Value, __E>
-                                where
-                                    __E: _serde::de::Error,
-                                {
-                                    match __value {
-                                        b"property" => _serde::export::Ok(__Field::__field0),
-                                        b"base" => _serde::export::Ok(__Field::__field1),
-                                        b"type" => _serde::export::Ok(__Field::__field2),
-                                        b"default" => _serde::export::Ok(__Field::__field3),
-                                        b"colorSpace" => _serde::export::Ok(__Field::__field4),
-                                        b"stops" => _serde::export::Ok(__Field::__field5),
-                                        _ => _serde::export::Ok(__Field::__ignore),
-                                    }
-                                }
-                            }
-                            impl<'de> _serde::Deserialize<'de> for __Field {
-                                #[inline]
-                                fn deserialize<__D>(
-                                    __deserializer: __D,
-                                ) -> _serde::export::Result<Self, __D::Error>
-                                where
-                                    __D: _serde::Deserializer<'de>,
-                                {
-                                    _serde::Deserializer::deserialize_identifier(
-                                        __deserializer,
-                                        __FieldVisitor,
-                                    )
-                                }
-                            }
-                            struct __Visitor<'de, T: DeserializeOwned + Clone>
-                            where
-                                T: DeserializeOwned,
-                                T: DeserializeOwned,
-                                T: DeserializeOwned,
-                            {
-                                marker: _serde::export::PhantomData<Function<T>>,
-                                lifetime: _serde::export::PhantomData<&'de ()>,
-                            }
-                            impl<'de, T: DeserializeOwned + Clone> _serde::de::Visitor<'de> for __Visitor<'de, T>
-                            where
-                                T: DeserializeOwned,
-                                T: DeserializeOwned,
-                                T: DeserializeOwned,
-                            {
-                                type Value = Function<T>;
-                                fn expecting(
-                                    &self,
-                                    __formatter: &mut _serde::export::Formatter,
-                                ) -> _serde::export::fmt::Result {
-                                    _serde::export::Formatter::write_str(
-                                        __formatter,
-                                        "struct variant Function::Interpolated",
-                                    )
-                                }
-                                #[inline]
-                                fn visit_map<__A>(
-                                    self,
-                                    mut __map: __A,
-                                ) -> _serde::export::Result<Self::Value, __A::Error>
-                                where
-                                    __A: _serde::de::MapAccess<'de>,
-                                {
-                                    let mut __field0:
-                                                       _serde::export::Option<Option<String>> =
-                                                   _serde::export::None;
-                                    let mut __field1:
-                                                       _serde::export::Option<Option<f32>> =
-                                                   _serde::export::None;
-                                    let mut __field2:
-                                                       _serde::export::Option<Option<String>> =
-                                                   _serde::export::None;
-                                    let mut __field3:
-                                                       _serde::export::Option<Option<T>> =
-                                                   _serde::export::None;
-                                    let mut __field4:
-                                                       _serde::export::Option<Option<String>> =
-                                                   _serde::export::None;
-                                    let mut __field5:
-                                                       _serde::export::Option<Vec<FunctionStop<T>>> =
-                                                   _serde::export::None;
-                                    while let _serde::export::Some(__key) =
-                                        match _serde::de::MapAccess::next_key::<__Field>(&mut __map)
-                                        {
-                                            _serde::export::Ok(__val) => __val,
-                                            _serde::export::Err(__err) => {
-                                                return _serde::export::Err(__err);
-                                            }
-                                        } {
-                                        match __key {
-                                            __Field::__field0 => {
-                                                if _serde::export::Option::is_some(&__field0) {
-                                                    return _serde::export::Err(<__A::Error
-                                                                                              as
-                                                                                              _serde::de::Error>::duplicate_field("property"));
-                                                }
-                                                __field0 = _serde::export::Some(
-                                                    match _serde::de::MapAccess::next_value::<
-                                                        Option<String>,
-                                                    >(
-                                                        &mut __map
-                                                    ) {
-                                                        _serde::export::Ok(__val) => __val,
-                                                        _serde::export::Err(__err) => {
-                                                            return _serde::export::Err(__err);
-                                                        }
-                                                    },
-                                                );
-                                            }
-                                            __Field::__field1 => {
-                                                if _serde::export::Option::is_some(&__field1) {
-                                                    return _serde::export::Err(<__A::Error
-                                                                                              as
-                                                                                              _serde::de::Error>::duplicate_field("base"));
-                                                }
-                                                __field1 = _serde::export::Some(
-                                                    match _serde::de::MapAccess::next_value::<
-                                                        Option<f32>,
-                                                    >(
-                                                        &mut __map
-                                                    ) {
-                                                        _serde::export::Ok(__val) => __val,
-                                                        _serde::export::Err(__err) => {
-                                                            return _serde::export::Err(__err);
-                                                        }
-                                                    },
-                                                );
-                                            }
-                                            __Field::__field2 => {
-                                                if _serde::export::Option::is_some(&__field2) {
-                                                    return _serde::export::Err(<__A::Error
-                                                                                              as
-                                                                                              _serde::de::Error>::duplicate_field("type"));
-                                                }
-                                                __field2 = _serde::export::Some(
-                                                    match _serde::de::MapAccess::next_value::<
-                                                        Option<String>,
-                                                    >(
-                                                        &mut __map
-                                                    ) {
-                                                        _serde::export::Ok(__val) => __val,
-                                                        _serde::export::Err(__err) => {
-                                                            return _serde::export::Err(__err);
-                                                        }
-                                                    },
-                                                );
-                                            }
-                                            __Field::__field3 => {
-                                                if _serde::export::Option::is_some(&__field3) {
-                                                    return _serde::export::Err(<__A::Error
-                                                                                              as
-                                                                                              _serde::de::Error>::duplicate_field("default"));
-                                                }
-                                                __field3 = _serde::export::Some(
-                                                    match _serde::de::MapAccess::next_value::<
-                                                        Option<T>,
-                                                    >(
-                                                        &mut __map
-                                                    ) {
-                                                        _serde::export::Ok(__val) => __val,
-                                                        _serde::export::Err(__err) => {
-                                                            return _serde::export::Err(__err);
-                                                        }
-                                                    },
-                                                );
-                                            }
-                                            __Field::__field4 => {
-                                                if _serde::export::Option::is_some(&__field4) {
-                                                    return _serde::export::Err(<__A::Error
-                                                                                              as
-                                                                                              _serde::de::Error>::duplicate_field("colorSpace"));
-                                                }
-                                                __field4 = _serde::export::Some(
-                                                    match _serde::de::MapAccess::next_value::<
-                                                        Option<String>,
-                                                    >(
-                                                        &mut __map
-                                                    ) {
-                                                        _serde::export::Ok(__val) => __val,
-                                                        _serde::export::Err(__err) => {
-                                                            return _serde::export::Err(__err);
-                                                        }
-                                                    },
-                                                );
-                                            }
-                                            __Field::__field5 => {
-                                                if _serde::export::Option::is_some(&__field5) {
-                                                    return _serde::export::Err(<__A::Error
-                                                                                              as
-                                                                                              _serde::de::Error>::duplicate_field("stops"));
-                                                }
-                                                __field5 = _serde::export::Some(
-                                                    match _serde::de::MapAccess::next_value::<
-                                                        Vec<FunctionStop<T>>,
-                                                    >(
-                                                        &mut __map
-                                                    ) {
-                                                        _serde::export::Ok(__val) => __val,
-                                                        _serde::export::Err(__err) => {
-                                                            return _serde::export::Err(__err);
-                                                        }
-                                                    },
-                                                );
-                                            }
-                                            _ => {
-                                                let _ = match _serde::de::MapAccess::next_value::<
-                                                    _serde::de::IgnoredAny,
-                                                >(
-                                                    &mut __map
-                                                ) {
-                                                    _serde::export::Ok(__val) => __val,
-                                                    _serde::export::Err(__err) => {
-                                                        return _serde::export::Err(__err);
-                                                    }
-                                                };
-                                            }
-                                        }
-                                    }
-                                    let __field0 = match __field0 {
-                                        _serde::export::Some(__field0) => __field0,
-                                        _serde::export::None => {
-                                            match _serde::private::de::missing_field("property") {
-                                                _serde::export::Ok(__val) => __val,
-                                                _serde::export::Err(__err) => {
-                                                    return _serde::export::Err(__err);
-                                                }
-                                            }
-                                        }
-                                    };
-                                    let __field1 = match __field1 {
-                                        _serde::export::Some(__field1) => __field1,
-                                        _serde::export::None => {
-                                            match _serde::private::de::missing_field("base") {
-                                                _serde::export::Ok(__val) => __val,
-                                                _serde::export::Err(__err) => {
-                                                    return _serde::export::Err(__err);
-                                                }
-                                            }
-                                        }
-                                    };
-                                    let __field2 = match __field2 {
-                                        _serde::export::Some(__field2) => __field2,
-                                        _serde::export::None => {
-                                            match _serde::private::de::missing_field("type") {
-                                                _serde::export::Ok(__val) => __val,
-                                                _serde::export::Err(__err) => {
-                                                    return _serde::export::Err(__err);
-                                                }
-                                            }
-                                        }
-                                    };
-                                    let __field3 = match __field3 {
-                                        _serde::export::Some(__field3) => __field3,
-                                        _serde::export::None => {
-                                            match _serde::private::de::missing_field("default") {
-                                                _serde::export::Ok(__val) => __val,
-                                                _serde::export::Err(__err) => {
-                                                    return _serde::export::Err(__err);
-                                                }
-                                            }
-                                        }
-                                    };
-                                    let __field4 = match __field4 {
-                                        _serde::export::Some(__field4) => __field4,
-                                        _serde::export::None => {
-                                            match _serde::private::de::missing_field("colorSpace") {
-                                                _serde::export::Ok(__val) => __val,
-                                                _serde::export::Err(__err) => {
-                                                    return _serde::export::Err(__err);
-                                                }
-                                            }
-                                        }
-                                    };
-                                    let __field5 = match __field5 {
-                                        _serde::export::Some(__field5) => __field5,
-                                        _serde::export::None => {
-                                            match _serde::private::de::missing_field("stops") {
-                                                _serde::export::Ok(__val) => __val,
-                                                _serde::export::Err(__err) => {
-                                                    return _serde::export::Err(__err);
-                                                }
-                                            }
-                                        }
-                                    };
-                                    _serde::export::Ok(Function::Interpolated {
-                                        property: __field0,
-                                        base: __field1,
-                                        typ: __field2,
-                                        default: __field3,
-                                        color_space: __field4,
-                                        stops: __field5,
-                                    })
-                                }
-                            }
-                            const FIELDS: &'static [&'static str] =
-                                &["property", "base", "type", "default", "colorSpace", "stops"];
-                            _serde::Deserializer::deserialize_any(
-                                _serde::private::de::ContentRefDeserializer::<__D::Error>::new(
-                                    &__content,
-                                ),
-                                __Visitor {
-                                    marker: _serde::export::PhantomData::<Function<T>>,
-                                    lifetime: _serde::export::PhantomData,
-                                },
-                            )
-                        } {
-                            return _serde::export::Ok(__ok);
-                        }
-                        _serde::export::Err(_serde::de::Error::custom(
-                            "data did not match any variant of untagged enum Function",
-                        ))
-                    }
-                }
-            };
-            #[automatically_derived]
-            #[allow(unused_qualifications)]
-            impl<T: ::std::clone::Clone + DeserializeOwned + Clone> ::std::clone::Clone for Function<T> {
-                #[inline]
-                fn clone(&self) -> Function<T> {
-                    match (&*self,) {
-                        (&Function::Raw(ref __self_0),) => {
-                            Function::Raw(::std::clone::Clone::clone(&(*__self_0)))
-                        }
-                        (&Function::Interpolated {
-                            property: ref __self_0,
-                            base: ref __self_1,
-                            typ: ref __self_2,
-                            default: ref __self_3,
-                            color_space: ref __self_4,
-                            stops: ref __self_5,
-                        },) => Function::Interpolated {
-                            property: ::std::clone::Clone::clone(&(*__self_0)),
-                            base: ::std::clone::Clone::clone(&(*__self_1)),
-                            typ: ::std::clone::Clone::clone(&(*__self_2)),
-                            default: ::std::clone::Clone::clone(&(*__self_3)),
-                            color_space: ::std::clone::Clone::clone(&(*__self_4)),
-                            stops: ::std::clone::Clone::clone(&(*__self_5)),
-                        },
-                    }
-                }
-            }
-            impl<T: DeserializeOwned + Clone> Function<T> {
-                pub fn eval(&self) -> T {
-                    match self {
-                        Function::Raw(c) => c.clone(),
-                        _ => {
-                            ::rt::begin_panic(
-                                "explicit panic",
-                                &("rmaps/src/map/style/function.rs", 84u32, 18u32),
-                            )
-                        }
-                    }
-                }
-            }
-        }
-        mod color {
-            use common::serde::{self, Deserialize, Deserializer};
-            use css_color_parser::{self, Color as CssColor};
-            use prelude::*;
-            pub struct Color(pub CssColor);
-            #[automatically_derived]
-            #[allow(unused_qualifications)]
-            impl ::std::fmt::Debug for Color {
-                fn fmt(&self, f: &mut ::std::fmt::Formatter) -> ::std::fmt::Result {
-                    match *self {
-                        Color(ref __self_0_0) => {
-                            let mut debug_trait_builder = f.debug_tuple("Color");
-                            let _ = debug_trait_builder.field(&&(*__self_0_0));
-                            debug_trait_builder.finish()
-                        }
-                    }
-                }
-            }
-            #[automatically_derived]
-            #[allow(unused_qualifications)]
-            impl ::std::clone::Clone for Color {
-                #[inline]
-                fn clone(&self) -> Color {
-                    match *self {
-                        Color(ref __self_0_0) => Color(::std::clone::Clone::clone(&(*__self_0_0))),
-                    }
-                }
-            }
-            impl<'de> serde::Deserialize<'de> for Color {
-                fn deserialize<D>(
-                    deserializer: D,
-                ) -> StdResult<Self, <D as Deserializer<'de>>::Error>
-                where
-                    D: Deserializer<'de>,
-                {
-                    use std::str::FromStr;
-                    let data: String = Deserialize::deserialize(deserializer)?;
-                    let color = CssColor::from_str(&data)
-                        .map_err(|_| serde::de::Error::custom("Invalid color"))?;
-                    Ok(Color(color))
-                }
-            }
-            impl Color {
-                pub fn to_rgba(&self) -> [f32; 4] {
-                    return [
-                        self.0.r as f32 / 255f32,
-                        self.0.g as f32 / 255f32,
-                        self.0.b as f32 / 255f32,
-                        self.0.a,
-                    ];
+                        Filter::Eq(k, v) => Some(v) == self.get(k).as_ref(),
+                        Filter::Neq(k, v) => Some(v) != self.get(k).as_ref(),
+                        Filter::Gt(k, v) => Some(v) > self.get(k).as_ref(),
+                        Filter::Geq(k, v) => Some(v) >= self.get(k).as_ref(),
+                        Filter::Lt(k, v) => Some(v) < self.get(k).as_ref(),
+                        Filter::Leq(k, v) => Some(v) <= self.get(k).as_ref(),
+                        Filter::All(filters) => filters.iter().all(|f| self.evaluate(f)),
+                        Filter::Any(filters) => filters.iter().any(|f| self.evaluate(f)),
+                        Filter::None(filters) => !filters.iter().any(|f| self.evaluate(f)),
+                        _ => false,
+                    };
                 }
             }
         }
         mod layers {
             use prelude::*;
             pub mod background {
-                use super::super::color::Color;
-                use super::super::function::Function;
-                use super::{BaseLayout, LayerCommon, Visibility};
+                use super::{BaseLayout, Function, LayerCommon, Visibility};
                 use prelude::*;
                 pub struct BackgroundLayer {
                     #[serde(flatten)]
@@ -2451,12 +13162,10 @@ pub mod map {
                     }
                 }
                 fn default_background_color() -> Function<Color> {
-                    return Function::Raw(Color(
-                        ::css_color_parser::Color::from_str("#00000").unwrap(),
-                    ));
+                    return Function::Value(Color([0., 0., 0., 1.]));
                 }
                 fn default_backround_opacity() -> Function<f32> {
-                    return Function::Raw(1.0);
+                    return Function::Value(1.0);
                 }
                 impl Default for BackgroundPaint {
                     fn default() -> Self {
@@ -2469,9 +13178,7 @@ pub mod map {
                 }
             }
             pub mod fill {
-                use super::super::color::Color;
-                use super::super::function::Function;
-                use super::{BaseLayout, LayerCommon, Visibility};
+                use super::{BaseLayout, Function, LayerCommon, Visibility};
                 use prelude::*;
                 pub struct FillPaint {
                     #[serde(rename = "fill-antialias")]
@@ -3592,9 +14299,7 @@ pub mod map {
                 }
             }
             pub mod line {
-                use super::super::color::Color;
-                use super::super::function::Function;
-                use super::{BaseLayout, LayerCommon, Visibility};
+                use super::{BaseLayout, Function, LayerCommon, Visibility};
                 use prelude::*;
                 pub struct LineLayer {
                     #[serde(flatten)]
@@ -4052,9 +14757,9 @@ pub mod map {
                 }
                 pub struct LineLayout {
                     #[serde(rename = "line-cap")]
-                    cap: Option<String>,
+                    cap: Option<Function<String>>,
                     #[serde(rename = "line-join")]
-                    join: Option<String>,
+                    join: Option<Function<String>>,
                     #[serde(rename = "line-miter-limit")]
                     miter_limit: Option<Function<f32>>,
                     #[serde(rename = "line-round-limit")]
@@ -4195,7 +14900,7 @@ pub mod map {
                                     __A: _serde::de::SeqAccess<'de>,
                                 {
                                     let __field0 = match match _serde::de::SeqAccess::next_element::<
-                                        Option<String>,
+                                        Option<Function<String>>,
                                     >(
                                         &mut __seq
                                     ) {
@@ -4215,7 +14920,7 @@ pub mod map {
                                         }
                                     };
                                     let __field1 = match match _serde::de::SeqAccess::next_element::<
-                                        Option<String>,
+                                        Option<Function<String>>,
                                     >(
                                         &mut __seq
                                     ) {
@@ -4311,10 +15016,10 @@ pub mod map {
                                     __A: _serde::de::MapAccess<'de>,
                                 {
                                     let mut __field0:
-                                                _serde::export::Option<Option<String>> =
+                                                _serde::export::Option<Option<Function<String>>> =
                                             _serde::export::None;
                                     let mut __field1:
-                                                _serde::export::Option<Option<String>> =
+                                                _serde::export::Option<Option<Function<String>>> =
                                             _serde::export::None;
                                     let mut __field2:
                                                 _serde::export::Option<Option<Function<f32>>> =
@@ -4342,7 +15047,7 @@ pub mod map {
                                                 }
                                                 __field0 = _serde::export::Some(
                                                     match _serde::de::MapAccess::next_value::<
-                                                        Option<String>,
+                                                        Option<Function<String>>,
                                                     >(
                                                         &mut __map
                                                     ) {
@@ -4361,7 +15066,7 @@ pub mod map {
                                                 }
                                                 __field1 = _serde::export::Some(
                                                     match _serde::de::MapAccess::next_value::<
-                                                        Option<String>,
+                                                        Option<Function<String>>,
                                                     >(
                                                         &mut __map
                                                     ) {
@@ -5441,9 +16146,7 @@ pub mod map {
                 }
             }
             pub mod raster {
-                use super::super::color::Color;
-                use super::super::function::Function;
-                use super::{BaseLayout, LayerCommon, Visibility};
+                use super::{BaseLayout, Function, LayerCommon, Visibility};
                 use prelude::*;
                 pub struct RasterLayer {
                     #[serde(flatten)]
@@ -6581,9 +17284,7 @@ pub mod map {
                 }
             }
             pub mod symbol {
-                use super::super::color::Color;
-                use super::super::function::Function;
-                use super::{BaseLayout, LayerCommon, Visibility};
+                use super::{BaseLayout, Function, LayerCommon, Visibility};
                 use prelude::*;
                 pub struct SymbolLayer {
                     #[serde(flatten)]
@@ -7621,7 +18322,7 @@ pub mod map {
             pub use self::line::*;
             pub use self::raster::*;
             pub use self::symbol::*;
-            use super::expr::Filter;
+            use super::expr_old::Filter;
             pub struct LayerCommon {
                 pub id: String,
                 pub source: Option<String>,
@@ -8634,9 +19335,101 @@ pub mod map {
                     }
                 }
             }
+            #[serde(untagged)]
+            pub enum Function<T> {
+                Value(T),
+                Expr(super::expr::BaseExpr),
+            }
+            #[automatically_derived]
+            #[allow(unused_qualifications)]
+            impl<T: ::std::fmt::Debug> ::std::fmt::Debug for Function<T> {
+                fn fmt(&self, f: &mut ::std::fmt::Formatter) -> ::std::fmt::Result {
+                    match (&*self,) {
+                        (&Function::Value(ref __self_0),) => {
+                            let mut debug_trait_builder = f.debug_tuple("Value");
+                            let _ = debug_trait_builder.field(&&(*__self_0));
+                            debug_trait_builder.finish()
+                        }
+                        (&Function::Expr(ref __self_0),) => {
+                            let mut debug_trait_builder = f.debug_tuple("Expr");
+                            let _ = debug_trait_builder.field(&&(*__self_0));
+                            debug_trait_builder.finish()
+                        }
+                    }
+                }
+            }
+            #[automatically_derived]
+            #[allow(unused_qualifications)]
+            impl<T: ::std::clone::Clone> ::std::clone::Clone for Function<T> {
+                #[inline]
+                fn clone(&self) -> Function<T> {
+                    match (&*self,) {
+                        (&Function::Value(ref __self_0),) => {
+                            Function::Value(::std::clone::Clone::clone(&(*__self_0)))
+                        }
+                        (&Function::Expr(ref __self_0),) => {
+                            Function::Expr(::std::clone::Clone::clone(&(*__self_0)))
+                        }
+                    }
+                }
+            }
+            #[allow(non_upper_case_globals, unused_attributes, unused_qualifications)]
+            const _IMPL_DESERIALIZE_FOR_Function: () = {
+                extern crate serde as _serde;
+                #[allow(unused_macros)]
+                macro_rules! try(( $ __expr : expr ) => {
+                                     match $ __expr {
+                                     _serde :: export :: Ok ( __val ) => __val
+                                     , _serde :: export :: Err ( __err ) => {
+                                     return _serde :: export :: Err ( __err )
+                                     ; } } });
+                #[automatically_derived]
+                impl<'de, T> _serde::Deserialize<'de> for Function<T>
+                where
+                    T: _serde::Deserialize<'de>,
+                {
+                    fn deserialize<__D>(
+                        __deserializer: __D,
+                    ) -> _serde::export::Result<Self, __D::Error>
+                    where
+                        __D: _serde::Deserializer<'de>,
+                    {
+                        let __content =
+                            match <_serde::private::de::Content as _serde::Deserialize>::deserialize(
+                                __deserializer,
+                            ) {
+                                _serde::export::Ok(__val) => __val,
+                                _serde::export::Err(__err) => {
+                                    return _serde::export::Err(__err);
+                                }
+                            };
+                        if let _serde::export::Ok(__ok) = _serde::export::Result::map(
+                            <T as _serde::Deserialize>::deserialize(
+                                _serde::private::de::ContentRefDeserializer::<__D::Error>::new(
+                                    &__content,
+                                ),
+                            ),
+                            Function::Value,
+                        ) {
+                            return _serde::export::Ok(__ok);
+                        }
+                        if let _serde::export::Ok(__ok) = _serde::export::Result::map(
+                            <super::expr::BaseExpr as _serde::Deserialize>::deserialize(
+                                _serde::private::de::ContentRefDeserializer::<__D::Error>::new(
+                                    &__content,
+                                ),
+                            ),
+                            Function::Expr,
+                        ) {
+                            return _serde::export::Ok(__ok);
+                        }
+                        _serde::export::Err(_serde::de::Error::custom(
+                            "data did not match any variant of untagged enum Function",
+                        ))
+                    }
+                }
+            };
         }
-        use self::color::Color;
-        use self::function::Function;
         pub use self::layers::*;
         pub struct TileJson {
             scheme: Option<String>,
@@ -9189,9 +19982,9 @@ pub mod map {
             }
         }
         pub struct SourceData {
-            url: Option<String>,
             #[serde(flatten)]
             tilejson: TileJson,
+            url: Option<String>,
         }
         #[automatically_derived]
         #[allow(unused_qualifications)]
@@ -9199,12 +19992,12 @@ pub mod map {
             fn fmt(&self, f: &mut ::std::fmt::Formatter) -> ::std::fmt::Result {
                 match *self {
                     SourceData {
-                        url: ref __self_0_0,
-                        tilejson: ref __self_0_1,
+                        tilejson: ref __self_0_0,
+                        url: ref __self_0_1,
                     } => {
                         let mut debug_trait_builder = f.debug_struct("SourceData");
-                        let _ = debug_trait_builder.field("url", &&(*__self_0_0));
-                        let _ = debug_trait_builder.field("tilejson", &&(*__self_0_1));
+                        let _ = debug_trait_builder.field("tilejson", &&(*__self_0_0));
+                        let _ = debug_trait_builder.field("url", &&(*__self_0_1));
                         debug_trait_builder.finish()
                     }
                 }
@@ -9228,7 +20021,7 @@ pub mod map {
                 {
                     #[allow(non_camel_case_types)]
                     enum __Field<'de> {
-                        __field0,
+                        __field1,
                         __other(_serde::private::de::Content<'de>),
                     }
                     struct __FieldVisitor;
@@ -9386,7 +20179,7 @@ pub mod map {
                             __E: _serde::de::Error,
                         {
                             match __value {
-                                "url" => _serde::export::Ok(__Field::__field0),
+                                "url" => _serde::export::Ok(__Field::__field1),
                                 _ => {
                                     let __value = _serde::private::de::Content::Str(__value);
                                     _serde::export::Ok(__Field::__other(__value))
@@ -9401,7 +20194,7 @@ pub mod map {
                             __E: _serde::de::Error,
                         {
                             match __value {
-                                b"url" => _serde::export::Ok(__Field::__field0),
+                                b"url" => _serde::export::Ok(__Field::__field1),
                                 _ => {
                                     let __value = _serde::private::de::Content::Bytes(__value);
                                     _serde::export::Ok(__Field::__other(__value))
@@ -9416,7 +20209,7 @@ pub mod map {
                             __E: _serde::de::Error,
                         {
                             match __value {
-                                "url" => _serde::export::Ok(__Field::__field0),
+                                "url" => _serde::export::Ok(__Field::__field1),
                                 _ => {
                                     let __value =
                                         _serde::private::de::Content::String(__value.to_string());
@@ -9432,7 +20225,7 @@ pub mod map {
                             __E: _serde::de::Error,
                         {
                             match __value {
-                                b"url" => _serde::export::Ok(__Field::__field0),
+                                b"url" => _serde::export::Ok(__Field::__field1),
                                 _ => {
                                     let __value =
                                         _serde::private::de::Content::ByteBuf(__value.to_vec());
@@ -9475,7 +20268,7 @@ pub mod map {
                         where
                             __A: _serde::de::MapAccess<'de>,
                         {
-                            let mut __field0: _serde::export::Option<
+                            let mut __field1: _serde::export::Option<
                                 Option<String>,
                             > = _serde::export::None;
                             let mut __collect = _serde::export::Vec::<
@@ -9492,15 +20285,15 @@ pub mod map {
                                     }
                                 } {
                                 match __key {
-                                    __Field::__field0 => {
-                                        if _serde::export::Option::is_some(&__field0) {
+                                    __Field::__field1 => {
+                                        if _serde::export::Option::is_some(&__field1) {
                                             return _serde::export::Err(
                                                 <__A::Error as _serde::de::Error>::duplicate_field(
                                                     "url",
                                                 ),
                                             );
                                         }
-                                        __field0 = _serde::export::Some(
+                                        __field1 = _serde::export::Some(
                                             match _serde::de::MapAccess::next_value::<Option<String>>(
                                                 &mut __map,
                                             ) {
@@ -9524,8 +20317,8 @@ pub mod map {
                                     }
                                 }
                             }
-                            let __field0 = match __field0 {
-                                _serde::export::Some(__field0) => __field0,
+                            let __field1 = match __field1 {
+                                _serde::export::Some(__field1) => __field1,
                                 _serde::export::None => {
                                     match _serde::private::de::missing_field("url") {
                                         _serde::export::Ok(__val) => __val,
@@ -9535,7 +20328,7 @@ pub mod map {
                                     }
                                 }
                             };
-                            let __field1: TileJson = match _serde::de::Deserialize::deserialize(
+                            let __field0: TileJson = match _serde::de::Deserialize::deserialize(
                                 _serde::private::de::FlatMapDeserializer(
                                     &mut __collect,
                                     _serde::export::PhantomData,
@@ -9547,8 +20340,8 @@ pub mod map {
                                 }
                             };
                             _serde::export::Ok(SourceData {
-                                url: __field0,
-                                tilejson: __field1,
+                                tilejson: __field0,
+                                url: __field1,
                             })
                         }
                     }
@@ -9569,11 +20362,11 @@ pub mod map {
             fn clone(&self) -> SourceData {
                 match *self {
                     SourceData {
-                        url: ref __self_0_0,
-                        tilejson: ref __self_0_1,
+                        tilejson: ref __self_0_0,
+                        url: ref __self_0_1,
                     } => SourceData {
-                        url: ::std::clone::Clone::clone(&(*__self_0_0)),
-                        tilejson: ::std::clone::Clone::clone(&(*__self_0_1)),
+                        tilejson: ::std::clone::Clone::clone(&(*__self_0_0)),
+                        url: ::std::clone::Clone::clone(&(*__self_0_1)),
                     },
                 }
             }
@@ -10438,6 +21231,19 @@ pub mod map {
                 }
             }
         }
+        impl StyleSource {
+            pub fn url_template(&self) -> String {
+                match &self {
+                    &StyleSource::Vector(ref v) => v,
+                    &StyleSource::Raster(ref v) => v,
+                    &StyleSource::Image(ref v) => v,
+                }.tilejson
+                    .tiles
+                    .as_ref()
+                    .unwrap()[0]
+                    .clone()
+            }
+        }
         #[serde(tag = "type")]
         pub enum StyleLayer {
             #[serde(rename = "background")]
@@ -10454,6 +21260,9 @@ pub mod map {
 
             #[serde(rename = "raster")]
             Raster(RasterLayer),
+
+            #[serde(rename = "fill-extrusion")]
+            FillExtrusion(json::Value),
         }
         #[allow(non_upper_case_globals, unused_attributes, unused_qualifications)]
         const _IMPL_DESERIALIZE_FOR_StyleLayer: () = {
@@ -10478,6 +21287,7 @@ pub mod map {
                         __field2,
                         __field3,
                         __field4,
+                        __field5,
                     }
                     struct __FieldVisitor;
                     impl<'de> _serde::de::Visitor<'de> for __FieldVisitor {
@@ -10501,9 +21311,10 @@ pub mod map {
                                 2u64 => _serde::export::Ok(__Field::__field2),
                                 3u64 => _serde::export::Ok(__Field::__field3),
                                 4u64 => _serde::export::Ok(__Field::__field4),
+                                5u64 => _serde::export::Ok(__Field::__field5),
                                 _ => _serde::export::Err(_serde::de::Error::invalid_value(
                                     _serde::de::Unexpected::Unsigned(__value),
-                                    &"variant index 0 <= i < 5",
+                                    &"variant index 0 <= i < 6",
                                 )),
                             }
                         }
@@ -10520,6 +21331,7 @@ pub mod map {
                                 "line" => _serde::export::Ok(__Field::__field2),
                                 "symbol" => _serde::export::Ok(__Field::__field3),
                                 "raster" => _serde::export::Ok(__Field::__field4),
+                                "fill-extrusion" => _serde::export::Ok(__Field::__field5),
                                 _ => _serde::export::Err(_serde::de::Error::unknown_variant(
                                     __value, VARIANTS,
                                 )),
@@ -10538,6 +21350,7 @@ pub mod map {
                                 b"line" => _serde::export::Ok(__Field::__field2),
                                 b"symbol" => _serde::export::Ok(__Field::__field3),
                                 b"raster" => _serde::export::Ok(__Field::__field4),
+                                b"fill-extrusion" => _serde::export::Ok(__Field::__field5),
                                 _ => {
                                     let __value = &_serde::export::from_utf8_lossy(__value);
                                     _serde::export::Err(_serde::de::Error::unknown_variant(
@@ -10561,8 +21374,14 @@ pub mod map {
                             )
                         }
                     }
-                    const VARIANTS: &'static [&'static str] =
-                        &["background", "fill", "line", "symbol", "raster"];
+                    const VARIANTS: &'static [&'static str] = &[
+                        "background",
+                        "fill",
+                        "line",
+                        "symbol",
+                        "raster",
+                        "fill-extrusion",
+                    ];
                     let __tagged = match _serde::Deserializer::deserialize_any(
                         __deserializer,
                         _serde::private::de::TaggedContentVisitor::<__Field>::new("type"),
@@ -10613,6 +21432,14 @@ pub mod map {
                             ),
                             StyleLayer::Raster,
                         ),
+                        __Field::__field5 => _serde::export::Result::map(
+                            <json::Value as _serde::Deserialize>::deserialize(
+                                _serde::private::de::ContentDeserializer::<__D::Error>::new(
+                                    __tagged.content,
+                                ),
+                            ),
+                            StyleLayer::FillExtrusion,
+                        ),
                     }
                 }
             }
@@ -10647,6 +21474,11 @@ pub mod map {
                         let _ = debug_trait_builder.field(&&(*__self_0));
                         debug_trait_builder.finish()
                     }
+                    (&StyleLayer::FillExtrusion(ref __self_0),) => {
+                        let mut debug_trait_builder = f.debug_tuple("FillExtrusion");
+                        let _ = debug_trait_builder.field(&&(*__self_0));
+                        debug_trait_builder.finish()
+                    }
                 }
             }
         }
@@ -10671,6 +21503,9 @@ pub mod map {
                     (&StyleLayer::Raster(ref __self_0),) => {
                         StyleLayer::Raster(::std::clone::Clone::clone(&(*__self_0)))
                     }
+                    (&StyleLayer::FillExtrusion(ref __self_0),) => {
+                        StyleLayer::FillExtrusion(::std::clone::Clone::clone(&(*__self_0)))
+                    }
                 }
             }
         }
@@ -10679,26 +21514,25 @@ pub mod map {
         use prelude::*;
         pub mod resource {
             use prelude::*;
-            #[rustc_copy_clone_marker]
-            pub struct TileCoords {
-                x: i32,
-                y: i32,
-                z: i32,
+            pub struct TileRequestData {
+                pub template: String,
+                pub coords: TileCoords,
+                pub source: String,
             }
             #[automatically_derived]
             #[allow(unused_qualifications)]
-            impl ::std::fmt::Debug for TileCoords {
+            impl ::std::fmt::Debug for TileRequestData {
                 fn fmt(&self, f: &mut ::std::fmt::Formatter) -> ::std::fmt::Result {
                     match *self {
-                        TileCoords {
-                            x: ref __self_0_0,
-                            y: ref __self_0_1,
-                            z: ref __self_0_2,
+                        TileRequestData {
+                            template: ref __self_0_0,
+                            coords: ref __self_0_1,
+                            source: ref __self_0_2,
                         } => {
-                            let mut debug_trait_builder = f.debug_struct("TileCoords");
-                            let _ = debug_trait_builder.field("x", &&(*__self_0_0));
-                            let _ = debug_trait_builder.field("y", &&(*__self_0_1));
-                            let _ = debug_trait_builder.field("z", &&(*__self_0_2));
+                            let mut debug_trait_builder = f.debug_struct("TileRequestData");
+                            let _ = debug_trait_builder.field("template", &&(*__self_0_0));
+                            let _ = debug_trait_builder.field("coords", &&(*__self_0_1));
+                            let _ = debug_trait_builder.field("source", &&(*__self_0_2));
                             debug_trait_builder.finish()
                         }
                     }
@@ -10706,34 +21540,83 @@ pub mod map {
             }
             #[automatically_derived]
             #[allow(unused_qualifications)]
-            impl ::std::clone::Clone for TileCoords {
+            impl ::std::clone::Clone for TileRequestData {
                 #[inline]
-                fn clone(&self) -> TileCoords {
-                    {
-                        let _: ::std::clone::AssertParamIsClone<i32>;
-                        let _: ::std::clone::AssertParamIsClone<i32>;
-                        let _: ::std::clone::AssertParamIsClone<i32>;
-                        *self
+                fn clone(&self) -> TileRequestData {
+                    match *self {
+                        TileRequestData {
+                            template: ref __self_0_0,
+                            coords: ref __self_0_1,
+                            source: ref __self_0_2,
+                        } => TileRequestData {
+                            template: ::std::clone::Clone::clone(&(*__self_0_0)),
+                            coords: ::std::clone::Clone::clone(&(*__self_0_1)),
+                            source: ::std::clone::Clone::clone(&(*__self_0_2)),
+                        },
+                    }
+                }
+            }
+            pub struct StyleRequestData {
+                pub url: String,
+            }
+            #[automatically_derived]
+            #[allow(unused_qualifications)]
+            impl ::std::fmt::Debug for StyleRequestData {
+                fn fmt(&self, f: &mut ::std::fmt::Formatter) -> ::std::fmt::Result {
+                    match *self {
+                        StyleRequestData {
+                            url: ref __self_0_0,
+                        } => {
+                            let mut debug_trait_builder = f.debug_struct("StyleRequestData");
+                            let _ = debug_trait_builder.field("url", &&(*__self_0_0));
+                            debug_trait_builder.finish()
+                        }
                     }
                 }
             }
             #[automatically_derived]
             #[allow(unused_qualifications)]
-            impl ::std::marker::Copy for TileCoords {}
+            impl ::std::clone::Clone for StyleRequestData {
+                #[inline]
+                fn clone(&self) -> StyleRequestData {
+                    match *self {
+                        StyleRequestData {
+                            url: ref __self_0_0,
+                        } => StyleRequestData {
+                            url: ::std::clone::Clone::clone(&(*__self_0_0)),
+                        },
+                    }
+                }
+            }
+            pub struct SourceRequestData {
+                pub url: String,
+            }
             #[automatically_derived]
             #[allow(unused_qualifications)]
-            impl ::std::hash::Hash for TileCoords {
-                fn hash<__H: ::std::hash::Hasher>(&self, state: &mut __H) -> () {
+            impl ::std::fmt::Debug for SourceRequestData {
+                fn fmt(&self, f: &mut ::std::fmt::Formatter) -> ::std::fmt::Result {
                     match *self {
-                        TileCoords {
-                            x: ref __self_0_0,
-                            y: ref __self_0_1,
-                            z: ref __self_0_2,
+                        SourceRequestData {
+                            url: ref __self_0_0,
                         } => {
-                            ::std::hash::Hash::hash(&(*__self_0_0), state);
-                            ::std::hash::Hash::hash(&(*__self_0_1), state);
-                            ::std::hash::Hash::hash(&(*__self_0_2), state)
+                            let mut debug_trait_builder = f.debug_struct("SourceRequestData");
+                            let _ = debug_trait_builder.field("url", &&(*__self_0_0));
+                            debug_trait_builder.finish()
                         }
+                    }
+                }
+            }
+            #[automatically_derived]
+            #[allow(unused_qualifications)]
+            impl ::std::clone::Clone for SourceRequestData {
+                #[inline]
+                fn clone(&self) -> SourceRequestData {
+                    match *self {
+                        SourceRequestData {
+                            url: ref __self_0_0,
+                        } => SourceRequestData {
+                            url: ::std::clone::Clone::clone(&(*__self_0_0)),
+                        },
                     }
                 }
             }
@@ -10792,43 +21675,29 @@ pub mod map {
                     }
                 }
             }
-            pub enum ResourceData {
-                Tile {
-                    template: String,
-                    ratio: i32,
-                    coords: TileCoords,
-                },
-                StyleJson {
-                    url: String,
-                },
-                SourceJson {
-                    url: String,
-                },
+            pub enum RequestData {
+                Tile(TileRequestData),
+                StyleJson(StyleRequestData),
+                SourceJson(SourceRequestData),
             }
             #[automatically_derived]
             #[allow(unused_qualifications)]
-            impl ::std::fmt::Debug for ResourceData {
+            impl ::std::fmt::Debug for RequestData {
                 fn fmt(&self, f: &mut ::std::fmt::Formatter) -> ::std::fmt::Result {
                     match (&*self,) {
-                        (&ResourceData::Tile {
-                            template: ref __self_0,
-                            ratio: ref __self_1,
-                            coords: ref __self_2,
-                        },) => {
-                            let mut debug_trait_builder = f.debug_struct("Tile");
-                            let _ = debug_trait_builder.field("template", &&(*__self_0));
-                            let _ = debug_trait_builder.field("ratio", &&(*__self_1));
-                            let _ = debug_trait_builder.field("coords", &&(*__self_2));
+                        (&RequestData::Tile(ref __self_0),) => {
+                            let mut debug_trait_builder = f.debug_tuple("Tile");
+                            let _ = debug_trait_builder.field(&&(*__self_0));
                             debug_trait_builder.finish()
                         }
-                        (&ResourceData::StyleJson { url: ref __self_0 },) => {
-                            let mut debug_trait_builder = f.debug_struct("StyleJson");
-                            let _ = debug_trait_builder.field("url", &&(*__self_0));
+                        (&RequestData::StyleJson(ref __self_0),) => {
+                            let mut debug_trait_builder = f.debug_tuple("StyleJson");
+                            let _ = debug_trait_builder.field(&&(*__self_0));
                             debug_trait_builder.finish()
                         }
-                        (&ResourceData::SourceJson { url: ref __self_0 },) => {
-                            let mut debug_trait_builder = f.debug_struct("SourceJson");
-                            let _ = debug_trait_builder.field("url", &&(*__self_0));
+                        (&RequestData::SourceJson(ref __self_0),) => {
+                            let mut debug_trait_builder = f.debug_tuple("SourceJson");
+                            let _ = debug_trait_builder.field(&&(*__self_0));
                             debug_trait_builder.finish()
                         }
                     }
@@ -10836,35 +21705,213 @@ pub mod map {
             }
             #[automatically_derived]
             #[allow(unused_qualifications)]
-            impl ::std::clone::Clone for ResourceData {
+            impl ::std::clone::Clone for RequestData {
                 #[inline]
-                fn clone(&self) -> ResourceData {
+                fn clone(&self) -> RequestData {
                     match (&*self,) {
-                        (&ResourceData::Tile {
-                            template: ref __self_0,
-                            ratio: ref __self_1,
-                            coords: ref __self_2,
-                        },) => ResourceData::Tile {
-                            template: ::std::clone::Clone::clone(&(*__self_0)),
-                            ratio: ::std::clone::Clone::clone(&(*__self_1)),
-                            coords: ::std::clone::Clone::clone(&(*__self_2)),
-                        },
-                        (&ResourceData::StyleJson { url: ref __self_0 },) => {
-                            ResourceData::StyleJson {
-                                url: ::std::clone::Clone::clone(&(*__self_0)),
-                            }
+                        (&RequestData::Tile(ref __self_0),) => {
+                            RequestData::Tile(::std::clone::Clone::clone(&(*__self_0)))
                         }
-                        (&ResourceData::SourceJson { url: ref __self_0 },) => {
-                            ResourceData::SourceJson {
-                                url: ::std::clone::Clone::clone(&(*__self_0)),
-                            }
+                        (&RequestData::StyleJson(ref __self_0),) => {
+                            RequestData::StyleJson(::std::clone::Clone::clone(&(*__self_0)))
+                        }
+                        (&RequestData::SourceJson(ref __self_0),) => {
+                            RequestData::SourceJson(::std::clone::Clone::clone(&(*__self_0)))
                         }
                     }
                 }
             }
-            pub struct Resource {
+            pub struct Request {
                 pub load_pref: LoadPreference,
-                pub data: ResourceData,
+                pub data: RequestData,
+            }
+            #[automatically_derived]
+            #[allow(unused_qualifications)]
+            impl ::std::fmt::Debug for Request {
+                fn fmt(&self, f: &mut ::std::fmt::Formatter) -> ::std::fmt::Result {
+                    match *self {
+                        Request {
+                            load_pref: ref __self_0_0,
+                            data: ref __self_0_1,
+                        } => {
+                            let mut debug_trait_builder = f.debug_struct("Request");
+                            let _ = debug_trait_builder.field("load_pref", &&(*__self_0_0));
+                            let _ = debug_trait_builder.field("data", &&(*__self_0_1));
+                            debug_trait_builder.finish()
+                        }
+                    }
+                }
+            }
+            #[automatically_derived]
+            #[allow(unused_qualifications)]
+            impl ::std::clone::Clone for Request {
+                #[inline]
+                fn clone(&self) -> Request {
+                    match *self {
+                        Request {
+                            load_pref: ref __self_0_0,
+                            data: ref __self_0_1,
+                        } => Request {
+                            load_pref: ::std::clone::Clone::clone(&(*__self_0_0)),
+                            data: ::std::clone::Clone::clone(&(*__self_0_1)),
+                        },
+                    }
+                }
+            }
+            impl Request {
+                pub fn url<'a>(&'a self) -> String {
+                    return match &self.data {
+                        RequestData::StyleJson(StyleRequestData { ref url, .. }) => url.to_string(),
+                        RequestData::SourceJson(SourceRequestData { ref url, .. }) => {
+                            url.to_string()
+                        }
+                        RequestData::Tile(TileRequestData {
+                            ref template,
+                            ref coords,
+                            ..
+                        }) => template
+                            .replace(
+                                "{x}",
+                                &::fmt::format(::std::fmt::Arguments::new_v1_formatted(
+                                    &[""],
+                                    &match (&coords.x,) {
+                                        (arg0,) => [::std::fmt::ArgumentV1::new(
+                                            arg0,
+                                            ::std::fmt::Display::fmt,
+                                        )],
+                                    },
+                                    &[::std::fmt::rt::v1::Argument {
+                                        position: ::std::fmt::rt::v1::Position::At(0usize),
+                                        format: ::std::fmt::rt::v1::FormatSpec {
+                                            fill: ' ',
+                                            align: ::std::fmt::rt::v1::Alignment::Unknown,
+                                            flags: 0u32,
+                                            precision: ::std::fmt::rt::v1::Count::Implied,
+                                            width: ::std::fmt::rt::v1::Count::Implied,
+                                        },
+                                    }],
+                                )),
+                            )
+                            .replace(
+                                "{y}",
+                                &::fmt::format(::std::fmt::Arguments::new_v1_formatted(
+                                    &[""],
+                                    &match (&coords.y,) {
+                                        (arg0,) => [::std::fmt::ArgumentV1::new(
+                                            arg0,
+                                            ::std::fmt::Display::fmt,
+                                        )],
+                                    },
+                                    &[::std::fmt::rt::v1::Argument {
+                                        position: ::std::fmt::rt::v1::Position::At(0usize),
+                                        format: ::std::fmt::rt::v1::FormatSpec {
+                                            fill: ' ',
+                                            align: ::std::fmt::rt::v1::Alignment::Unknown,
+                                            flags: 0u32,
+                                            precision: ::std::fmt::rt::v1::Count::Implied,
+                                            width: ::std::fmt::rt::v1::Count::Implied,
+                                        },
+                                    }],
+                                )),
+                            )
+                            .replace(
+                                "{z}",
+                                &::fmt::format(::std::fmt::Arguments::new_v1_formatted(
+                                    &[""],
+                                    &match (&coords.z,) {
+                                        (arg0,) => [::std::fmt::ArgumentV1::new(
+                                            arg0,
+                                            ::std::fmt::Display::fmt,
+                                        )],
+                                    },
+                                    &[::std::fmt::rt::v1::Argument {
+                                        position: ::std::fmt::rt::v1::Position::At(0usize),
+                                        format: ::std::fmt::rt::v1::FormatSpec {
+                                            fill: ' ',
+                                            align: ::std::fmt::rt::v1::Alignment::Unknown,
+                                            flags: 0u32,
+                                            precision: ::std::fmt::rt::v1::Count::Implied,
+                                            width: ::std::fmt::rt::v1::Count::Implied,
+                                        },
+                                    }],
+                                )),
+                            ),
+                        _ => {
+                            {
+                                ::rt::begin_panic(
+                                    "explicit panic",
+                                    &("rmaps/src/map/storage/resource.rs", 57u32, 17u32),
+                                )
+                            }
+                        }
+                    };
+                }
+                pub fn style(url: String) -> Request {
+                    Request {
+                        load_pref: LoadPreference::Any,
+                        data: RequestData::StyleJson(StyleRequestData { url: url }),
+                    }
+                }
+                pub fn source(url: String) -> Request {
+                    Request {
+                        load_pref: LoadPreference::Any,
+                        data: RequestData::SourceJson(SourceRequestData { url: url }),
+                    }
+                }
+                pub fn tile(src_id: String, url_template: String, coords: TileCoords) -> Request {
+                    Request {
+                        load_pref: LoadPreference::Any,
+                        data: RequestData::Tile(TileRequestData {
+                            template: url_template,
+                            coords,
+                            source: src_id,
+                        }),
+                    }
+                }
+                pub fn is_style(&self) -> bool {
+                    return if let RequestData::StyleJson(..) = self.data {
+                        true
+                    } else {
+                        false
+                    };
+                }
+                pub fn is_source(&self) -> bool {
+                    return if let RequestData::SourceJson(..) = self.data {
+                        true
+                    } else {
+                        false
+                    };
+                }
+                pub fn is_tile(&self) -> bool {
+                    return if let RequestData::Tile(..) = self.data {
+                        true
+                    } else {
+                        false
+                    };
+                }
+                pub fn style_data(&self) -> Option<&StyleRequestData> {
+                    return match self.data {
+                        RequestData::StyleJson(ref s) => Some(s),
+                        _ => None,
+                    };
+                }
+                pub fn source_data(&self) -> Option<&SourceRequestData> {
+                    return match self.data {
+                        RequestData::SourceJson(ref s) => Some(s),
+                        _ => None,
+                    };
+                }
+                pub fn tile_data(&self) -> Option<&TileRequestData> {
+                    return match self.data {
+                        RequestData::Tile(ref s) => Some(s),
+                        _ => None,
+                    };
+                }
+            }
+            use prelude::*;
+            pub struct Resource {
+                pub req: Request,
+                pub data: Vec<u8>,
             }
             #[automatically_derived]
             #[allow(unused_qualifications)]
@@ -10872,11 +21919,11 @@ pub mod map {
                 fn fmt(&self, f: &mut ::std::fmt::Formatter) -> ::std::fmt::Result {
                     match *self {
                         Resource {
-                            load_pref: ref __self_0_0,
+                            req: ref __self_0_0,
                             data: ref __self_0_1,
                         } => {
                             let mut debug_trait_builder = f.debug_struct("Resource");
-                            let _ = debug_trait_builder.field("load_pref", &&(*__self_0_0));
+                            let _ = debug_trait_builder.field("req", &&(*__self_0_0));
                             let _ = debug_trait_builder.field("data", &&(*__self_0_1));
                             debug_trait_builder.finish()
                         }
@@ -10890,108 +21937,35 @@ pub mod map {
                 fn clone(&self) -> Resource {
                     match *self {
                         Resource {
-                            load_pref: ref __self_0_0,
+                            req: ref __self_0_0,
                             data: ref __self_0_1,
                         } => Resource {
-                            load_pref: ::std::clone::Clone::clone(&(*__self_0_0)),
+                            req: ::std::clone::Clone::clone(&(*__self_0_0)),
                             data: ::std::clone::Clone::clone(&(*__self_0_1)),
                         },
-                    }
-                }
-            }
-            impl Resource {
-                pub fn url<'a>(&'a self) -> &'a str {
-                    return match &self.data {
-                        ResourceData::StyleJson { ref url } => &url,
-                        ResourceData::SourceJson { ref url } => &url,
-                        _ => {
-                            {
-                                ::rt::begin_panic(
-                                    "explicit panic",
-                                    &("rmaps/src/map/storage/resource.rs", 47u32, 17u32),
-                                )
-                            }
-                        }
-                    };
-                }
-                pub fn style(url: String) -> Resource {
-                    Resource {
-                        load_pref: LoadPreference::Any,
-                        data: ResourceData::StyleJson { url: url },
-                    }
-                }
-                pub fn source(url: String) -> Resource {
-                    Resource {
-                        load_pref: LoadPreference::Any,
-                        data: ResourceData::SourceJson { url: url },
-                    }
-                }
-            }
-        }
-        pub mod response {
-            use prelude::*;
-            pub struct Response {
-                pub resource: super::resource::Resource,
-                pub data: Vec<u8>,
-            }
-            #[automatically_derived]
-            #[allow(unused_qualifications)]
-            impl ::std::fmt::Debug for Response {
-                fn fmt(&self, f: &mut ::std::fmt::Formatter) -> ::std::fmt::Result {
-                    match *self {
-                        Response {
-                            resource: ref __self_0_0,
-                            data: ref __self_0_1,
-                        } => {
-                            let mut debug_trait_builder = f.debug_struct("Response");
-                            let _ = debug_trait_builder.field("resource", &&(*__self_0_0));
-                            let _ = debug_trait_builder.field("data", &&(*__self_0_1));
-                            debug_trait_builder.finish()
-                        }
                     }
                 }
             }
         }
         pub mod local {
             use super::*;
+            use common::actix_derive::*;
             use prelude::*;
             use std::io::Read;
             pub struct LocalFileSource {}
-            impl ::actix::Actor for LocalFileSource {
-                type Context = ::actix::Context<Self>;
+            impl Actor for LocalFileSource {
+                type Context = Context<Self>;
             }
-            pub struct LocalFileSourceAddr {
-                pub addr: ::actix::Addr<Syn, LocalFileSource>,
-            }
-            #[automatically_derived]
-            #[allow(unused_qualifications)]
-            impl ::std::clone::Clone for LocalFileSourceAddr {
-                #[inline]
-                fn clone(&self) -> LocalFileSourceAddr {
-                    match *self {
-                        LocalFileSourceAddr {
-                            addr: ref __self_0_0,
-                        } => LocalFileSourceAddr {
-                            addr: ::std::clone::Clone::clone(&(*__self_0_0)),
-                        },
-                    }
-                }
-            }
-            impl LocalFileSource {
-                pub fn new() -> LocalFileSource {
-                    LocalFileSource {}
-                }
-                pub fn spawn() -> LocalFileSourceAddr {
-                    LocalFileSourceAddr {
-                        addr: start_in_thread(|| Self::new()),
-                    }
-                }
-            }
-            impl FileSource for LocalFileSource {
-                fn can_handle(&self, res: Resource) -> bool {
+            impl Handler<super::ResourceRequest> for LocalFileSource {
+                type Result = ();
+                fn handle(&mut self, msg: ResourceRequest, _ctx: &mut Context<Self>) {
+                    let req = &msg.0;
+                    let url = { req.url().to_string() };
+                    let pos = url.find("://");
+                    let path = url.split_at(pos.unwrap() + 3).1;
                     ::io::_print(::std::fmt::Arguments::new_v1_formatted(
-                        &["Local can handle ", "\n"],
-                        &match (&res.url(),) {
+                        &["Local  Retrieving  ", "\n"],
+                        &match (&path,) {
                             (arg0,) => [::std::fmt::ArgumentV1::new(arg0, ::std::fmt::Debug::fmt)],
                         },
                         &[::std::fmt::rt::v1::Argument {
@@ -11005,137 +21979,136 @@ pub mod map {
                             },
                         }],
                     ));
-                    return res.url().starts_with("local://") || res.url().starts_with("file://");
-                }
-                fn get(&mut self, res: Resource) -> ResponseFuture<ResResponse, Error> {
-                    Box::new({
-                        ::rt::begin_panic(
-                            "not yet implemented",
-                            &("rmaps/src/map/storage/local.rs", 41u32, 1u32),
-                        )
-                    })
-                }
-            }
-            impl FileSourceAddr for LocalFileSourceAddr {
-                fn can_handle(
-                    &self,
-                    res: Resource,
-                ) -> Box<Future<Item = bool, Error = ::actix::MailboxError>> {
-                    let data = Msg_FileSource_can_handle(res);
-                    Box::new(self.addr.send(data))
-                }
-                fn can_handle_async(&self, res: Resource) {
-                    let data = Msg_FileSource_can_handle(res);
-                    self.addr.do_send(data)
-                }
-                fn get(
-                    &self,
-                    res: Resource,
-                ) -> Box<
-                    Future<
-                        Item = ResponseFuture<ResResponse, Error>,
-                        Error = ::actix::MailboxError,
-                    >,
-                > {
-                    let data = Msg_FileSource_get(res);
-                    Box::new(self.addr.send(data))
-                }
-                fn get_async(&self, res: Resource) {
-                    let data = Msg_FileSource_get(res);
-                    self.addr.do_send(data)
+                    let mut f = ::std::fs::File::open(path).unwrap();
+                    let mut data = <[_]>::into_vec(box []);
+                    f.read_to_end(&mut data).unwrap();
+                    let resp = Resource {
+                        req: req.clone(),
+                        data,
+                    };
+                    msg.1.do_send(super::ResourceCallback(Ok(resp))).unwrap();
                 }
             }
-            impl ::actix::Handler<Msg_FileSource_can_handle> for LocalFileSource {
-                type Result = bool;
-                fn handle(
-                    &mut self,
-                    msg: Msg_FileSource_can_handle,
-                    ctx: &mut Self::Context,
-                ) -> bool {
-                    self.can_handle(msg.0)
+            impl LocalFileSource {
+                pub fn new() -> LocalFileSource {
+                    LocalFileSource {}
                 }
-            }
-            impl ::actix::Handler<Msg_FileSource_get> for LocalFileSource {
-                type Result = ResponseFuture<ResResponse, Error>;
-                fn handle(
-                    &mut self,
-                    msg: Msg_FileSource_get,
-                    ctx: &mut Self::Context,
-                ) -> ResponseFuture<ResResponse, Error> {
-                    self.get(msg.0)
+                pub fn spawn() -> Addr<Syn, Self> {
+                    start_in_thread(|| Self::new())
                 }
             }
         }
         pub mod network {
             use super::*;
             use actix_web::client;
+            use common::actix_web::HttpMessage;
             use prelude::*;
             pub struct NetworkFileSource {}
-            impl ::actix::Actor for NetworkFileSource {
-                type Context = ::actix::Context<Self>;
+            impl Actor for NetworkFileSource {
+                type Context = Context<Self>;
             }
-            pub struct NetworkFileSourceAddr {
-                pub addr: ::actix::Addr<Syn, NetworkFileSource>,
-            }
-            #[automatically_derived]
-            #[allow(unused_qualifications)]
-            impl ::std::clone::Clone for NetworkFileSourceAddr {
-                #[inline]
-                fn clone(&self) -> NetworkFileSourceAddr {
-                    match *self {
-                        NetworkFileSourceAddr {
-                            addr: ref __self_0_0,
-                        } => NetworkFileSourceAddr {
-                            addr: ::std::clone::Clone::clone(&(*__self_0_0)),
-                        },
-                    }
-                }
-            }
-            impl FileSource for NetworkFileSource {
-                fn can_handle(&self, res: Resource) -> bool {
-                    let url = res.url();
-                    return url.starts_with("http://") || url.starts_with("https://");
-                }
-                fn get(
-                    &mut self,
-                    res: Resource,
-                ) -> Box<Future<Item = ResResponse, Error = ::common::prelude::Error>>
-                {
-                    let fut = client::get(res.url().clone())
+            impl Handler<super::ResourceRequest> for NetworkFileSource {
+                type Result = ();
+                fn handle(&mut self, msg: ResourceRequest, _ctx: &mut Context<Self>) {
+                    let fut = client::get(msg.0.url().clone())
+                        .timeout(::std::time::Duration::from_secs(15))
                         .finish()
                         .unwrap()
                         .send()
+                        .timeout(::std::time::Duration::from_secs(15))
                         .map_err(|x| {
-                            {
-                                ::rt::begin_panic_fmt(
-                                    &::std::fmt::Arguments::new_v1_formatted(
-                                        &["Retrieval failed "],
-                                        &match (&x,) {
-                                            (arg0,) => [::std::fmt::ArgumentV1::new(
-                                                arg0,
-                                                ::std::fmt::Display::fmt,
-                                            )],
-                                        },
-                                        &[::std::fmt::rt::v1::Argument {
-                                            position: ::std::fmt::rt::v1::Position::At(0usize),
-                                            format: ::std::fmt::rt::v1::FormatSpec {
-                                                fill: ' ',
-                                                align: ::std::fmt::rt::v1::Alignment::Unknown,
-                                                flags: 0u32,
-                                                precision: ::std::fmt::rt::v1::Count::Implied,
-                                                width: ::std::fmt::rt::v1::Count::Implied,
-                                            },
-                                        }],
-                                    ),
-                                    &("rmaps/src/map/storage/network.rs", 10u32, 1u32),
-                                )
-                            };
-                            ()
-                        })
-                        .map(move |data| {
                             ::io::_print(::std::fmt::Arguments::new_v1_formatted(
-                                &["Response: ", "\n"],
-                                &match (&data,) {
+                                &["Retrieval failed: ", "\n"],
+                                &match (&x,) {
+                                    (arg0,) => [::std::fmt::ArgumentV1::new(
+                                        arg0,
+                                        ::std::fmt::Display::fmt,
+                                    )],
+                                },
+                                &[::std::fmt::rt::v1::Argument {
+                                    position: ::std::fmt::rt::v1::Position::At(0usize),
+                                    format: ::std::fmt::rt::v1::FormatSpec {
+                                        fill: ' ',
+                                        align: ::std::fmt::rt::v1::Alignment::Unknown,
+                                        flags: 0u32,
+                                        precision: ::std::fmt::rt::v1::Count::Implied,
+                                        width: ::std::fmt::rt::v1::Count::Implied,
+                                    },
+                                }],
+                            ));
+                            x.into()
+                        })
+                        .and_then(move |res| res.body().map_err(|e| e.into()))
+                        .then(move |body| {
+                            match body {
+                                Ok(data) => {
+                                    let resource = super::Resource {
+                                        req: msg.0.clone(),
+                                        data: data.to_vec(),
+                                    };
+                                    msg.1
+                                        .do_send(super::ResourceCallback(Ok(resource)))
+                                        .unwrap();
+                                }
+                                Err(e) => msg.1.do_send(super::ResourceCallback(Err(e))).unwrap(),
+                            }
+                            Ok(())
+                        });
+                    Arbiter::handle().spawn(fut);
+                }
+            }
+            impl NetworkFileSource {
+                pub fn new() -> Self {
+                    return NetworkFileSource {};
+                }
+                pub fn spawn() -> Addr<Syn, Self> {
+                    start_in_thread(|| NetworkFileSource::new())
+                }
+            }
+        }
+        pub use self::resource::*;
+        pub struct ResourceCallback(pub Result<Resource>);
+        #[automatically_derived]
+        #[allow(unused_qualifications)]
+        impl ::std::fmt::Debug for ResourceCallback {
+            fn fmt(&self, f: &mut ::std::fmt::Formatter) -> ::std::fmt::Result {
+                match *self {
+                    ResourceCallback(ref __self_0_0) => {
+                        let mut debug_trait_builder = f.debug_tuple("ResourceCallback");
+                        let _ = debug_trait_builder.field(&&(*__self_0_0));
+                        debug_trait_builder.finish()
+                    }
+                }
+            }
+        }
+        impl Message for ResourceCallback {
+            type Result = ();
+        }
+        pub struct ResourceRequest(pub Request, pub Recipient<Syn, ResourceCallback>);
+        impl Message for ResourceRequest {
+            type Result = ();
+        }
+        pub struct DefaultFileSource {
+            local: SyncAddr<local::LocalFileSource>,
+            network: SyncAddr<network::NetworkFileSource>,
+        }
+        impl Actor for DefaultFileSource {
+            type Context = Context<DefaultFileSource>;
+        }
+        impl Handler<ResourceRequest> for DefaultFileSource {
+            type Result = ();
+            fn handle(&mut self, msg: ResourceRequest, _ctx: &mut Context<Self>) {
+                let url = { msg.0.url().to_string() };
+                if url.starts_with("file://") || url.starts_with("local://") {
+                    self.local.do_send(msg);
+                } else if url.starts_with("http://") || url.starts_with("https://") {
+                    self.network.do_send(msg);
+                } else {
+                    {
+                        ::rt::begin_panic_fmt(
+                            &::std::fmt::Arguments::new_v1_formatted(
+                                &["No data source available for "],
+                                &match (&url,) {
                                     (arg0,) => {
                                         [::std::fmt::ArgumentV1::new(arg0, ::std::fmt::Debug::fmt)]
                                     }
@@ -11150,207 +22123,325 @@ pub mod map {
                                         width: ::std::fmt::rt::v1::Count::Implied,
                                     },
                                 }],
-                            ));
-                            super::ResResponse {
-                                resource: res,
-                                data: <[_]>::into_vec(box []),
-                            }
-                        });
-                    Box::new(fut)
+                            ),
+                            &("rmaps/src/map/storage/mod.rs", 43u32, 13u32),
+                        )
+                    };
                 }
-            }
-            impl FileSourceAddr for NetworkFileSourceAddr {
-                fn can_handle(
-                    &self,
-                    res: Resource,
-                ) -> Box<Future<Item = bool, Error = ::actix::MailboxError>> {
-                    let data = Msg_FileSource_can_handle(res);
-                    Box::new(self.addr.send(data))
-                }
-                fn can_handle_async(&self, res: Resource) {
-                    let data = Msg_FileSource_can_handle(res);
-                    self.addr.do_send(data)
-                }
-                fn get(
-                    &self,
-                    res: Resource,
-                ) -> Box<
-                    Future<
-                        Item = Box<Future<Item = ResResponse, Error = ::common::prelude::Error>>,
-                        Error = ::actix::MailboxError,
-                    >,
-                > {
-                    let data = Msg_FileSource_get(res);
-                    Box::new(self.addr.send(data))
-                }
-                fn get_async(&self, res: Resource) {
-                    let data = Msg_FileSource_get(res);
-                    self.addr.do_send(data)
-                }
-            }
-            impl ::actix::Handler<Msg_FileSource_can_handle> for NetworkFileSource {
-                type Result = bool;
-                fn handle(
-                    &mut self,
-                    msg: Msg_FileSource_can_handle,
-                    ctx: &mut Self::Context,
-                ) -> bool {
-                    self.can_handle(msg.0)
-                }
-            }
-            impl ::actix::Handler<Msg_FileSource_get> for NetworkFileSource {
-                type Result = Box<Future<Item = ResResponse, Error = ::common::prelude::Error>>;
-                fn handle(
-                    &mut self,
-                    msg: Msg_FileSource_get,
-                    ctx: &mut Self::Context,
-                ) -> Box<Future<Item = ResResponse, Error = ::common::prelude::Error>>
-                {
-                    self.get(msg.0)
-                }
-            }
-            impl NetworkFileSource {
-                fn new() -> Self {
-                    return NetworkFileSource {};
-                }
-                pub fn spawn() -> NetworkFileSourceAddr {
-                    NetworkFileSourceAddr {
-                        addr: start_in_thread(|| NetworkFileSource::new()),
-                    }
-                }
-            }
-        }
-        pub use self::resource::*;
-        pub use self::response::Response as ResResponse;
-        pub trait FileSource {
-            fn can_handle(&self, res: Resource) -> bool;
-            fn get(&mut self, res: Resource) -> actix::ResponseFuture<ResResponse, Error>;
-        }
-        pub trait FileSourceAddr {
-            fn can_handle(
-                &self,
-                res: Resource,
-            ) -> Box<Future<Item = bool, Error = ::actix::MailboxError>>;
-            fn can_handle_async(&self, res: Resource);
-            fn get(
-                &self,
-                res: Resource,
-            ) -> Box<
-                Future<
-                    Item = actix::ResponseFuture<ResResponse, Error>,
-                    Error = ::actix::MailboxError,
-                >,
-            >;
-            fn get_async(&self, res: Resource);
-        }
-        pub struct Msg_FileSource_can_handle(pub Resource);
-        pub struct Msg_FileSource_get(pub Resource);
-        impl ::actix::Message for Msg_FileSource_can_handle {
-            type Result = bool;
-        }
-        impl ::actix::Message for Msg_FileSource_get {
-            type Result = actix::ResponseFuture<ResResponse, Error>;
-        }
-        pub struct DefaultFileSource {
-            sources: Vec<Box<FileSourceAddr + Send + 'static>>,
-        }
-        impl ::actix::Actor for DefaultFileSource {
-            type Context = ::actix::Context<Self>;
-        }
-        pub struct DefaultFileSourceAddr {
-            pub addr: ::actix::Addr<Syn, DefaultFileSource>,
-        }
-        #[automatically_derived]
-        #[allow(unused_qualifications)]
-        impl ::std::clone::Clone for DefaultFileSourceAddr {
-            #[inline]
-            fn clone(&self) -> DefaultFileSourceAddr {
-                match *self {
-                    DefaultFileSourceAddr {
-                        addr: ref __self_0_0,
-                    } => DefaultFileSourceAddr {
-                        addr: ::std::clone::Clone::clone(&(*__self_0_0)),
-                    },
-                }
-            }
-        }
-        impl DefaultFileSource {
-            fn get(&mut self, res: Resource) -> Box<Future<Item = ResResponse, Error = Error>> {
-                for a in self.sources.iter() {
-                    ::io::_print(::std::fmt::Arguments::new_v1(
-                        &["Checking URL compatibility\n"],
-                        &match () {
-                            () => [],
-                        },
-                    ));
-                    if a.can_handle(res.clone()).wait().unwrap() {
-                        return a.get(res);
-                    }
-                }
-                {
-                    ::rt::begin_panic(
-                        "not yet implemented",
-                        &("rmaps/src/map/storage/mod.rs", 23u32, 1u32),
-                    )
-                }
-            }
-        }
-        pub struct Msg_DefaultFileSource_get(pub Resource);
-        impl ::actix::Message for Msg_DefaultFileSource_get {
-            type Result = Box<Future<Item = ResResponse, Error = Error>>;
-        }
-        impl DefaultFileSourceAddr {
-            pub fn get(
-                &self,
-                res: Resource,
-            ) -> Box<
-                Future<
-                    Item = Box<Future<Item = ResResponse, Error = Error>>,
-                    Error = ::actix::MailboxError,
-                >,
-            > {
-                let data = Msg_DefaultFileSource_get(res);
-                Box::new(self.addr.send(data))
-            }
-            pub fn get_async(&self, res: Resource) {
-                let data = Msg_DefaultFileSource_get(res);
-                self.addr.do_send(data)
-            }
-        }
-        impl ::actix::Handler<Msg_DefaultFileSource_get> for DefaultFileSource {
-            type Result = Box<Future<Item = ResResponse, Error = Error>>;
-            fn handle(
-                &mut self,
-                msg: Msg_DefaultFileSource_get,
-                ctx: &mut Self::Context,
-            ) -> Box<Future<Item = ResResponse, Error = Error>> {
-                self.get(msg.0)
             }
         }
         impl DefaultFileSource {
             pub fn new() -> Self {
                 DefaultFileSource {
-                    sources: <[_]>::into_vec(box [
-                        Box::new(local::LocalFileSource::spawn()),
-                        Box::new(network::NetworkFileSource::spawn()),
-                    ]),
+                    local: local::LocalFileSource::spawn(),
+                    network: network::NetworkFileSource::spawn(),
                 }
             }
-            pub fn spawn() -> DefaultFileSourceAddr {
-                DefaultFileSourceAddr {
-                    addr: start_in_thread::<DefaultFileSource, _>(|| DefaultFileSource::new()),
-                }
+            pub fn spawn() -> Addr<Syn, Self> {
+                start_in_thread::<DefaultFileSource, _>(|| DefaultFileSource::new())
             }
         }
     }
-    use map::layers::Layer;
+    pub mod tiles {
+        use prelude::*;
+        pub mod data {
+            use map::style;
+            use prelude::*;
+            pub struct RasterTileData {
+                pub image: Vec<u8>,
+                pub dims: (u32, u32),
+            }
+            #[automatically_derived]
+            #[allow(unused_qualifications)]
+            impl ::std::fmt::Debug for RasterTileData {
+                fn fmt(&self, f: &mut ::std::fmt::Formatter) -> ::std::fmt::Result {
+                    match *self {
+                        RasterTileData {
+                            image: ref __self_0_0,
+                            dims: ref __self_0_1,
+                        } => {
+                            let mut debug_trait_builder = f.debug_struct("RasterTileData");
+                            let _ = debug_trait_builder.field("image", &&(*__self_0_0));
+                            let _ = debug_trait_builder.field("dims", &&(*__self_0_1));
+                            debug_trait_builder.finish()
+                        }
+                    }
+                }
+            }
+            #[automatically_derived]
+            #[allow(unused_qualifications)]
+            impl ::std::clone::Clone for RasterTileData {
+                #[inline]
+                fn clone(&self) -> RasterTileData {
+                    match *self {
+                        RasterTileData {
+                            image: ref __self_0_0,
+                            dims: ref __self_0_1,
+                        } => RasterTileData {
+                            image: ::std::clone::Clone::clone(&(*__self_0_0)),
+                            dims: ::std::clone::Clone::clone(&(*__self_0_1)),
+                        },
+                    }
+                }
+            }
+            pub struct VectorTileData {
+                pub layers: Vec<::mapbox_tiles::Layer>,
+            }
+            #[automatically_derived]
+            #[allow(unused_qualifications)]
+            impl ::std::fmt::Debug for VectorTileData {
+                fn fmt(&self, f: &mut ::std::fmt::Formatter) -> ::std::fmt::Result {
+                    match *self {
+                        VectorTileData {
+                            layers: ref __self_0_0,
+                        } => {
+                            let mut debug_trait_builder = f.debug_struct("VectorTileData");
+                            let _ = debug_trait_builder.field("layers", &&(*__self_0_0));
+                            debug_trait_builder.finish()
+                        }
+                    }
+                }
+            }
+            #[automatically_derived]
+            #[allow(unused_qualifications)]
+            impl ::std::clone::Clone for VectorTileData {
+                #[inline]
+                fn clone(&self) -> VectorTileData {
+                    match *self {
+                        VectorTileData {
+                            layers: ref __self_0_0,
+                        } => VectorTileData {
+                            layers: ::std::clone::Clone::clone(&(*__self_0_0)),
+                        },
+                    }
+                }
+            }
+            pub enum DecodedTileData {
+                Vector(VectorTileData),
+                Raster(RasterTileData),
+            }
+            #[automatically_derived]
+            #[allow(unused_qualifications)]
+            impl ::std::fmt::Debug for DecodedTileData {
+                fn fmt(&self, f: &mut ::std::fmt::Formatter) -> ::std::fmt::Result {
+                    match (&*self,) {
+                        (&DecodedTileData::Vector(ref __self_0),) => {
+                            let mut debug_trait_builder = f.debug_tuple("Vector");
+                            let _ = debug_trait_builder.field(&&(*__self_0));
+                            debug_trait_builder.finish()
+                        }
+                        (&DecodedTileData::Raster(ref __self_0),) => {
+                            let mut debug_trait_builder = f.debug_tuple("Raster");
+                            let _ = debug_trait_builder.field(&&(*__self_0));
+                            debug_trait_builder.finish()
+                        }
+                    }
+                }
+            }
+            #[automatically_derived]
+            #[allow(unused_qualifications)]
+            impl ::std::clone::Clone for DecodedTileData {
+                #[inline]
+                fn clone(&self) -> DecodedTileData {
+                    match (&*self,) {
+                        (&DecodedTileData::Vector(ref __self_0),) => {
+                            DecodedTileData::Vector(::std::clone::Clone::clone(&(*__self_0)))
+                        }
+                        (&DecodedTileData::Raster(ref __self_0),) => {
+                            DecodedTileData::Raster(::std::clone::Clone::clone(&(*__self_0)))
+                        }
+                    }
+                }
+            }
+            pub struct TileData {
+                pub coord: TileCoords,
+                pub source: String,
+                pub data: DecodedTileData,
+            }
+            #[automatically_derived]
+            #[allow(unused_qualifications)]
+            impl ::std::fmt::Debug for TileData {
+                fn fmt(&self, f: &mut ::std::fmt::Formatter) -> ::std::fmt::Result {
+                    match *self {
+                        TileData {
+                            coord: ref __self_0_0,
+                            source: ref __self_0_1,
+                            data: ref __self_0_2,
+                        } => {
+                            let mut debug_trait_builder = f.debug_struct("TileData");
+                            let _ = debug_trait_builder.field("coord", &&(*__self_0_0));
+                            let _ = debug_trait_builder.field("source", &&(*__self_0_1));
+                            let _ = debug_trait_builder.field("data", &&(*__self_0_2));
+                            debug_trait_builder.finish()
+                        }
+                    }
+                }
+            }
+            #[automatically_derived]
+            #[allow(unused_qualifications)]
+            impl ::std::clone::Clone for TileData {
+                #[inline]
+                fn clone(&self) -> TileData {
+                    match *self {
+                        TileData {
+                            coord: ref __self_0_0,
+                            source: ref __self_0_1,
+                            data: ref __self_0_2,
+                        } => TileData {
+                            coord: ::std::clone::Clone::clone(&(*__self_0_0)),
+                            source: ::std::clone::Clone::clone(&(*__self_0_1)),
+                            data: ::std::clone::Clone::clone(&(*__self_0_2)),
+                        },
+                    }
+                }
+            }
+            pub struct TileDataWorker();
+            impl Actor for TileDataWorker {
+                type Context = Context<Self>;
+            }
+            pub struct DecodeTile {
+                pub res: ::map::storage::Resource,
+                pub source_name: String,
+                pub source: ::map::style::StyleSource,
+                pub cb: Recipient<Syn, TileReady>,
+            }
+            pub struct TileReady {
+                pub data: TileData,
+            }
+            #[automatically_derived]
+            #[allow(unused_qualifications)]
+            impl ::std::fmt::Debug for TileReady {
+                fn fmt(&self, f: &mut ::std::fmt::Formatter) -> ::std::fmt::Result {
+                    match *self {
+                        TileReady {
+                            data: ref __self_0_0,
+                        } => {
+                            let mut debug_trait_builder = f.debug_struct("TileReady");
+                            let _ = debug_trait_builder.field("data", &&(*__self_0_0));
+                            debug_trait_builder.finish()
+                        }
+                    }
+                }
+            }
+            #[automatically_derived]
+            #[allow(unused_qualifications)]
+            impl ::std::clone::Clone for TileReady {
+                #[inline]
+                fn clone(&self) -> TileReady {
+                    match *self {
+                        TileReady {
+                            data: ref __self_0_0,
+                        } => TileReady {
+                            data: ::std::clone::Clone::clone(&(*__self_0_0)),
+                        },
+                    }
+                }
+            }
+            impl Message for DecodeTile {
+                type Result = ();
+            }
+            impl Message for TileReady {
+                type Result = ();
+            }
+            impl Handler<DecodeTile> for TileDataWorker {
+                type Result = ();
+                fn handle(&mut self, msg: DecodeTile, ctx: &mut Context<Self>) {
+                    let data = match msg.source {
+                        ::map::style::StyleSource::Raster(_) => {
+                            let data = &msg.res.data;
+                            let format = ::image::guess_format(data).unwrap();
+                            let decoded = ::image::load_from_memory_with_format(data, format)
+                                .unwrap()
+                                .to_rgba();
+                            let dims = decoded.dimensions();
+                            let data = RasterTileData {
+                                image: decoded.into_raw(),
+                                dims,
+                            };
+                            TileData {
+                                coord: msg.res.req.tile_data().unwrap().coords,
+                                data: DecodedTileData::Raster(data),
+                                source: msg.source_name,
+                            }
+                        }
+                        ::map::style::StyleSource::Vector(_) => {
+                            use mapbox_tiles::prost::Message;
+                            let data = &msg.res.data;
+                            let vt = ::mapbox_tiles::vector_tile::Tile::decode(data).unwrap();
+                            let tile = ::mapbox_tiles::Tile::from(vt);
+                            TileData {
+                                coord: msg.res.req.tile_data().unwrap().coords,
+                                data: DecodedTileData::Vector(VectorTileData {
+                                    layers: tile.layers,
+                                }),
+                                source: msg.source_name,
+                            }
+                        }
+                        _ => {
+                            ::rt::begin_panic(
+                                "Unhandled source decoding error",
+                                &("rmaps/src/map/tiles/data.rs", 97u32, 17u32),
+                            )
+                        }
+                    };
+                    msg.cb.do_send(TileReady { data: data }).unwrap();
+                }
+            }
+            impl TileDataWorker {
+                pub fn new() -> Self {
+                    return TileDataWorker();
+                }
+                pub fn spawn() -> Addr<Syn, TileDataWorker> {
+                    start_in_thread(|| Self::new())
+                }
+            }
+        }
+        use std::collections::BTreeSet;
+        pub struct TileStorage {
+            pub in_flight: BTreeSet<TileCoords>,
+            pub available: BTreeSet<TileCoords>,
+        }
+        impl TileStorage {
+            pub fn new() -> Self {
+                TileStorage {
+                    in_flight: BTreeSet::new(),
+                    available: BTreeSet::new(),
+                }
+            }
+            pub fn needed_tiles(&self) -> Vec<TileCoords> {
+                if self.available.is_empty() && self.in_flight.is_empty() {
+                    return TileCoords::new(0, 0, 0)
+                        .children()
+                        .into_iter()
+                        .map(|x| x.clone())
+                        .collect();
+                }
+                return self
+                    .available
+                    .iter()
+                    .filter(|x| x.z < 3)
+                    .flat_map(|x| Vec::from(&x.children()[..]))
+                    .filter(|t| !self.in_flight.contains(&t))
+                    .filter(|t| !self.available.contains(&t))
+                    .take(4)
+                    .collect();
+            }
+            pub fn requested_tile(&mut self, coords: &TileCoords) {
+                self.in_flight.insert(coords.clone());
+            }
+            pub fn finished_tile(&mut self, coords: &TileCoords) {
+                self.in_flight.remove(coords);
+                self.available.insert(coords.clone());
+            }
+        }
+    }
     pub struct MapView {
         addr: Addr<Unsync, MapViewImpl>,
         sys: SystemRunner,
     }
     impl MapView {
-        pub fn new<F: glium::backend::Facade + Clone + 'static>(f: &F) -> Self {
-            let mut sys = System::new("Map");
+        pub fn new(f: &Display) -> Self {
+            let sys = System::new("Map");
             let _impl = MapViewImpl::new(f);
             let addr = _impl.start();
             return MapView { sys, addr };
@@ -11373,70 +22464,151 @@ pub mod map {
                 add.do_send(MapMethodArgs::SetStyleUrl(url.into()));
             });
         }
+        pub fn get_camera(&mut self) -> Camera {
+            self.do_run(|add| {
+                add.send(Invoke::new(|i: &mut MapViewImpl| {
+                    ::io::_print(::std::fmt::Arguments::new_v1(
+                        &["GetCamera\n"],
+                        &match () {
+                            () => [],
+                        },
+                    ));
+                    i.camera.clone()
+                }))
+            }).wait()
+                .unwrap()
+                .unwrap()
+        }
+        pub fn set_camera(&mut self, camera: Camera) {
+            self.do_run(|add| {
+                add.send(Invoke::new(|i: &mut MapViewImpl| {
+                    ::io::_print(::std::fmt::Arguments::new_v1(
+                        &["SetCamera\n"],
+                        &match () {
+                            () => [],
+                        },
+                    ));
+                    i.camera = camera;
+                }))
+            }).wait()
+                .unwrap()
+                .unwrap()
+        }
     }
     pub struct MapViewImpl {
-        addr: Option<MapViewImplAddr>,
-        facade: Box<glium::backend::Facade>,
+        addr: Option<Addr<Unsync, MapViewImpl>>,
+        sync_addr: Option<Addr<Syn, MapViewImpl>>,
+        camera: Camera,
+        renderer: render::Renderer,
+        source: Addr<Syn, storage::DefaultFileSource>,
+        tile_worker: Addr<Syn, tiles::data::TileDataWorker>,
+        facade: Box<glium::Display>,
         style: Option<style::Style>,
-        layers: Vec<layers::LayerHolder>,
-        source: storage::DefaultFileSourceAddr,
+        tile_storage: tiles::TileStorage,
     }
-    pub struct MapViewImplAddr {
-        pub addr: ::actix::Addr<Syn, MapViewImpl>,
+    impl Actor for MapViewImpl {
+        type Context = Context<Self>;
+        fn started(&mut self, ctx: &mut <Self as Actor>::Context) {
+            self.addr = Some(ctx.address());
+            self.sync_addr = Some(ctx.address());
+        }
     }
-    #[automatically_derived]
-    #[allow(unused_qualifications)]
-    impl ::std::clone::Clone for MapViewImplAddr {
-        #[inline]
-        fn clone(&self) -> MapViewImplAddr {
-            match *self {
-                MapViewImplAddr {
-                    addr: ref __self_0_0,
-                } => MapViewImplAddr {
-                    addr: ::std::clone::Clone::clone(&(*__self_0_0)),
+    use self::tiles::data;
+    impl Handler<storage::ResourceCallback> for MapViewImpl {
+        type Result = ();
+        fn handle(&mut self, msg: storage::ResourceCallback, _ctx: &mut Context<Self>) {
+            match msg.0 {
+                Ok(res) => match res.req.data {
+                    storage::RequestData::StyleJson { .. } => {
+                        let parsed = json::from_slice(&res.data).unwrap();
+                        self.set_style(parsed);
+                    }
+                    storage::RequestData::Tile(storage::TileRequestData {
+                        coords,
+                        ref source,
+                        ..
+                    }) => {
+                        self.tile_storage.finished_tile(&coords);
+                        let source_data = self
+                            .style
+                            .as_ref()
+                            .unwrap()
+                            .sources
+                            .get(source)
+                            .unwrap()
+                            .clone();
+                        let rq = tiles::data::DecodeTile {
+                            source: source_data,
+                            source_name: source.clone(),
+                            res: res.clone(),
+                            cb: self.sync_addr.as_ref().unwrap().clone().recipient(),
+                        };
+                        self.tile_worker.do_send(rq);
+                    }
+                    _ => {
+                        {
+                            ::rt::begin_panic_fmt(
+                                &::std::fmt::Arguments::new_v1_formatted(
+                                    &["Resource "],
+                                    &match (&res,) {
+                                        (arg0,) => [::std::fmt::ArgumentV1::new(
+                                            arg0,
+                                            ::std::fmt::Debug::fmt,
+                                        )],
+                                    },
+                                    &[::std::fmt::rt::v1::Argument {
+                                        position: ::std::fmt::rt::v1::Position::At(0usize),
+                                        format: ::std::fmt::rt::v1::FormatSpec {
+                                            fill: ' ',
+                                            align: ::std::fmt::rt::v1::Alignment::Unknown,
+                                            flags: 0u32,
+                                            precision: ::std::fmt::rt::v1::Count::Implied,
+                                            width: ::std::fmt::rt::v1::Count::Implied,
+                                        },
+                                    }],
+                                ),
+                                &("rmaps/src/map/mod.rs", 118u32, 25u32),
+                            )
+                        };
+                    }
                 },
+                Err(_e) => {}
             }
         }
     }
-    impl Actor for MapViewImpl {
-        type Context = Context<MapViewImpl>;
-        fn started(&mut self, ctx: &mut <Self as Actor>::Context) {
-            self.addr = Some(MapViewImplAddr {
-                addr: ctx.address(),
-            })
+    impl Handler<tiles::data::TileReady> for MapViewImpl {
+        type Result = ();
+        fn handle(&mut self, msg: tiles::data::TileReady, ctx: &mut Context<Self>) {
+            self.renderer.tile_ready(msg.data);
         }
     }
     impl MapViewImpl {
-        pub fn new<F: glium::backend::Facade + Clone + 'static>(f: &F) -> Self {
+        pub fn new(f: &Display) -> Self {
             let src_add = storage::DefaultFileSource::spawn();
+            let tile_worker_add = tiles::data::TileDataWorker::spawn();
+            let mut camera: Camera = Default::default();
+            camera.pos = Mercator::latlng_to_point(LatLng::new(49, 16));
             let m = MapViewImpl {
                 addr: None,
+                sync_addr: None,
+                camera,
+                renderer: render::Renderer::new(&f),
+                source: src_add,
+                tile_worker: tile_worker_add,
                 facade: Box::new((*f).clone()),
                 style: None,
-                layers: <[_]>::into_vec(box []),
-                source: src_add,
+                tile_storage: tiles::TileStorage::new(),
             };
             return m;
         }
         pub fn set_style(&mut self, style: style::Style) {
-            self.layers.clear();
-            self.layers = layers::parse_style_layers(self.facade.deref(), &style);
-            ::io::_print(::std::fmt::Arguments::new_v1_formatted(
-                &["Layers : ", "\n"],
-                &match (&style,) {
-                    (arg0,) => [::std::fmt::ArgumentV1::new(arg0, ::std::fmt::Debug::fmt)],
+            ::io::_print(::std::fmt::Arguments::new_v1(
+                &["Style changed\n"],
+                &match () {
+                    () => [],
                 },
-                &[::std::fmt::rt::v1::Argument {
-                    position: ::std::fmt::rt::v1::Position::At(0usize),
-                    format: ::std::fmt::rt::v1::FormatSpec {
-                        fill: ' ',
-                        align: ::std::fmt::rt::v1::Alignment::Unknown,
-                        flags: 0u32,
-                        precision: ::std::fmt::rt::v1::Count::Implied,
-                        width: ::std::fmt::rt::v1::Count::Implied,
-                    },
-                }],
             ));
+            self.renderer.style_changed(&style).unwrap();
             self.style = Some(style);
         }
         pub fn set_style_url(&mut self, url: &str) {
@@ -11456,17 +22628,43 @@ pub mod map {
                     },
                 }],
             ));
-            let resource = storage::Resource::style(url.into());
+            let req = storage::Request::style(url.into());
+            let addr: Addr<Syn, MapViewImpl> = self.sync_addr.clone().unwrap().into();
             self.source
-                .get_async(resource, Box::new(self.addr.clone().unwrap()));
+                .do_send(storage::ResourceRequest(req, addr.recipient()));
         }
         pub fn render(&mut self, target: &mut glium::Frame) {
-            for l in self.layers.iter_mut() {
-                l.render(target);
+            let (w, h) = target.get_dimensions();
+            let scale = w as f32 / h as f32;
+            let (xs, ys) = if scale <= 1. {
+                (scale, 1.)
+            } else {
+                (1., 1. / scale)
+            };
+            let (wh, hh) = (xs / 2., ys / 2.);
+            let projection = cgmath::ortho(-wh, wh, -hh, hh, -1., 100.);
+            let view = Mercator::internal_to_screen_matrix(&self.camera);
+            let params = self::render::RenderParams {
+                disp: self.facade.deref(),
+                frame: target,
+                projection,
+                view,
+            };
+            self.renderer.render(params).unwrap();
+            if let Some(ref style) = self.style {
+                for (src_id, src) in style.sources.iter() {
+                    let needed = self.tile_storage.needed_tiles();
+                    for coord in needed {
+                        self.tile_storage.requested_tile(&coord);
+                        let req = storage::Request::tile(src_id.clone(), src.url_template(), coord);
+                        let addr: Addr<Syn, MapViewImpl> = self.sync_addr.clone().unwrap().into();
+                        self.source
+                            .do_send(storage::ResourceRequest(req, addr.recipient()));
+                    }
+                }
             }
         }
     }
-    use self::storage::*;
     pub enum MapMethodArgs {
         Render(glium::Frame),
         SetStyleUrl(String),
@@ -11476,18 +22674,60 @@ pub mod map {
     }
     impl Handler<MapMethodArgs> for MapViewImpl {
         type Result = ();
-        fn handle(
-            &mut self,
-            mut msg: MapMethodArgs,
-            ctx: &mut Self::Context,
-        ) -> <Self as Handler<MapMethodArgs>>::Result {
+        fn handle(&mut self, msg: MapMethodArgs, _ctx: &mut Self::Context) -> () {
             match msg {
                 MapMethodArgs::Render(mut frame) => {
                     self.render(&mut frame);
-                    frame.finish();
+                    frame.finish().unwrap();
                 }
                 MapMethodArgs::SetStyleUrl(url) => self.set_style_url(&url),
             };
+        }
+    }
+    pub struct Invoke<A, F, R>
+    where
+        A: Actor,
+        F: FnOnce(&mut A) -> R,
+        R: 'static,
+    {
+        f: F,
+        _a: ::std::marker::PhantomData<A>,
+        _r: ::std::marker::PhantomData<R>,
+    }
+    impl<A, F, R> Invoke<A, F, R>
+    where
+        A: Actor,
+        F: FnOnce(&mut A) -> R,
+        R: 'static,
+    {
+        fn new(f: F) -> Self {
+            Invoke {
+                f: f,
+                _a: ::std::marker::PhantomData,
+                _r: ::std::marker::PhantomData,
+            }
+        }
+    }
+    impl<A, F, R> Message for Invoke<A, F, R>
+    where
+        A: Actor,
+        F: FnOnce(&mut A) -> R,
+        R: 'static,
+    {
+        type Result = Result<R>;
+    }
+    impl<F, R> Handler<Invoke<MapViewImpl, F, R>> for MapViewImpl
+    where
+        F: FnOnce(&mut MapViewImpl) -> R,
+        R: 'static,
+    {
+        type Result = Result<R>;
+        fn handle(
+            &mut self,
+            msg: Invoke<MapViewImpl, F, R>,
+            _ctx: &mut Context<Self>,
+        ) -> Result<R> {
+            Ok((msg.f)(self))
         }
     }
 }

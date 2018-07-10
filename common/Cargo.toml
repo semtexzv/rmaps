@@ -5,10 +5,14 @@ authors = ["Michal Hornický <semtexzv@gmail.com>"]
 
 [dependencies]
 gl = "*"
-glium = { version = "*", no-default-features = true }
+glium = { version = "*" }
+glium_derive = { path = "../libs/glium_derive"}
+num = "*"
+cgmath = "*"
 failure = "*"
 reqwest = "*"
-
+rusqlite = "*"
+itertools="*"
 serde="*"
 serde_derive="*"
 serde_json="*"
@@ -16,8 +20,14 @@ serde_json="*"
 
 futures = "0.1"
 tokio = "0.1"
-actix =  { path = "../libs/actix" }
-actix-web = { path = "../libs/actix-web" }
+
+actix =  { path = "../libs/actix"}
+actix-web = { path = "../libs/actix-web", features= ["tls"] }
+actix_derive = { path = "../libs/actix-derive" }
 
 palette = "0.4"
 url = "1.7.0"
+uuid = { version = "*" , features = ["v4"]}
+enumflags = "*"
+enumflags_derive = "*"
+css-color-parser = "0.1.2"
