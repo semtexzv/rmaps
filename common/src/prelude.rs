@@ -1,10 +1,15 @@
 pub use std::{
     collections::BTreeMap,
-    fmt::Debug,
+    fmt::{
+        self,
+        Debug,
+    },
     result::Result as StdResult,
     str::FromStr,
     string::ToString,
     ops::{Deref, DerefMut},
+    rc::Rc,
+    sync::Arc,
 };
 pub use gl;
 pub use glium::{
@@ -22,6 +27,17 @@ pub use glium::{
         ProgramCreationInput,
     },
 };
+
+pub use time::{
+    Duration,
+    PreciseTime,
+};
+
+pub use rayon::{
+    self,
+    prelude::*,
+};
+
 pub use num;
 
 pub use css_color_parser;

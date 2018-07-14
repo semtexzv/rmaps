@@ -1,2 +1,2 @@
 [workspace]
-members = ["common" , "rmaps", "platform/*", "mapbox-tiles", "libs/*"]
+members = ["common" , "rmaps", "platform/*", "libs/*"]

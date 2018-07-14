@@ -6,13 +6,23 @@ authors = ["Michal Hornický <semtexzv@gmail.com>"]
 [dependencies]
 gl = "*"
 glium = { version = "*" }
-glium_derive = { path = "../libs/glium_derive"}
+glium_derive = { git  = "https://github.com/semtexzv/glium_derive" }
 num = "*"
+rayon = "*"
+
+log = "*"
+fern = { version = "*", features = ["colored"] }
+time = "*"
+chrono = "*"
+
 cgmath = "*"
 failure = "*"
 reqwest = "*"
 rusqlite = "*"
 itertools="*"
+
+scoped-tls = { version = "*", features = ["nightly"] }
+
 serde="*"
 serde_derive="*"
 serde_json="*"

@@ -1,7 +1,6 @@
 use prelude::*;
 
 pub mod render;
-pub mod layers;
 
 pub mod style;
 pub mod storage;
@@ -50,7 +49,6 @@ impl MapView {
     pub fn get_camera(&mut self) -> Camera {
         self.do_run(|add| {
             add.send(Invoke::new(|i: &mut MapViewImpl| {
-                println!("GetCamera");
                 i.camera.clone()
             }))
         }).wait().unwrap().unwrap()
@@ -59,8 +57,8 @@ impl MapView {
     pub fn set_camera(&mut self, camera: Camera) {
         self.do_run(|add| {
             add.send(Invoke::new(|i: &mut MapViewImpl| {
-                println!("SetCamera");
                 i.camera = camera;
+                i.camera.fix();
             }))
         }).wait().unwrap().unwrap()
     }
@@ -130,7 +128,8 @@ impl Handler<tiles::data::TileReady> for MapViewImpl {
     type Result = ();
 
     fn handle(&mut self, msg: tiles::data::TileReady, ctx: &mut Context<Self>) {
-        self.renderer.tile_ready(msg.data);
+        let data = Rc::new(msg.data);
+        self.renderer.tile_ready(data);
     }
 }
 
@@ -163,7 +162,7 @@ impl MapViewImpl {
     }
 
     pub fn set_style(&mut self, style: style::Style) {
-        println!("Style changed");
+        //trace!("Style changed {:#?}", style);
         self.renderer.style_changed(&style).unwrap();
         self.style = Some(style);
     }
@@ -197,15 +196,17 @@ impl MapViewImpl {
             frame: target,
             projection,
             view,
-            zoom : self.camera.zoom as _
+            camera: &self.camera,
+
+            frame_start: PreciseTime::now(),
         };
         self.renderer.render(params).unwrap();
 
         if let Some(ref style) = self.style {
             for (src_id, src) in style.sources.iter() {
-                let needed =  self.tile_storage.needed_tiles();
-              //  println!("Needed : {:?}\n in flight : {:?}", needed, self.tile_storage.in_flight);
-                for coord in needed{
+                let needed = self.tile_storage.needed_tiles();
+                //  println!("Needed : {:?}\n in flight : {:?}", needed, self.tile_storage.in_flight);
+                for coord in needed {
                     self.tile_storage.requested_tile(&coord);
                     let req = storage::Request::tile(src_id.clone(), src.url_template(), coord);
                     let addr: Addr<Syn, MapViewImpl> = self.sync_addr.clone().unwrap().into();

@@ -13,7 +13,7 @@ pub use self::line::*;
 pub use self::raster::*;
 pub use self::symbol::*;
 
-use super::expr_old::Filter;
+use super::filter::Filter;
 
 
 #[derive(Deserialize, Debug, Clone)]
@@ -55,7 +55,7 @@ impl Default for Visibility {
 #[derive(Deserialize, Debug, Clone)]
 pub struct BaseLayout {
     #[serde(default = "Default::default")]
-    pub visibility: Function<Visibility>
+    pub visibility: Function<String>
 }
 
 impl Default for BaseLayout {
@@ -74,15 +74,16 @@ pub trait StyleLayer {
     fn get_layout(&self) -> &Self::LayoutType;
 }
 
+
 #[derive(Debug, Clone, Deserialize)]
 #[serde(untagged)]
-pub enum Function<T: super::expr_test::TypeDesc> {
+pub enum Function<T : super::expr::DescribeType + Debug> {
     Value(T),
-    Expr(super::expr_test::TypedExpr<T>),
+    Expr(super::expr::TypedExpr<T>),
 }
 
 
-impl<T: Default + super::expr_test::TypeDesc> Default for Function<T> {
+impl<T: Debug + Default + super::expr::DescribeType> Default for Function<T> {
     fn default() -> Self {
         Function::Value(Default::default())
     }

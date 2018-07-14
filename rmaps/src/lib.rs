@@ -9,17 +9,20 @@
 #![feature(try_from)]
 #![feature(trace_macros)]
 #![feature(pattern_parentheses)]
+#![feature(macro_literal_matcher)]
 #![feature(macro_at_most_once_rep)]
 
-#![allow(unused_imports, unused_mut, unused_variables, unused_macros, unreachable_code, unreachable_patterns, unused_parens)]
+#![allow(unused_imports, dead_code, unused_mut, unused_variables, unused_macros, unreachable_code, unreachable_patterns, unused_parens)]
 pub extern crate common;
-pub extern crate mapbox_tiles;
+pub extern crate mvt;
 #[macro_use]
 pub extern crate rmaps_derive;
 
 pub extern crate image;
 
 pub extern crate tess2;
+pub extern crate earcut;
+
 extern crate serde;
 /*
 pub extern crate act;

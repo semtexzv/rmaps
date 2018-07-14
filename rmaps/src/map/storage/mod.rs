@@ -4,6 +4,7 @@ pub mod resource;
 
 pub mod local;
 pub mod network;
+mod url;
 
 pub use self::resource::*;
 

@@ -10,7 +10,7 @@ pub struct RasterTileData {
 
 #[derive(Debug, Clone)]
 pub struct VectorTileData {
-    pub layers : Vec<::mapbox_tiles::Layer>
+    pub layers : Vec<::mvt::Layer>
 
 }
 
@@ -78,11 +78,11 @@ impl Handler<DecodeTile> for TileDataWorker {
                 }
             }
             ::map::style::StyleSource::Vector(_) => {
-                use mapbox_tiles::prost::Message;
+                use mvt::prost::Message;
 
                 let data = &msg.res.data;
-                let vt = ::mapbox_tiles::vector_tile::Tile::decode(data).unwrap();
-                let tile = ::mapbox_tiles::Tile::from(vt);
+                let vt = ::mvt::vector_tile::Tile::decode(data).unwrap();
+                let tile = ::mvt::Tile::from(vt);
 
 
                 TileData {

@@ -42,7 +42,8 @@ pub struct BackgroundPaint {
     pub opacity: Function<f32>,
 
     #[serde(rename = "background-pattern")]
-    pub pattern: Option<Function<String>>,
+    #[serde(default)]
+    pub pattern: Function<Option<String>>,
 }
 
 fn default_background_color() -> Function<Color> {
@@ -58,7 +59,7 @@ impl Default for BackgroundPaint {
         BackgroundPaint {
             color: default_background_color(),
             opacity: default_backround_opacity(),
-            pattern: None,
+            pattern: Function::Value(None),
         }
     }
 }

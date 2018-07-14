@@ -4,6 +4,12 @@ pub mod data;
 
 use std::collections::BTreeSet;
 
+// TODO, impl this
+
+pub trait TileObserver {
+    fn tile_changed();
+}
+
 pub struct TileStorage {
     pub in_flight: BTreeSet<TileCoords>,
     pub available: BTreeSet<TileCoords>,
@@ -18,12 +24,12 @@ impl TileStorage {
     }
     pub fn needed_tiles(&self) -> Vec<TileCoords> {
         if self.available.is_empty() && self.in_flight.is_empty() {
-            return TileCoords::new(0, 0, 0).children().into_iter().map(|x| x.clone()).collect();
+            return vec![TileCoords::new(0, 0, 0)];
         }
 
         return self.available
             .iter()
-            .filter(|x| x.z < 3)
+            .filter(|x| x.z < 4)
             .flat_map(|x| Vec::from(&x.children()[..]))
             .filter(|t| !self.in_flight.contains(&t))
             .filter(|t| !self.available.contains(&t))

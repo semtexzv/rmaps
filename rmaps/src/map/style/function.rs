@@ -79,7 +79,7 @@ pub enum Function<T: DeserializeOwned + Clone> {
 
 
 pub struct FunctionEvaluationContext<'a> {
-    feature: Option<&'a ::mapbox_tiles::Feature>,
+    feature: Option<&'a ::mvt::Feature>,
     zoom: f64,
 }
 

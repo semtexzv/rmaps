@@ -5,18 +5,31 @@
 #ifndef RMAPS_LIB_H
 #define RMAPS_LIB_H
 
+#include <stddef.h>
+#include <stdint.h>
 
-template<typename T>
-struct Point {
-    T x;
-    T y;
-};
+typedef int32_t COORD_TYPE;
+typedef uint32_t INDEX_TYPE;
+struct Earcut;
 
+#ifdef __cplusplus
+extern "C" {
+#endif
 
-template<typename T>
-void earcut(Point<T>* data, int count);
+Earcut *earcut_new();
 
+void earcut_delete(Earcut *);
 
-template<>
-void earcut(Point<int>* data, int count);
+void earcut_ring(Earcut *, const COORD_TYPE *data, size_t count);
+
+bool earcut_tesselate(Earcut *);
+
+INDEX_TYPE *earcut_data(Earcut *);
+
+size_t earcut_size(Earcut *);
+
+#ifdef __cplusplus
+}
+#endif
+
 #endif //RMAPS_LIB_H

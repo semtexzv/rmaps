@@ -29,6 +29,15 @@ impl TileCoords {
         }
     }
 
+    pub fn id(&self) -> u8 {
+        let x = (self.x & 0xFF) as u8;
+        let y = (self.y & 0xFF) as u8;
+        let z = (self.z & 0xFF) as u8;
+
+        return z & 0b11 << 6 | x & 0b111 << 3 | y & 0b111;
+    }
+
+
     pub fn children(&self) -> [TileCoords; 4] {
         return [
             TileCoords::new(self.x * 2 + 0, self.y * 2 + 0, self.z + 1),
@@ -132,7 +141,7 @@ impl LatLngBounds {
 }
 
 
-#[derive(Default,Clone)]
+#[derive(Default, Clone)]
 pub struct Camera {
     /// Camera position in 0-1 scale,
     pub pos: (f32, f32),
@@ -145,6 +154,11 @@ impl Camera {
     }
     pub fn zoom(&self) -> f32 {
         return self.zoom;
+    }
+    pub fn fix(&mut self) {
+        if self.zoom < 0. {
+            self.zoom = 0.;
+        }
     }
 }
 
@@ -178,7 +192,6 @@ impl Mercator {
     /// Into screen coordinate system
     /// This matrix must take camera position,zoom and projection into account
     pub fn internal_to_screen_matrix(camera: &Camera) -> ::cgmath::Matrix4<f32> {
-
         let s = f32::powf(2.0, camera.zoom);
         return
             ::cgmath::Matrix4::from_nonuniform_scale(s, s, 1.) *

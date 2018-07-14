@@ -56,7 +56,7 @@ fn get_property_data(name: &Ident, meta: &Meta) -> FieldPropertyData {
             }
             NestedMeta::Meta(Meta::NameValue(MetaNameValue { ref ident, lit: Lit::Str(ref l), .. })) => {
                 if quote!(#ident).to_string() == "name" {
-                    res.src_name =  parse_str(l.value().deref()).unwrap();
+                    res.src_name = parse_str(l.value().deref()).unwrap();
                 } else {
                     panic!("Unknown field attribute {}", ident);
                 }
@@ -161,12 +161,18 @@ fn impl_layer_properties(ast: &DeriveInput) -> TokenStream {
             quote_spanned! { field.span()=> {
 
                     let expr = &#access.#src_name;
-                    match evaluator.evaluate(&mut self.#name ,&expr,#can_be_zoom,#can_be_feature)  {
-                        Ok(true) => modified = true,
+                    match evaluator.evaluate(&mut self.#name ,&expr, #can_be_zoom, #can_be_feature)  {
+                        Ok(true) => {
+                            modified = true;
+                        }
+                        Ok(false) => {
+
+                        }
                         Err(e) => {
                             bail!("Error when evaluating {} : {:?}", #name_str,e);
                         },
                         _ => {}
+
                     }
                 }
             }
@@ -175,10 +181,10 @@ fn impl_layer_properties(ast: &DeriveInput) -> TokenStream {
     //panic!("style layer: {:?} fields : {:?}", style_layer_name, evaluations);
 
     let res = quote! {
-        impl #impl_generics ::map::layers::property::Properties for #struct_name #ty_generics #where_clause {
+        impl #impl_generics ::map::render::property::Properties for #struct_name #ty_generics #where_clause {
             type SourceLayerType  = ::map::style::#style_layer_name;
 
-            fn eval(&mut self, layer: &Self::SourceLayerType, evaluator : &::map::layers::property::PropertiesEvaluator) -> Result<bool> {
+            fn eval(&mut self, layer: &Self::SourceLayerType, evaluator : &::map::render::property::PropertiesEvaluator) -> Result<bool> {
                 use map::style::StyleLayer;
 
                 let mut modified = false;

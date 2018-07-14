@@ -1,0 +1,21 @@
+[package]
+name = "mvt"
+version = "0.1.0"
+authors = ["Michal Hornický <semtexzv@gmail.com>"]
+
+[dependencies]
+
+common={path= "../../common"}
+
+
+quick-protobuf = "0.6.0"
+
+prost="*"
+
+prost-derive = "*"
+
+prost-types = "*"
+bytes = "*"
+
+[build-dependencies]
+prost-build="*"

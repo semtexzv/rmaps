@@ -1,30 +1,50 @@
 use prelude::*;
 
-use map::layers;
+
+pub mod layers;
+
+pub mod property;
+
+
 use map::style;
 use map::tiles::data;
 use std::hash;
 
-pub struct CameraProperties {
-    zoom: f64
-}
 
-pub struct FeatureProperties {
-    feature: ::mapbox_tiles::Feature,
-}
+/// Idea:
+/// Stencil test for each tile, by utilizing encoding tile ids into 8 or 16 bits
+/// and using Equality tests for stencil clipping, therefore, no overlaps will be rendered
+///
 
 pub struct RenderParams<'a> {
     pub disp: &'a Display,
     pub frame: &'a mut glium::Frame,
     pub projection: cgmath::Matrix4<f32>,
     pub view: cgmath::Matrix4<f32>,
-    pub zoom: f64,
+    pub camera: &'a Camera,
+
+    pub frame_start: PreciseTime,
+}
+
+#[derive(Debug)]
+pub struct EvaluationParams {
+    pub zoom: f32,
+    pub time: u64,
+}
+
+impl EvaluationParams {
+    fn new(zoom: f32) -> Self {
+        EvaluationParams {
+            zoom,
+            time: 0,
+        }
+    }
 }
 
 #[derive(Debug)]
 pub struct LayerData {
     pub layer: Box<layers::Layer>,
-    pub buckets: BTreeMap<TileCoords, RenderBucket>,
+    pub evaluated: Option<EvaluationParams>,
 }
 
 pub struct Renderer {
@@ -45,39 +65,35 @@ impl Renderer {
         self.layers = layers::parse_style_layers(&self.display, style).into_iter().map(|l| {
             LayerData {
                 layer: l,
-                buckets: BTreeMap::new(),
+                evaluated: None,
             }
         }).collect();
         Ok(())
     }
-    pub fn tile_ready(&mut self, tile: data::TileData) {
+    pub fn tile_ready(&mut self, tile: Rc<data::TileData>) {
         for l in self.layers.iter_mut() {
-            if l.layer.uses_source(&tile.source) {
-                let bucket = l.layer.create_bucket(&self.display, &tile).unwrap();
-                l.buckets.insert(tile.coord, bucket);
-            }
+            l.layer.new_tile(&self.display, &tile).unwrap();
         }
     }
     pub fn render(&mut self, mut params: RenderParams) -> Result<()> {
+        let eval_params = EvaluationParams::new(params.camera.zoom);
+
         for l in self.layers.iter_mut() {
-            l.layer.render_begin(&mut params);
-            for (c, b) in l.buckets.iter() {
-                l.layer.render_tile(&mut params, *c, &b).unwrap();
+            let (should_eval, really) = match l.evaluated {
+                None => (true, true),
+                Some(ref e) if e.zoom != eval_params.zoom => (true, false),
+                _ => (false, false),
+            };
+            let t = PreciseTime::now();
+            if should_eval && (params.frame_start.to(t).num_milliseconds() < 2 || really) {
+                l.layer.evaluate(&eval_params)?;
             }
-            l.layer.render_end(&mut params);
         }
+
+        for l in self.layers.iter_mut() {
+            l.layer.render(&mut params).unwrap();
+        }
+
         Ok(())
     }
-}
-
-
-#[derive(Debug, Clone)]
-pub struct LineBucket {}
-
-#[derive(Debug)]
-pub enum RenderBucket {
-    NoOp,
-    Raster(layers::raster::RasterBucket),
-    Fill(layers::fill::FillBucket),
-    Line(LineBucket),
 }

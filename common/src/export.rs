@@ -18,11 +18,18 @@ pub use cgmath::{
 
 pub use itertools::{self, Itertools};
 
+pub use serde::{
+    self,
+    ser, de,
+};
 pub use serde_derive::{Serialize, Deserialize};
 pub use json::{
     self, json, json_internal,
 };
 
+pub use log::{log, info, error, debug, warn, trace};
+
+pub use scoped_tls::*;
 
 pub use std::borrow::Cow;
 
@@ -42,6 +49,8 @@ pub use uuid::prelude::*;
 
 pub use enumflags::*;
 pub use enumflags_derive::*;
+
+pub use failure::format_err;
 
 pub use ::util::*;
 pub use ::geometry;
