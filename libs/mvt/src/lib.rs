@@ -1,3 +1,4 @@
+#![allow(unused_unsafe, dead_code, unused_variables, unused_imports)]
 pub extern crate common;
 
 pub extern crate prost;
@@ -169,7 +170,7 @@ fn parse_geometry(typ: GeomType, data: &[u32]) -> Vec<Vec<[i32; 2]>> {
             (COMMAND_CLOSE_PATH, 1, GeomType::Polygon) => {
                 pos += 1;
                 let first = ring[0];
-              //  ring.push(first);
+                //  ring.push(first);
             }
             (command, count, typ) => {
                 panic!("Invalid comand : {:?}, count : {:?}, type : {:?}", command, count, typ);

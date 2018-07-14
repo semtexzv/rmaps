@@ -40,4 +40,6 @@ url = "1.7.0"
 uuid = { version = "*" , features = ["v4"]}
 enumflags = "*"
 enumflags_derive = "*"
+
+derive_more = "*"
 css-color-parser = "0.1.2"

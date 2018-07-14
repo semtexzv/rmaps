@@ -4,4 +4,5 @@ version = "0.1.0"
 authors = ["Michal Hornický <semtexzv@gmail.com>"]
 
 [dependencies]
+common = { path = "../../common" }
 rmaps = { path = "../../rmaps" }

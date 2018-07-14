@@ -1,6 +1,7 @@
 use prelude::*;
+use coord::*;
 
-use cgmath::SquareMatrix;
+use cgmath::{SquareMatrix, Matrix4, Vector4};
 
 #[derive(Debug, Clone, Copy, Hash, PartialOrd, PartialEq, Ord, Eq)]
 pub struct TileCoords {
@@ -140,36 +141,138 @@ impl LatLngBounds {
     }
 }
 
-
-#[derive(Default, Clone)]
+#[derive(Debug, Clone)]
 pub struct Camera {
+    pub window_size: PixelSize,
     /// Camera position in 0-1 scale,
-    pub pos: (f32, f32),
+    pub pos: WorldPoint,
     pub zoom: f32,
+
+    projection: Option<::cgmath::Matrix4<f32>>,
+    view: Option<::cgmath::Matrix4<f32>>,
 }
 
 impl Camera {
     pub fn lat_lng(&self) -> LatLng {
-        return Mercator::point_to_latlng(self.pos.clone());
+        return Mercator::world_to_latlng(self.pos.clone());
     }
+
     pub fn zoom(&self) -> f32 {
         return self.zoom;
     }
-    pub fn fix(&mut self) {
+    pub fn set_zoom(&mut self, z: f32) {
+        self.zoom = z;
         if self.zoom < 0. {
             self.zoom = 0.;
+        }
+        self.view = None;
+    }
+
+    pub fn size(&self) -> PixelSize {
+        return self.window_size;
+    }
+    pub fn set_size(&mut self, s: PixelSize) {
+        self.window_size = s;
+        self.projection = None;
+    }
+
+    pub fn pos(&self) -> WorldPoint {
+        self.pos
+    }
+    pub fn set_pos(&mut self, pos: WorldPoint) {
+        self.pos = pos;
+        trace!("Camera position changed to : {:?}", pos);
+        self.view = None;
+    }
+
+
+    pub fn projection(&mut self) -> Matrix4<f32> {
+        return if let Some(ref mut p) = self.projection {
+            p.clone()
+        } else {
+            let PixelSize { w, h } = self.size();
+            let scale = w as f32 / h as f32;
+
+            let (xs, ys) = if scale <= 1. {
+                (scale, 1.)
+            } else {
+                (1., 1. / scale)
+            };
+            let (wh, hh) = (xs / 2., ys / 2.);
+            let projection = ::cgmath::ortho(
+                -wh, wh,
+                -hh, hh,
+                -1., 100.);
+
+            self.projection = Some(projection.clone());
+            projection
+        };
+    }
+
+    pub fn view(&mut self) -> Matrix4<f32> {
+        return if let Some(ref mut p) = self.view {
+            p.clone()
+        } else {
+            let view = Mercator::internal_to_screen_matrix(&self);
+            self.view = Some(view.clone());
+            view
+        };
+    }
+
+    #[inline]
+    pub fn window_to_world(&mut self, point: PixelPoint) -> WorldPoint {
+        let a = self.window_to_device(point);
+        return self.device_to_world(a);
+    }
+
+    #[inline]
+    pub fn window_to_device(&mut self, point: PixelPoint) -> DevicePoint {
+        let multiplied = (point.x / self.size().w - 0.5, point.y / self.size().h - 0.5);
+
+        DevicePoint::new(2. * multiplied.0 as f32, 2. * -multiplied.1 as f32)
+    }
+
+    #[inline]
+    pub fn device_to_world(&mut self, point: DevicePoint) -> WorldPoint {
+        let pt = (self.projection() * self.view()).invert().unwrap() * Vector4::new(point.x as f32, point.y as f32, 0., 1.);
+
+        WorldPoint::new(pt.x, pt.y)
+    }
+}
+
+impl Default for Camera {
+    fn default() -> Self {
+        Camera {
+            window_size: Default::default(),
+            pos: WorldPoint::new(0.5, 0.5),
+            zoom: 0.,
+            projection: None,
+            view: None,
         }
     }
 }
 
 
-pub const MERCATOR_WIDTH: f32 = 360.;
-pub const MERCATOR_HEIGHT: f32 = 170.10225;
+use std::f64::consts::PI;
 
-use std::f32::consts::PI;
+pub const MERCATOR_WIDTH: f64 = 360.;
+pub const MERCATOR_HEIGHT: f64 = 170.10225751;
+//f32::atan(f32::sinh(PI)) * 180. / PI;
+
+pub const MAX_LAT: f64 = MERCATOR_HEIGHT / 2.;
+pub const MAX_LON: f64 = MERCATOR_WIDTH / 2.;
+
 
 pub struct Mercator;
+/*
 
+Coordinjate systems used:
+
+TILE coords  : mapbox tile coordinates , 0,0 in top left corner, 8192,8192 in bottom right
+WORLD/point coords : coordinates in internal world representation , 0,0 in top left
+
+
+*/
 impl Mercator {
     /// Create a matrix that converts coordinates from internal tile coordinates : 8192x 8192
     /// into 1x1 square with 0,0 in top left corner
@@ -190,26 +293,40 @@ impl Mercator {
 
     /// Matrix that converts coordinates from linear 1x1 coordinate system
     /// Into screen coordinate system
-    /// This matrix must take camera position,zoom and projection into account
+    /// This matrix must take camera position,zoom into account, projection is separate
     pub fn internal_to_screen_matrix(camera: &Camera) -> ::cgmath::Matrix4<f32> {
         let s = f32::powf(2.0, camera.zoom);
         return
             ::cgmath::Matrix4::from_nonuniform_scale(s, s, 1.) *
-                ::cgmath::Matrix4::from_translation((0.5 - camera.pos.0, -0.5 + camera.pos.1, 0.).into())
+                ::cgmath::Matrix4::from_translation((0.5 - camera.pos.x as f32, 0.5 - camera.pos.y as f32, 0.).into())
                 * ::cgmath::Matrix4::from_translation((-0.5, -0.5, 0.).into());
     }
-    pub fn point_to_latlng(pos: (f32, f32)) -> LatLng {
+
+    pub fn world_to_latlng(pos: WorldPoint) -> LatLng {
         unimplemented!()
     }
-    pub fn latlng_to_point(pos: LatLng) -> (f32, f32) {
+    pub fn latlng_to_world(pos: LatLng) -> WorldPoint {
         let DEG2RAD = PI / 180.0;
-        let x = ((pos.lng as f32 + 180.) / 360.);
-        let y = (1. - f32::ln(f32::tan(pos.lat as f32 * DEG2RAD) + (1. / f32::cos(pos.lat as f32 * DEG2RAD))) / PI) / 2.;
-        return (x, y);
+        let x = ((pos.lng as f64 + 180.) / 360.);
+        let y = (1. - f64::ln(f64::tan(pos.lat as f64 * DEG2RAD) + (1. / f64::cos(pos.lat as f64 * DEG2RAD))) / PI) / 2.;
+        return WorldPoint::new(x, y);
     }
 }
 
 #[test]
 fn test_mercator() {
-    assert_eq!((1., 1.), Mercator::latlng_to_point(LatLng::new(0, 0)));
+    macro_rules! assert_float_eq {
+        ($a:expr, $b:expr) => {
+            assert_eq!(format!("{:?}",$a), format!("{:?}",$b));
+        }
+    }
+
+    // CENTER
+    assert_float_eq!((0.5f64, 0.5f64), Mercator::latlng_to_point(LatLng::new(0, 0)));
+
+    // TOP LEFT
+    // assert_eq!((0., 0.), Mercator::latlng_to_point(LatLng::new(MAX_LAT, -180)));
+
+    // BOTTOM RIGHT
+    assert_float_eq!((1f64, 1f64), Mercator::latlng_to_point(LatLng::new(-MAX_LAT, 180)));
 }

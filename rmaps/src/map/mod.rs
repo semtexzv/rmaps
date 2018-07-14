@@ -58,7 +58,14 @@ impl MapView {
         self.do_run(|add| {
             add.send(Invoke::new(|i: &mut MapViewImpl| {
                 i.camera = camera;
-                i.camera.fix();
+            }))
+        }).wait().unwrap().unwrap()
+    }
+    // TODO, what coordinate system ?
+    pub fn clicked(&mut self, point: PixelPoint) {
+        self.do_run(|add| {
+            add.send(Invoke::new(move |i: &mut MapViewImpl| {
+                i.clicked(point);
             }))
         }).wait().unwrap().unwrap()
     }
@@ -139,9 +146,9 @@ impl MapViewImpl {
         let tile_worker_add = tiles::data::TileDataWorker::spawn();
 
         let mut camera: Camera = Default::default();
-        camera.pos = Mercator::latlng_to_point(LatLng::new(49, 16));
+        camera.pos = Mercator::latlng_to_world(LatLng::new(49, 16));
         // camera.pos = Mercator::latlng_to_point(LatLng::new(-26,137));
-        //camera.pos = (1.,1.);
+
         let m = MapViewImpl {
             addr: None,
             sync_addr: None,
@@ -175,22 +182,17 @@ impl MapViewImpl {
         self.source.do_send(storage::ResourceRequest(req, addr.recipient()));
     }
 
+    pub fn clicked(&mut self, pixel: PixelPoint) {
+        println!("PIXEL : {:?}", pixel);
+        let matrix = Mercator::internal_to_screen_matrix(&self.camera).invert().unwrap();
+        let dev = self.camera.window_to_device(pixel);
+        println!("DEVICE : {:?}", dev);
+        let world = self.camera.device_to_world(dev);
+        println!("WORLD : {:?}", world);
+    }
     pub fn render(&mut self, target: &mut glium::Frame) {
-        let (w, h) = target.get_dimensions();
-
-        let scale = w as f32 / h as f32;
-
-        let (xs, ys) = if scale <= 1. {
-            (scale, 1.)
-        } else {
-            (1., 1. / scale)
-        };
-        let (wh, hh) = (xs / 2., ys / 2.);
-        let projection = cgmath::ortho(
-            -wh, wh,
-            -hh, hh,
-            -1., 100.);
-        let view = Mercator::internal_to_screen_matrix(&self.camera);
+        let projection = self.camera.projection();
+        let view = self.camera.view();
         let params = self::render::RenderParams {
             disp: self.facade.deref(),
             frame: target,

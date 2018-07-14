@@ -1,4 +1,7 @@
 #![feature(use_extern_macros)]
+#![allow(unused_variables, unused_mut, dead_code, non_snake_case)]
+
+
 #[macro_use]
 pub extern crate gl;
 #[macro_use]
@@ -44,6 +47,8 @@ pub extern crate uuid;
 pub extern crate enumflags;
 pub extern crate enumflags_derive;
 pub extern crate css_color_parser;
+#[macro_use]
+pub extern crate derive_more;
 
 pub extern crate rusqlite;
 
@@ -51,7 +56,7 @@ pub mod prelude;
 pub mod export;
 pub mod color;
 pub mod util;
-
+pub mod coord;
 
 pub mod geometry;
 
