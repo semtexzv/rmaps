@@ -3,8 +3,6 @@ use prelude::*;
 use super::*;
 use std::io::Read;
 
-use common::actix_derive::*;
-
 pub struct LocalFileSource {}
 impl Actor for LocalFileSource{
     type Context = Context<Self>;

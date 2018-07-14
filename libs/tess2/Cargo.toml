@@ -1,0 +1,14 @@
+[package]
+name = "tess2"
+version = "0.3.0"
+authors = ["Payton Turnage <paytonturnage@gmail.com>"]
+description = "Safe wrapper around libtess2."
+license = "MIT"
+
+[build-dependencies]
+bindgen = "0.26.3"
+
+[dependencies]
+tess2-sys = { git = "https://github.com/semtexzv/tess2-sys"}
+itertools = "0.7.4"
+

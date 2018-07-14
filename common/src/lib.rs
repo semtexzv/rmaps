@@ -35,8 +35,6 @@ pub extern crate palette;
 
 pub extern crate actix;
 pub extern crate actix_web;
-#[macro_use]
-pub extern crate actix_derive;
 
 pub extern crate futures;
 pub extern crate tokio;

@@ -33,7 +33,7 @@ tokio = "0.1"
 
 actix =  { path = "../libs/actix"}
 actix-web = { path = "../libs/actix-web", features= ["tls"] }
-actix_derive = { path = "../libs/actix-derive" }
+
 
 palette = "0.4"
 url = "1.7.0"

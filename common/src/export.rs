@@ -35,8 +35,6 @@ pub use std::borrow::Cow;
 
 pub use actix;
 pub use actix_web;
-pub use actix_derive;
-pub use actix_derive::*;
 
 
 pub use futures;
