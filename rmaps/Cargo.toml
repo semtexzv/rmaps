@@ -3,8 +3,6 @@ name = "rmaps"
 version = "0.1.0"
 authors = ["Michal Hornický <semtexzv@gmail.com>"]
 
-[profile.debug]
-codegen-units=4
 
 [dependencies]
 common = { path = "../common" }

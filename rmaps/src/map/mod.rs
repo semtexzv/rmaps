@@ -184,7 +184,6 @@ impl MapViewImpl {
 
     pub fn clicked(&mut self, pixel: PixelPoint) {
         println!("PIXEL : {:?}", pixel);
-        let matrix = Mercator::internal_to_screen_matrix(&self.camera).invert().unwrap();
         let dev = self.camera.window_to_device(pixel);
         println!("DEVICE : {:?}", dev);
         let world = self.camera.device_to_world(dev);

@@ -206,7 +206,7 @@ impl layers::BucketLayer for FillLayer {
 
     fn render_bucket(&mut self, params: &mut render::RenderParams, bucket: &Self::Bucket) -> Result<()> {
         //println!("{:?}", ::std::mem::size_of::<FillVertexProperties>());
-        let tile_matrix = Mercator::tile_to_internal_matrix(&bucket.coord);
+        let tile_matrix = Mercator::tile_to_world(&bucket.coord);
         let matrix = params.projection * params.view * tile_matrix;
         let matrix: [[f32; 4]; 4] = matrix.into();
         let u_t: [f32; 4] = Default::default();

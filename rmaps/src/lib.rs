@@ -24,12 +24,6 @@ pub extern crate tess2;
 pub extern crate earcut;
 
 extern crate serde;
-/*
-pub extern crate act;
-#[macro_use]
-pub extern crate act_codegen;
-*/
-
 
 pub mod prelude;
 pub mod map;
