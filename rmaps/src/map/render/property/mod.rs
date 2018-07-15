@@ -230,32 +230,30 @@ impl PropertiesVisitor for PropertyLayoutBuilder {
     }
 }
 
+use ::common::glium::uniforms::UniformBuffer;
 use ::common::glium::texture::buffer_texture::*;
 
 
 pub struct FeaturePropertyData {
-    tex: glium::texture::buffer_texture::BufferTexture<[f32; 4]>,
-    storage: Vec<[f32; 4]>,
+    pub data: UniformBuffer<[[f32; 4]; 1024]>,
+    storage: Box<[[f32; 4]; 1024]>,
+    position: usize,
 
 }
 
-impl<'a> AsUniformValue for &'a FeaturePropertyData {
-    fn as_uniform_value(&self) -> UniformValue {
-        UniformValue::BufferTexture(self.tex.as_buffer_texture_ref())
-    }
-}
 
 impl FeaturePropertyData {
     pub fn new(d: &glium::backend::Facade) -> Result<Self> {
         let len = 2048;
         Ok(FeaturePropertyData {
-            tex: BufferTexture::empty_dynamic(d, len, BufferTextureType::Float)?,
-            storage: Vec::with_capacity(len),
+            data: UniformBuffer::empty_dynamic(d)?,
+            storage: Box::new([[0.; 4]; 1024]),
+            position: 0,
         })
     }
 
     pub fn clear(&mut self) {
-        self.storage.clear();
+        self.position = 0;
     }
 
     pub fn push<A: Attribute>(&mut self, v: A) {
@@ -278,12 +276,13 @@ impl FeaturePropertyData {
             };
             let ptr = &data as *const helper<A> as *const f32;
             let slice = ptr as *const [f32; 4];
-            self.storage.push(*slice)
+            self.storage[self.position] = (*slice);
+            self.position += 1;
         };
     }
 
     pub fn upload(&mut self, disp: &Display) -> Result<()> {
-        self.tex = BufferTexture::dynamic(disp, &self.storage[..], BufferTextureType::Float)?;
+        self.data.write(&self.storage);
         Ok(())
     }
 }

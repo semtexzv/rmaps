@@ -3,9 +3,10 @@
 
 
 void main() {
+    PASS_FEATURE_IDX;
 
     #pragma property : init vec4 color;
     #pragma property : init float opacity;
 
-    gl_FragColor = color * opacity;
+    frag_out = color * opacity;
 }

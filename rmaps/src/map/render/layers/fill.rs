@@ -245,7 +245,7 @@ impl layers::BucketLayer for FillLayer {
 
         let a = uniform! {
             u_matrix : matrix,
-            feature_data :  &bucket.feature_data,
+            feature_data_ubo :  &bucket.feature_data.data,
 
         };
         let mut uniforms = MergeUniforms(

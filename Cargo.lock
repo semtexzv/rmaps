@@ -95,6 +95,10 @@ dependencies = [
 ]
 
 [[package]]
+name = "android"
+version = "0.1.0"
+
+[[package]]
 name = "android_glue"
 version = "0.2.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -398,7 +402,7 @@ dependencies = [
  "fern 0.5.6 (registry+https://github.com/rust-lang/crates.io-index)",
  "futures 0.1.23 (registry+https://github.com/rust-lang/crates.io-index)",
  "gl 0.10.0 (registry+https://github.com/rust-lang/crates.io-index)",
- "glium 0.22.0 (git+https://github.com/semtexzv/glium?branch=buffer-texture)",
+ "glium 0.22.0 (git+https://github.com/semtexzv/glium)",
  "glium_derive 0.1.1 (git+https://github.com/semtexzv/glium_derive)",
  "itertools 0.7.8 (registry+https://github.com/rust-lang/crates.io-index)",
  "log 0.4.3 (registry+https://github.com/rust-lang/crates.io-index)",
@@ -881,7 +885,7 @@ dependencies = [
 [[package]]
 name = "glium"
 version = "0.22.0"
-source = "git+https://github.com/semtexzv/glium?branch=buffer-texture#729d503d4648b315421826cc65eac5d067aa5c26"
+source = "git+https://github.com/semtexzv/glium#8b7c72f0b8c53162e56053ed662613124d89435d"
 dependencies = [
  "backtrace 0.3.9 (registry+https://github.com/rust-lang/crates.io-index)",
  "fnv 1.0.6 (registry+https://github.com/rust-lang/crates.io-index)",
@@ -3071,7 +3075,7 @@ dependencies = [
 "checksum gl 0.10.0 (registry+https://github.com/rust-lang/crates.io-index)" = "81457bb802910ad5b535eb48541c51830a761804aa5b7087adbc9d049aa57aca"
 "checksum gl_generator 0.9.0 (registry+https://github.com/rust-lang/crates.io-index)" = "7a795170cbd85b5a7baa58d6d7525cae6a03e486859860c220f7ebbbdd379d0a"
 "checksum gleam 0.5.1 (registry+https://github.com/rust-lang/crates.io-index)" = "12b793fcf40a23dd372f184c228ab3eb96f88c50bb4fba8319c483aa025a4e45"
-"checksum glium 0.22.0 (git+https://github.com/semtexzv/glium?branch=buffer-texture)" = "<none>"
+"checksum glium 0.22.0 (git+https://github.com/semtexzv/glium)" = "<none>"
 "checksum glium_derive 0.1.1 (git+https://github.com/semtexzv/glium_derive)" = "<none>"
 "checksum glob 0.2.11 (registry+https://github.com/rust-lang/crates.io-index)" = "8be18de09a56b60ed0edf84bc9df007e30040691af7acd1c41874faac5895bfb"
 "checksum glutin 0.17.0 (registry+https://github.com/rust-lang/crates.io-index)" = "a70c5fe78efbd5a3b243a804ea1032053c584510f8822819f94cfb29b2100317"

@@ -1,12 +1,12 @@
 #version 300 es
-
-#extension GL_EXT_texture_buffer : require
-#extension GL_EXT_texture_buffer : enable
-
-
 //#define in varying
-
 precision highp float;
-uniform samplerBuffer feature_data;
 
-layout(location = 7) in float feature;
+
+uniform vec4 feature_data[1024];
+
+
+out vec4 frag_out;
+
+in float v_feature;
+#define PASS_FEATURE_IDX float feature = v_feature;

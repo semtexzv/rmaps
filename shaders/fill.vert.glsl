@@ -5,15 +5,9 @@ in vec2 pos;
 #pragma property : define vec4 color
 #pragma property : define float opacity
 
-
-/*
-float rand(vec2 co){
-    return fract(sin(dot(co.xy ,vec2(12.9898,78.233))) * 43758.5453);
-}
-*/
-
 void main() {
-    PASS_FEATUREE_IDX;
+    PASS_FEATURE_IDX;
+
     #pragma property : init vec4 color
     #pragma property : init float opacity
 
