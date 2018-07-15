@@ -2,9 +2,9 @@
 //#define in varying
 precision highp float;
 
-
-uniform vec4 feature_data[1024];
-
+uniform feature_data_ubo {
+    vec4 feature_data[1024];
+};
 
 out vec4 frag_out;
 
