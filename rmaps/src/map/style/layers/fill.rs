@@ -27,26 +27,26 @@ impl StyleLayer for FillLayer {
     fn get_layout(&self) -> &Self::LayoutType { &self.layout }
 }
 
-#[derive(Deserialize, Default, Debug, Clone)]
+#[derive(Deserialize, Debug, Clone)]
 pub struct FillPaint {
     #[serde(rename = "fill-antialias")]
     #[serde(default)]
     pub antialias: StyleProp<bool>,
 
     #[serde(rename = "fill-opacity")]
-    #[serde(default = "Default::default")]
+    #[serde(default = "default_opacity")]
     pub  opacity: StyleProp<f32>,
 
     #[serde(rename = "fill-color")]
-    #[serde(default = "Default::default")]
+    #[serde(default = "default_color")]
     pub   color: StyleProp<Color>,
 
     #[serde(rename = "fill-outline-color")]
-    #[serde(default = "Default::default")]
-    pub  outline_color: StyleProp<Color>,
+    #[serde(default = "default_outline_color")]
+    pub  outline_color: StyleProp<Option<Color>>,
 
     #[serde(rename = "fill-translate")]
-    #[serde(default = "Default::default")]
+    #[serde(default = "default_translate")]
     pub   translate: StyleProp<[f32; 2]>,
 
     #[serde(rename = "fill-translate-anchor")]
@@ -58,3 +58,37 @@ pub struct FillPaint {
     pub pattern: StyleProp<Option<String>>,
 }
 
+pub fn default_antialiass() -> StyleProp<bool> {
+    true.into()
+}
+
+pub fn default_color() -> StyleProp<Color> {
+    StyleProp::Value(Color::default())
+}
+
+pub fn default_opacity() -> StyleProp<f32> {
+    StyleProp::Value(1.0)
+}
+
+pub fn default_outline_color() -> StyleProp<Option<Color>> {
+    None.into()
+}
+
+pub fn default_translate() -> StyleProp<[f32; 2]> {
+   [0.,0.].into()
+}
+
+impl Default for FillPaint {
+    fn default() -> Self {
+        FillPaint {
+            antialias: default_antialiass(),
+            color: default_color(),
+            opacity: default_opacity(),
+            outline_color: default_outline_color(),
+            translate: default_translate(),
+            translate_anchor: None.into(),
+            pattern: None.into(),
+
+        }
+    }
+}

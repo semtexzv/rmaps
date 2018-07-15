@@ -16,6 +16,8 @@ pub use cgmath::{
     SquareMatrix,
 };
 
+
+pub use rand;
 pub use itertools::{self, Itertools};
 
 pub use serde::{

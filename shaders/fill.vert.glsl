@@ -13,7 +13,7 @@ float rand(vec2 co){
 */
 
 void main() {
-    v_feature = feature;
+    PASS_FEATUREE_IDX;
     #pragma property : init vec4 color
     #pragma property : init float opacity
 

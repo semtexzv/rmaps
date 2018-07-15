@@ -1,5 +1,4 @@
 
-#define PER_FEATURE_SIZE float(128.0)
 
 float feature_get_float(float idx, float offset) {
     return texelFetch(feature_data,int(idx * PER_FEATURE_SIZE + offset)).x;

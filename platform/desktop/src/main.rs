@@ -41,7 +41,7 @@ fn main() {
         .with_gl_profile(glutin::GlProfile::Core)
         .with_pixel_format(8, 8)
         .with_stencil_buffer(8)
-        .with_vsync(true);
+        .with_vsync(false);
 
     ::rmaps::init();
 
@@ -49,7 +49,7 @@ fn main() {
 
 
     let mut map = rmaps::map::MapView::new(&display.clone());//.unwrap();
-    map.set_style_url("file://std.json");
+    map.set_style_url("file://style.json");
     let mut running = true;
 
     let mut down_pos = None;

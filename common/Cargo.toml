@@ -5,10 +5,12 @@ authors = ["Michal Hornický <semtexzv@gmail.com>"]
 
 [dependencies]
 gl = "*"
-glium = { git  = "https://github.com/semtexzv/glium"  }
+glium = { git  = "https://github.com/semtexzv/glium", branch="buffer-texture"  }
 glium_derive = { git  = "https://github.com/semtexzv/glium_derive" }
 num = "*"
 rayon = "*"
+
+rand ="*"
 
 log = "*"
 fern = { version = "*", features = ["colored"] }

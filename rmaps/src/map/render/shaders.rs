@@ -5,10 +5,13 @@ use ::common::glium::vertex::{AttributeType, Attribute};
 
 /// Layout of single property, can be bound to uniform value
 /// or sent in BufferTexture, and looked up based on feature ID
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct PropertyItemLayout {
     pub name: String,
     pub format: AttributeType,
+    /// Offset in vec4 coordinates
+    pub offset: usize,
+    pub size: usize,
 }
 
 /// Struct that holds information needed to bind per-feature property data into UBO or TBO, this data will be used by shader compilation
@@ -20,13 +23,25 @@ pub struct FeaturePropertyLayout {
 
 impl FeaturePropertyLayout {
     pub fn push(&mut self, prop_name: &str, format: AttributeType) {
+        let off = self.items.len();
         self.items.push(PropertyItemLayout {
             name: prop_name.to_string(),
             format,
+            offset: off,
+            size: 1,
         });
     }
     pub fn is_feature(&self, prop_name: &str) -> bool {
         return self.items.iter().any(|i| i.name == prop_name);
+    }
+
+    pub fn size_per_feature(&self) -> usize {
+        let i = self.items.last().unwrap();
+
+        return i.offset + i.size;
+    }
+    pub fn item(&self, prop_name: &str) -> PropertyItemLayout {
+        return self.items.iter().filter(|&a| a.name == prop_name).next().unwrap().clone();
     }
 }
 
@@ -42,6 +57,8 @@ impl UniformPropertyLayout {
         self.items.push(PropertyItemLayout {
             name: prop_name.to_string(),
             format,
+            offset: 0,
+            size: 0,
         });
     }
     pub fn is_uniform(&self, prop_name: &str) -> bool {
@@ -55,7 +72,7 @@ pub struct ShaderProcessor;
 use common::regex::{Match, Matches, CaptureMatches, CaptureNames, Captures};
 
 impl ShaderProcessor {
-    fn uniform_name(prop_name: &str) -> String {
+    pub fn uniform_name(prop_name: &str) -> String {
         format!("u_{}", prop_name)
     }
 
@@ -66,13 +83,16 @@ impl ShaderProcessor {
         \#pragma \s+ property \s* : \s* (?P<op>\w+) \s* (?P<type>\w+) \s+ (?P<name>\w+);?
 
         ").unwrap();
+
+        let custom = format!("#define PER_FEATURE_SIZE float({size})", size = features.size_per_feature());
+
         let common_defines = include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/../shaders/_prelude.common.glsl"));
 
         let vert_prelude = include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/../shaders/_prelude.vert.glsl"));
         let frag_prelude = include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/../shaders/_prelude.frag.glsl"));
 
-        let vert = format!("{}\n{}\n{}\n", vert_prelude, common_defines, vert);
-        let frag = format!("{}\n{}\n{}\n", frag_prelude, common_defines, frag);
+        let vert = format!("{}\n{}\n{}\n{}\n", vert_prelude, custom, common_defines, vert);
+        let frag = format!("{}\n{}\n{}\n{}\n", frag_prelude, custom, common_defines, frag);
 
 
         let process = |caps: &Captures| {
@@ -93,10 +113,11 @@ impl ShaderProcessor {
                     format!("uniform {} {};", typ, uniform_name)
                 }
                 ("define", typ, name, true) => {
+                    let item = features.item(name);
                     format!(r#"
                     {typ} get_{name} (float feature) {{
                        return feature_get_{typ}(feature,float({offset}));
-                    }}"#, typ = typ, name = name, offset = 0)
+                    }}"#, typ = typ, name = name, offset = item.offset)
                 }
 
                 // Uniform
@@ -124,8 +145,8 @@ impl ShaderProcessor {
 
         let frag_processed = regex.replace_all(&frag, process);
 
-        trace!("Vertex shader processed \n Orig: \n{}\n New : \n{}", vert, vert_processed);
-        trace!("Fragment shader processed \n Orig: \n{}\n New : \n{}", frag, frag_processed);
+         trace!("Vertex shader processed \n Orig: \n{}\n New : \n{}", vert, vert_processed);
+         trace!("Fragment shader processed \n Orig: \n{}\n New : \n{}", frag, frag_processed);
 
 
         // panic!("\nOLD: {}, \nNEW: {}", vert, vert_processed);3

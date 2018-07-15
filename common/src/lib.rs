@@ -9,6 +9,7 @@ pub extern crate glium_derive;
 pub extern crate cgmath;
 
 pub extern crate num;
+pub extern crate rand;
 
 pub extern crate rayon;
 

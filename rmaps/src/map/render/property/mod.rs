@@ -59,6 +59,7 @@ impl<T: Propertable> Evaluable for BaseProp<T> {
 }
 
 impl<T: Propertable> Visitable<T> for BaseProp<T> {
+    #[inline]
     fn visit<V: PropertiesVisitor>(&self, visitor: &mut V) {
         visitor.visit_base(self)
     }
@@ -86,6 +87,7 @@ impl<T: Propertable + glium::vertex::Attribute> Evaluable for GpuProp<T> {
 }
 
 impl<T: Propertable + Attribute + AsUniformValue> Visitable<T> for GpuProp<T> {
+    #[inline]
     fn visit<V: PropertiesVisitor>(&self, visitor: &mut V) {
         visitor.visit_gpu(&self);
     }
@@ -228,12 +230,74 @@ impl PropertiesVisitor for PropertyLayoutBuilder {
     }
 }
 
-#[derive(Debug, Default)]
-pub struct FeaturePropertyData {}
+use ::common::glium::texture::buffer_texture::*;
+
+
+pub struct FeaturePropertyData {
+    tex: glium::texture::buffer_texture::BufferTexture<[f32; 4]>,
+    storage: Vec<[f32; 4]>,
+
+}
+
+impl<'a> AsUniformValue for &'a FeaturePropertyData {
+    fn as_uniform_value(&self) -> UniformValue {
+        UniformValue::BufferTexture(self.tex.as_buffer_texture_ref())
+    }
+}
+
+impl FeaturePropertyData {
+    pub fn new(d: &glium::backend::Facade) -> Result<Self> {
+        let len = 2048;
+        Ok(FeaturePropertyData {
+            tex: BufferTexture::empty_dynamic(d, len, BufferTextureType::Float)?,
+            storage: Vec::with_capacity(len),
+        })
+    }
+
+    pub fn clear(&mut self) {
+        self.storage.clear();
+    }
+
+    pub fn push<A: Attribute>(&mut self, v: A) {
+        use std::mem;
+        use std::ptr;
+        use std::slice;
+
+        assert!(A::get_type().get_size_bytes() <= mem::size_of::<f32>() * 4, "Size is : {:?}", A::get_type());
+        assert!(mem::size_of::<A>() == A::get_type().get_size_bytes());
+
+        #[repr(C)]
+        struct helper<A: Sized> {
+            first: A,
+            pad: [f32; 4],
+        }
+        unsafe {
+            let data = helper {
+                first: v,
+                pad: [0.; 4],
+            };
+            let ptr = &data as *const helper<A> as *const f32;
+            let slice = ptr as *const [f32; 4];
+            self.storage.push(*slice)
+        };
+    }
+
+    pub fn upload(&mut self, disp: &Display) -> Result<()> {
+        self.tex = BufferTexture::dynamic(disp, &self.storage[..], BufferTextureType::Float)?;
+        Ok(())
+    }
+}
+
+impl fmt::Debug for FeaturePropertyData {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        f.write_str("FeaturePropertyData")
+    }
+}
+
 
 #[derive(Default)]
 pub struct UniformPropertyData {
-    pub values: Vec<(String, glium::uniforms::UniformValue<'static>)>
+    values: Vec<(String, glium::uniforms::UniformValue<'static>)>
 }
 
 impl glium::uniforms::Uniforms for UniformPropertyData {
@@ -243,6 +307,29 @@ impl glium::uniforms::Uniforms for UniformPropertyData {
         }
     }
 }
+
+impl UniformPropertyData {
+    fn new() -> Self {
+        UniformPropertyData {
+            values: Vec::new()
+        }
+    }
+    fn clear(&mut self) {
+        self.values.clear();
+    }
+
+    #[inline]
+    fn push(&mut self, name: impl Into<String>, val: UniformValue<'static>) {
+        self.values.push((name.into(), val));
+    }
+}
+
+impl fmt::Debug for UniformPropertyData {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        f.write_str("UniformPropertyData")
+    }
+}
+
 
 pub struct MergeUniforms<'u, A: Uniforms + 'u, B: Uniforms + 'u>(pub &'u A, pub &'u B);
 
@@ -255,15 +342,7 @@ impl<'u, A: Uniforms + 'u, B: Uniforms + 'u> Uniforms for MergeUniforms<'u, A, B
 }
 
 
-impl fmt::Debug for UniformPropertyData {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        f.write_str("UniformPropertyData")
-    }
-}
-
-
 pub struct UniformPropertyBinder<'a> {
-    gpu: bool,
     layout: &'a UniformPropertyLayout,
     data: &'a mut UniformPropertyData,
     last_val: Option<glium::uniforms::UniformValue<'static>>,
@@ -273,14 +352,13 @@ impl<'a> UniformPropertyBinder<'a> {
     fn new(layout: &'a UniformPropertyLayout, data: &'a mut UniformPropertyData) -> Self {
         UniformPropertyBinder {
             layout,
-            gpu: false,
             data,
             last_val: None,
         }
     }
     #[inline]
     pub fn bind<P: Properties>(layout: &UniformPropertyLayout, props: &P, style: &P::SourceLayerType, data: &mut UniformPropertyData) -> Result<()> {
-        data.values.clear();
+        data.clear();
         let mut binder = UniformPropertyBinder::new(layout, data);
         props.accept(style, &mut binder);
         trace!("Uniform propery binder : got {:?} uniforms", binder.data.values.len());
@@ -296,16 +374,10 @@ fn fixup<T: AsUniformValue>(t: T) -> UniformValue<'static> {
 
 impl<'a> PropertiesVisitor for UniformPropertyBinder<'a> {
     #[inline]
-    fn visit_base<T: Propertable>(&mut self, v: &BaseProp<T>) {
-        self.gpu = false;
-        self.last_val = None;
-    }
+    fn visit_base<T: Propertable>(&mut self, v: &BaseProp<T>) {}
 
     #[inline]
     fn visit_gpu<T: Propertable + Attribute + AsUniformValue>(&mut self, v: &GpuProp<T>) {
-        self.gpu = true;
-
-
         let x = v.get().clone();
         let u = fixup(x);
         self.last_val = Some(u);//.unwrap();
@@ -317,8 +389,54 @@ impl<'a> PropertiesVisitor for UniformPropertyBinder<'a> {
 
         if let Some(val) = self.last_val.take() {
             if self.layout.is_uniform(name) {
-                self.data.values.push((name.into(), val));
+                self.data.push(::map::render::shaders::ShaderProcessor::uniform_name(name), val);
             }
         }
+    }
+}
+
+pub struct FeaturePropertyBinder<'a> {
+    layout: &'a FeaturePropertyLayout,
+    data: &'a mut FeaturePropertyData,
+    start_size: usize,
+    push: bool,
+}
+
+impl<'a> FeaturePropertyBinder<'a> {
+    fn new(layout: &'a FeaturePropertyLayout, data: &'a mut FeaturePropertyData) -> Self {
+        FeaturePropertyBinder {
+            layout,
+            start_size: data.storage.len(),
+            data,
+            push: false,
+        }
+    }
+    #[inline]
+    pub fn extend<P: Properties>(layout: &FeaturePropertyLayout, props: &P, style: &P::SourceLayerType, data: &mut FeaturePropertyData) {
+        let mut binder = Self::new(layout, data);
+
+        props.accept(style, &mut binder);
+        trace!("Feature propery binder finished  start : {}, end {}", binder.start_size, binder.data.storage.len());
+    }
+}
+
+impl<'a> PropertiesVisitor for FeaturePropertyBinder<'a> {
+    #[inline]
+    fn visit_base<T: Propertable>(&mut self, v: &BaseProp<T>) {}
+
+    #[inline]
+    fn visit_gpu<T: Propertable + Attribute + AsUniformValue>(&mut self, v: &GpuProp<T>) {
+        if self.push {
+            self.data.push(v.get());
+            self.push = false;
+        }
+    }
+
+    #[inline]
+    fn visit<T: Propertable, V: Visitable<T>>(&mut self, name: &str, style_prop: &StyleProp<T>, value_prop: &V, can_zoom: bool, can_feature: bool) {
+        if self.layout.is_feature(name) {
+            self.push = true;
+        }
+        value_prop.visit(self)
     }
 }

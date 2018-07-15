@@ -101,6 +101,13 @@ impl<T: DescribeType + Debug> StyleProp<T> {
     }
 }
 
+impl<T: DescribeType + Debug> From<T> for  StyleProp<T> {
+    fn from(v: T) -> Self {
+        StyleProp::Value(v)
+    }
+}
+
+
 
 impl<T: Debug + Default + super::expr::DescribeType> Default for StyleProp<T> {
     fn default() -> Self {

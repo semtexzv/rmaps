@@ -108,29 +108,6 @@ impl<'de> Deserialize<'de> for Lookup {
         });
     }
 }
-parse! { Lookup as expected;
-    "at", a: BaseExpr as Type::Number, b : BaseExpr as Type::Array => {
-        Ok(Lookup::At(a,b))
-    }
-
-    "get", name : BaseExpr as Type::String, obj : BaseExpr as Type::Object => {
-        Ok(Lookup::Get(name,Some(obj)))
-    }
-    "get", name : BaseExpr as Type::String => {
-        Ok(Lookup::Get(name,None))
-    }
-
-    "has", name : BaseExpr as Type::String, obj : BaseExpr as Type::Object => {
-        Ok(Lookup::Has(name,Some(obj)))
-    }
-    "has", name : BaseExpr as Type::String => {
-        Ok(Lookup::Has(name,None))
-    }
-
-    "length", arr: BaseExpr as Type::String => {
-        Ok(Lookup::Length(arr))
-    }
-}
 
 impl Expression for Lookup {
     fn is_zoom(&self) -> bool {
@@ -142,7 +119,7 @@ impl Expression for Lookup {
     }
 
     fn eval(&self, ctx: &EvaluationContext) -> ExprResult {
-        unimplemented!()
+        Ok(::common::rand::random::<f32>().into())
     }
 }
 /*

@@ -13,3 +13,5 @@ uniform samplerBuffer feature_data;
 
 in float feature;
 layout(location = 7) out float v_feature;
+
+#define PASS_FEATUREE_IDX v_feature = feature;

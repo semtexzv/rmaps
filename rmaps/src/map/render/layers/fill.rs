@@ -69,6 +69,7 @@ pub struct FillBucket {
 
     pub properties: FillFeatureProperties,
     pub uniforms: UniformPropertyData,
+    pub feature_data: FeaturePropertyData,
 
     pub pos_vbo: Option<VertexBuffer<Vertex>>,
     pub last_ibo: Option<IndexBuffer<u16>>,
@@ -77,20 +78,9 @@ pub struct FillBucket {
     pub upload_dirty: bool,
 }
 
-impl layers::Bucket for FillBucket {
-    fn upload(&mut self, display: &Display) -> Result<()> {
-        if self.upload_dirty {
-            self.last_ibo = Some(IndexBuffer::new(display, glium::index::PrimitiveType::TrianglesList, &self.indices)?);
-            self.pos_vbo = Some(VertexBuffer::new(display, &self.vertices)?);
-
-            self.upload_dirty = false;
-        }
-        Ok(())
-    }
-}
 
 impl FillBucket {
-    fn new(data: Rc<data::TileData>, source_layer: &str) -> Result<Option<Self>> {
+    fn new(d: &Display, data: Rc<data::TileData>, source_layer: &str) -> Result<Option<Self>> {
         let mut features: BTreeMap<u64, FeatureBucketData> = BTreeMap::new();
 
         let mut vertices: Vec<Vertex> = vec![];
@@ -144,7 +134,7 @@ impl FillBucket {
                         }
                     }
                 }
-
+                //info!("VERTICES : {:?}", vertices);
 
                 return Ok(
                     Some(
@@ -153,6 +143,7 @@ impl FillBucket {
                             features,
                             properties: Default::default(),
                             uniforms: Default::default(),
+                            feature_data: FeaturePropertyData::new(d)?,
 
                             vertices,
                             indices,
@@ -171,6 +162,24 @@ impl FillBucket {
     }
 }
 
+
+impl layers::Bucket for FillBucket {
+    fn upload(&mut self, display: &Display) -> Result<()> {
+        if self.upload_dirty {
+            if self.last_ibo.is_none() {
+                self.last_ibo = Some(IndexBuffer::new(display, glium::index::PrimitiveType::TrianglesList, &self.indices)?);
+            }
+            if self.pos_vbo.is_none() {
+                self.pos_vbo = Some(VertexBuffer::new(display, &self.vertices)?);
+            }
+
+            self.feature_data.upload(display)?;
+
+            self.upload_dirty = false;
+        }
+        Ok(())
+    }
+}
 #[derive(Debug)]
 pub struct FillLayer {
     style_layer: style::FillLayer,
@@ -184,7 +193,7 @@ impl layers::BucketLayer for FillLayer {
     fn new_tile(&mut self, display: &Display, data: &Rc<data::TileData>) -> Result<Option<Self::Bucket>> {
         if (Some(&data.source) == self.style_layer.common.source.as_ref()) {
             if let Some(ref source_layer) = self.style_layer.common.source_layer {
-                return Ok(FillBucket::new(data.clone(), &source_layer)?);
+                return Ok(FillBucket::new(display, data.clone(), &source_layer)?);
             }
         }
 
@@ -196,6 +205,16 @@ impl layers::BucketLayer for FillLayer {
         bucket.properties.eval(&self.style_layer, &evaluator)?;
 
         UniformPropertyBinder::bind(&self.layout.0, &bucket.properties, &self.style_layer, &mut bucket.uniforms)?;
+
+        bucket.feature_data.clear();
+
+        for (id, data) in bucket.features.iter_mut() {
+            let evaluator = PropertiesEvaluator::only_zoom(params.zoom).with_feature(&data.feature);
+            data.props.eval(&self.style_layer, &evaluator)?;
+
+
+            FeaturePropertyBinder::extend(&self.layout.1, &data.props, &self.style_layer, &mut bucket.feature_data)
+        }
         /*
         for (id, data) in bucket.features.iter_mut() {
             let evaluator = PropertiesEvaluator::only_zoom(params.zoom).with_feature(&data.feature);
@@ -226,11 +245,12 @@ impl layers::BucketLayer for FillLayer {
 
         let a = uniform! {
             u_matrix : matrix,
+            feature_data :  &bucket.feature_data,
 
         };
         let mut uniforms = MergeUniforms(
             &bucket.uniforms,
-            &a
+            &a,
         );
 
         let draw_params = glium::DrawParameters {
