@@ -4,7 +4,7 @@ use super::{
     LayerCommon,
     BaseLayout,
     Visibility,
-    Function,
+    StyleProp,
 };
 
 #[derive(Deserialize, Debug, Clone)]
@@ -19,10 +19,10 @@ pub struct SymbolLayer {
 #[derive(Deserialize, Debug, Clone)]
 pub struct SymbolLayout {
     #[serde(default, rename = "symbol-placement")]
-    placement: Function<Option<String>>,
+    placement: StyleProp<Option<String>>,
 
     #[serde(default, rename = "symbol-spacing")]
-    spacing: Function<Option<f32>>,
+    spacing: StyleProp<Option<f32>>,
 
     #[serde(rename = "symbol-avoid-edges")]
     avoid_edges: Option<bool>,

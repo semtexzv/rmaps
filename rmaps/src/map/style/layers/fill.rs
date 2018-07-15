@@ -6,7 +6,7 @@ use super::{
     StyleLayer,
     BaseLayout,
     Visibility,
-    Function,
+    StyleProp,
 };
 
 #[derive(Deserialize, Debug, Clone)]
@@ -31,30 +31,30 @@ impl StyleLayer for FillLayer {
 pub struct FillPaint {
     #[serde(rename = "fill-antialias")]
     #[serde(default)]
-    pub antialias: Function<bool>,
+    pub antialias: StyleProp<bool>,
 
     #[serde(rename = "fill-opacity")]
     #[serde(default = "Default::default")]
-    pub  opacity: Function<f32>,
+    pub  opacity: StyleProp<f32>,
 
     #[serde(rename = "fill-color")]
     #[serde(default = "Default::default")]
-    pub   color: Function<Color>,
+    pub   color: StyleProp<Color>,
 
     #[serde(rename = "fill-outline-color")]
     #[serde(default = "Default::default")]
-    pub  outline_color: Function<Color>,
+    pub  outline_color: StyleProp<Color>,
 
     #[serde(rename = "fill-translate")]
     #[serde(default = "Default::default")]
-    pub   translate: Function<[f32; 2]>,
+    pub   translate: StyleProp<[f32; 2]>,
 
     #[serde(rename = "fill-translate-anchor")]
     #[serde(default = "Default::default")]
-    pub translate_anchor: Option<String>,
+    pub translate_anchor: StyleProp<Option<String>>,
 
     #[serde(rename = "fill-pattern")]
     #[serde(default = "Default::default")]
-    pub pattern: Option<Function<String>>,
+    pub pattern: StyleProp<Option<String>>,
 }
 

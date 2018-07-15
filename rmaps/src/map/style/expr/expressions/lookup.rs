@@ -134,11 +134,11 @@ parse! { Lookup as expected;
 
 impl Expression for Lookup {
     fn is_zoom(&self) -> bool {
-        unimplemented!()
+        false
     }
 
     fn is_feature(&self) -> bool {
-        unimplemented!()
+        true
     }
 
     fn eval(&self, ctx: &EvaluationContext) -> ExprResult {

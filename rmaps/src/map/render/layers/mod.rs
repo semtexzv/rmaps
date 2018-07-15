@@ -8,27 +8,12 @@ use map::{
     },
 };
 
-macro_rules! rmaps_program {
-    ($f:expr,$name:expr) => {
-        {
-            let vert_prelude = include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/../shaders/_prelude.vert.glsl"));
-            let frag_prelude = include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/../shaders/_prelude.frag.glsl"));
 
+macro_rules! layer_program {
+    ($facade:expr, $name:expr, $uniforms:expr, $features:expr) => { {
             let vert_src = include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/../shaders/",$name,".vert.glsl"));
             let frag_src = include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/../shaders/",$name,".frag.glsl"));
-
-            let vert_src = format!("{}\n{}\n",vert_prelude,vert_src);
-            let frag_src = format!("{}\n{}\n",frag_prelude,frag_src);
-
-            //panic!("VERT: {}\n FRAG: {}\n",vert_src,frag_src);
-
-
-            program!($f,
-                100 es => {
-                    vertex: &vert_src,
-                    fragment: &frag_src,
-                }
-            )
+            ::map::render::shaders::ShaderProcessor::get_shader($facade, vert_src,frag_src,$uniforms,$features)
         }
     };
 }
@@ -41,7 +26,8 @@ pub mod fill;
 #[derive(Debug, Clone, Copy, Vertex)]
 pub struct Vertex {
     #[glium(attr = "pos")]
-    pos: [f32; 2]
+    pos: [f32; 2],
+    feature: u16,
 }
 
 pub enum RenderPass {
@@ -106,7 +92,6 @@ pub trait BucketLayer: Debug {
     fn eval_bucket(&mut self, params: &render::EvaluationParams, bucket: &mut Self::Bucket) -> Result<()>;
 
     fn render_bucket(&mut self, params: &mut render::RenderParams, bucket: &Self::Bucket) -> Result<()>;
-
 }
 
 #[derive(Debug)]
@@ -170,21 +155,18 @@ impl<L: BucketLayer> Layer for BucketLayerHolder<L> {
     // TODO: beter render picking system, checkout mapbox tile cover
     fn render(&mut self, params: &mut render::RenderParams) -> Result<()> {
         self.layer.begin_pass(params, RenderPass::Opaque)?;
-        let zoom = params.camera.zoom ;
+        let zoom = params.camera.zoom;
 
         let pred = |(k, _): &(&TileCoords, &mut BucketState<L::Bucket>)| {
             k.z < zoom as i32 + 1
         };
         for (k, mut v) in self.buckets.iter_mut().filter(pred) {
-
             v.bucket.upload(params.disp)?;
             self.layer.render_bucket(params, &mut v.bucket)?;
         }
-        self.layer.end_pass(params,RenderPass::Opaque)?;
+        self.layer.end_pass(params, RenderPass::Opaque)?;
         Ok(())
     }
-
-
 }
 
 pub fn parse_style_layers(facade: &Display, style: &style::Style) -> Vec<Box<dyn Layer>> {

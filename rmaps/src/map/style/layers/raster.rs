@@ -4,7 +4,7 @@ use super::{
     LayerCommon,
     BaseLayout,
     Visibility,
-    Function,
+    StyleProp,
 };
 
 #[derive(Deserialize, Debug, Clone)]
@@ -20,24 +20,24 @@ pub struct RasterLayer {
 #[derive(Deserialize, Debug, Clone)]
 pub struct RasterPaint {
     #[serde(rename = "raster-opacity")]
-    opacity: Option<Function<f32>>,
+    opacity: Option<StyleProp<f32>>,
 
     #[serde(rename = "raster-hue-rotate")]
-    hue_rotate: Option<Function<f32>>,
+    hue_rotate: Option<StyleProp<f32>>,
 
     #[serde(rename = "raster-brightness-min")]
-    brightness_min: Option<Function<f32>>,
+    brightness_min: Option<StyleProp<f32>>,
 
     #[serde(rename = "raster-brightness-max")]
-    brightness_max: Option<Function<f32>>,
+    brightness_max: Option<StyleProp<f32>>,
 
     #[serde(rename = "raster-saturation")]
-    saturation: Option<Function<f32>>,
+    saturation: Option<StyleProp<f32>>,
 
     #[serde(rename = "raster-contrast")]
-    contrast: Option<Function<f32>>,
+    contrast: Option<StyleProp<f32>>,
 
     #[serde(rename = "raster-fade-duration")]
-    fade_duration: Option<Function<f32>>,
+    fade_duration: Option<StyleProp<f32>>,
 
 }

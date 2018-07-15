@@ -1,6 +1,15 @@
-#version 100
+#version 300 es
 
-#define in attribute
-#define out varying
+#extension GL_EXT_texture_buffer : require
+#extension GL_EXT_texture_buffer : enable
+
+// Only used on older version
+//#define in attribute
+//#define out varying
 
 precision highp float;
+
+uniform samplerBuffer feature_data;
+
+in float feature;
+layout(location = 7) out float v_feature;

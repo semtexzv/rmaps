@@ -55,7 +55,7 @@ impl Default for Visibility {
 #[derive(Deserialize, Debug, Clone)]
 pub struct BaseLayout {
     #[serde(default = "Default::default")]
-    pub visibility: Function<String>
+    pub visibility: StyleProp<String>
 }
 
 impl Default for BaseLayout {
@@ -74,17 +74,36 @@ pub trait StyleLayer {
     fn get_layout(&self) -> &Self::LayoutType;
 }
 
+use super::expr::DescribeType;
 
 #[derive(Debug, Clone, Deserialize)]
 #[serde(untagged)]
-pub enum Function<T : super::expr::DescribeType + Debug> {
+pub enum StyleProp<T: DescribeType + Debug> {
     Value(T),
     Expr(super::expr::TypedExpr<T>),
 }
 
+impl<T: DescribeType + Debug> StyleProp<T> {
+    pub fn is_zoom(&self) -> bool {
+        return if let StyleProp::Expr(e) = self {
+            e.is_zoom()
+        } else {
+            false
+        };
+    }
 
-impl<T: Debug + Default + super::expr::DescribeType> Default for Function<T> {
+    pub fn is_feature(&self) -> bool {
+        return if let StyleProp::Expr(e) = self {
+            e.is_feature()
+        } else {
+            false
+        };
+    }
+}
+
+
+impl<T: Debug + Default + super::expr::DescribeType> Default for StyleProp<T> {
     fn default() -> Self {
-        Function::Value(Default::default())
+        StyleProp::Value(Default::default())
     }
 }

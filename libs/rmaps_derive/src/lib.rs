@@ -13,23 +13,38 @@ use syn::*;
 
 #[derive(Debug, Clone)]
 struct FieldPropertyData {
+    /// Specifies field name in `Properties` implementor
     name: Ident,
+    /// Whether this is layout or paint property
     is_layout: bool,
+    /// If `nozoom` attribute is specified, this is false, property can't be zoom dependent
     can_be_zoom: bool,
+    /// If `nofeature` attribute is specified, this is false, property can't be feature data dependent
     can_be_feature: bool,
+    /// Name of field in `layout` or `paint` struct of source style layer
     src_name: Ident,
+    /// Name of generated property, passed to visitors, used to match this data to shader input, by default
+    /// its the same as `name`
+    prop_name: Ident,
+}
+
+impl FieldPropertyData {
+    fn new(name: &Ident) -> Self {
+        FieldPropertyData {
+            name: name.clone(),
+            is_layout: false,
+            can_be_zoom: true,
+            can_be_feature: true,
+            src_name: name.clone(),
+            prop_name: name.clone(),
+        }
+    }
 }
 
 fn get_property_data(name: &Ident, meta: &Meta) -> FieldPropertyData {
     use std::ops::Deref;
 
-    let mut res = FieldPropertyData {
-        name: name.clone(),
-        is_layout: false,
-        can_be_zoom: true,
-        can_be_feature: true,
-        src_name: name.clone(),
-    };
+    let mut res = FieldPropertyData::new(&name);
 
     let inner: Vec<_> = match meta {
         Meta::List(MetaList { ref ident, ref nested, .. }) if ident == "property" => {
@@ -55,14 +70,16 @@ fn get_property_data(name: &Ident, meta: &Meta) -> FieldPropertyData {
                 }
             }
             NestedMeta::Meta(Meta::NameValue(MetaNameValue { ref ident, lit: Lit::Str(ref l), .. })) => {
-                if quote!(#ident).to_string() == "name" {
+                if quote!(#ident).to_string() == "src_name" {
                     res.src_name = parse_str(l.value().deref()).unwrap();
+                } else if quote!(#ident).to_string() == "prop_name" {
+                    res.prop_name = parse_str(l.value().deref()).unwrap();
                 } else {
-                    panic!("Unknown field attribute {}", ident);
+                    panic!("Unknown field attribute : `{}`", ident);
                 }
             }
             x @ _ => {
-                panic!("Unknown meta attribute {:?}", x);
+                panic!("Unknown meta attribute: `{:?}`", x);
             }
         }
     }
@@ -122,18 +139,14 @@ fn impl_layer_properties(ast: &DeriveInput) -> TokenStream {
     }
 
 
-    let evaluations: Vec<_> = fields.iter()
+    let datas: Vec<_> = fields.iter()
         .map(|field| {
             let attrs: Vec<Meta> = field.attrs.iter()
                 .flat_map(Attribute::interpret_meta).collect();
 
-            let mut res = FieldPropertyData {
-                name: field.ident.clone().unwrap(),
-                is_layout: false,
-                can_be_zoom: true,
-                can_be_feature: true,
-                src_name: field.ident.clone().unwrap(),
-            };
+            let name = field.ident.clone().unwrap();
+
+            let mut res = FieldPropertyData::new(&name);
 
             for a in attrs {
                 match &a {
@@ -143,46 +156,78 @@ fn impl_layer_properties(ast: &DeriveInput) -> TokenStream {
                     _ => {}
                 }
             }
-
-            let FieldPropertyData {
-                name,
-                is_layout,
-                can_be_zoom,
-                can_be_feature,
-                src_name,
-            } = res;
-
-            let access = if is_layout {
-                quote!(layer.get_layout())
-            } else {
-                quote!(layer.get_paint())
-            };
-            let name_str = name.to_string();
-            quote_spanned! { field.span()=> {
-
-                    let expr = &#access.#src_name;
-                    match evaluator.evaluate(&mut self.#name ,&expr, #can_be_zoom, #can_be_feature)  {
-                        Ok(true) => {
-                            modified = true;
-                        }
-                        Ok(false) => {
-
-                        }
-                        Err(e) => {
-                            bail!("Error when evaluating {} : {:?}", #name_str,e);
-                        },
-                        _ => {}
-
-                    }
-                }
-            }
+            res
         }).collect();
 
+
+    let evaluations: Vec<_> = datas.iter().map(|res| {
+        let res = res.clone();
+
+        let FieldPropertyData {
+            name,
+            is_layout,
+            can_be_zoom,
+            can_be_feature,
+            src_name,
+            prop_name,
+        } = res;
+
+        let access = if is_layout {
+            quote!(layer.get_layout())
+        } else {
+            quote!(layer.get_paint())
+        };
+        let name_str = name.to_string();
+        quote! {
+            let expr = &#access.#src_name;
+            match evaluator.evaluate(&mut self.#name ,&expr, #can_be_zoom, #can_be_feature)  {
+                Ok(true) => {
+                    modified = true;
+                }
+                Ok(false) => {
+
+                }
+                Err(e) => {
+                    bail!("Error when evaluating {} : {:?}", #name_str,e);
+                },
+                _ => {}
+
+            }
+        }
+    }).collect();
+
+    let visits: Vec<_> = datas.iter().map(|data| {
+        let FieldPropertyData {
+            name,
+            is_layout,
+            can_be_zoom,
+            can_be_feature,
+            src_name,
+            prop_name,
+        } = data.clone();
+
+        let access = if is_layout {
+            quote!(layer.get_layout())
+        } else {
+            quote!(layer.get_paint())
+        };
+
+        let prop_name_str = prop_name.to_string();
+        quote!(visitor.visit(#prop_name_str,  &#access.#src_name, &self.#name, #can_be_zoom, #can_be_feature))
+    }).collect();
     //panic!("style layer: {:?} fields : {:?}", style_layer_name, evaluations);
 
     let res = quote! {
         impl #impl_generics ::map::render::property::Properties for #struct_name #ty_generics #where_clause {
             type SourceLayerType  = ::map::style::#style_layer_name;
+
+            fn accept<V: PropertiesVisitor>(&self, layer: &Self::SourceLayerType, visitor: &mut V)  {
+                use ::map::render::property::*;
+                use ::map::style::StyleLayer;
+
+                #(#visits);*
+            }
+
 
             fn eval(&mut self, layer: &Self::SourceLayerType, evaluator : &::map::render::property::PropertiesEvaluator) -> Result<bool> {
                 use map::style::StyleLayer;
@@ -192,9 +237,10 @@ fn impl_layer_properties(ast: &DeriveInput) -> TokenStream {
                 Ok(modified)
             }
         }
+
     };
 
-    //panic!("{}", res);
+    /// panic!("{}", res);
 
     return res.into();
 }

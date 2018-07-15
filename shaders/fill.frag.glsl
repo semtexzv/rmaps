@@ -1,7 +1,11 @@
-in vec4 v_color;
-in float v_opacity;
+#pragma property : define vec4 color;
+#pragma property : define float opacity;
 
 
 void main() {
-    gl_FragColor = v_color * v_opacity;
+
+    #pragma property : init vec4 color;
+    #pragma property : init float opacity;
+
+    gl_FragColor = color * opacity;
 }

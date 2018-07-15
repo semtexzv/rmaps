@@ -272,9 +272,21 @@ describe_type!(i32 u32 isize usize f32 f64, Type::Number);
 describe_type!(String, Type::String);
 describe_type!(bool, Type::Boolean);
 
-/// Utility structs that passes expected type into `Parse` implementation of `BaseExpr`
+/// Utility structs that passes expected type into `Deserialize` implementation of `BaseExpr`, through
+/// scoped thread local variable
 #[derive(Debug, Clone)]
 pub struct TypedExpr<T: DescribeType>(pub Expr, ::std::marker::PhantomData<T>);
+
+impl <T : DescribeType> TypedExpr<T> {
+    #[inline]
+    pub fn is_zoom(&self) -> bool {
+        self.0.is_zoom()
+    }
+    #[inline]
+    pub fn is_feature(&self) -> bool {
+        self.0.is_feature()
+    }
+}
 
 impl<'de, T: DescribeType> Deserialize<'de> for TypedExpr<T> {
     fn deserialize<D>(deserializer: D) -> StdResult<Self, D::Error> where

@@ -12,6 +12,8 @@ pub extern crate num;
 
 pub extern crate rayon;
 
+pub extern crate regex;
+
 #[macro_use]
 pub extern crate log;
 

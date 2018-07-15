@@ -1,36 +1,93 @@
 use ::prelude::*;
-use map::style::expr::{Expression, val::Value, DescribeType, Type};
+use map::style::{
+    StyleProp,
+    expr::{Expression, Expr, val::Value, DescribeType, Type, EvaluationContext},
+};
+
+
+use ::common::glium::{
+    vertex::Attribute,
+    uniforms::{
+        AsUniformValue,
+        Uniforms,
+        UniformValue,
+        UniformType,
+    },
+};
 
 use std::convert::{TryFrom, Into};
 
+/// Types that can be Property values
+pub trait Propertable: TryFrom<Value, Error=Type> + Into<Value> + Debug + Clone + Default + DescribeType + 'static {}
 
-pub trait PropertyValue: TryFrom<Value, Error=Type> + Into<Value> + Debug + Clone + Default + DescribeType {}
+impl<T: TryFrom<Value, Error=Type> + Into<Value> + Debug + Clone + Default + DescribeType + 'static> Propertable for T {}
 
-impl<T: TryFrom<Value, Error=Type> + Into<Value> + Debug + Clone + Default + DescribeType> PropertyValue for T {}
+pub trait Evaluable {
+    type ValueType: Propertable;
+    fn eval(&mut self, expr: &Expr, context: &EvaluationContext) -> bool;
+    fn get(&self) -> Self::ValueType;
+    fn set(&mut self, v: Self::ValueType);
+}
+
+pub trait Visitable<T: Propertable> {
+    fn visit<V: PropertiesVisitor>(&self, visitor: &mut V);
+}
 
 
 #[repr(C)]
 #[derive(Debug, Clone, Default)]
-pub struct BaseProperty<T: PropertyValue> {
+pub struct BaseProp<T: Propertable> {
     val: T,
 }
 
+impl<T: Propertable> Evaluable for BaseProp<T> {
+    type ValueType = T;
 
-impl<T: PropertyValue> BaseProperty<T> {
-    pub fn get(&self) -> T {
-        return self.val.clone();
-    }
-    // Evaulate this property, and check whether it has been changed
-    pub fn eval(&mut self, expr: &::map::style::expr::Expr, ctx: &::map::style::expr::EvaluationContext) -> bool {
-        use map::style::expr::Expression;
-        use std::convert::TryInto;
-
-        let v = expr.eval(ctx).unwrap();
+    fn eval(&mut self, expr: &Expr, context: &EvaluationContext) -> bool {
+        let v = expr.eval(context).unwrap();
         self.val = T::try_from(v).unwrap();
         return true;
     }
-    fn set_value(&mut self, v: T) {
+
+    fn get(&self) -> Self::ValueType {
+        self.val.clone()
+    }
+
+    fn set(&mut self, v: Self::ValueType) {
         self.val = v;
+    }
+}
+
+impl<T: Propertable> Visitable<T> for BaseProp<T> {
+    fn visit<V: PropertiesVisitor>(&self, visitor: &mut V) {
+        visitor.visit_base(self)
+    }
+}
+
+
+#[repr(C)]
+#[derive(Debug, Clone, Default)]
+pub struct GpuProp<T: Propertable + glium::vertex::Attribute> (BaseProp<T>);
+
+impl<T: Propertable + glium::vertex::Attribute> Evaluable for GpuProp<T> {
+    type ValueType = T;
+
+    fn eval(&mut self, expr: &Expr, context: &EvaluationContext) -> bool {
+        self.0.eval(expr, context)
+    }
+
+    fn get(&self) -> Self::ValueType {
+        self.0.get()
+    }
+
+    fn set(&mut self, v: Self::ValueType) {
+        self.0.set(v)
+    }
+}
+
+impl<T: Propertable + Attribute + AsUniformValue> Visitable<T> for GpuProp<T> {
+    fn visit<V: PropertiesVisitor>(&self, visitor: &mut V) {
+        visitor.visit_gpu(&self);
     }
 }
 
@@ -66,13 +123,13 @@ impl<'a> PropertiesEvaluator<'a> {
         self.feature = Some(feature);
         self
     }
-    pub fn evaluate<T: PropertyValue>(&self, prop: &mut BaseProperty<T>, expr: &::map::style::Function<T>, zoom_allowed: bool, feature_allowed: bool) -> Result<bool> {
+    pub fn evaluate<T: Propertable, E: Evaluable<ValueType=T>>(&self, prop: &mut E, expr: &::map::style::StyleProp<T>, zoom_allowed: bool, feature_allowed: bool) -> Result<bool> {
         match expr {
-            ::map::style::Function::Value(v) => {
-                prop.set_value((v.clone()));
+            ::map::style::StyleProp::Value(v) => {
+                prop.set((v.clone()));
                 return Ok(false);
             }
-            ::map::style::Function::Expr(e) => {
+            ::map::style::StyleProp::Expr(e) => {
                 let ctx = ::map::style::expr::EvaluationContext {
                     zoom: self.zoom,
                     feature_data: self.feature,
@@ -91,10 +148,177 @@ impl<'a> PropertiesEvaluator<'a> {
     }
 }
 
+/// Struct used to build up "Layout" object from style layer properties
+pub trait PropertiesVisitor {
+    fn visit_base<T: Propertable>(&mut self, v: &BaseProp<T>);
+    fn visit_gpu<T: Propertable + Attribute + AsUniformValue>(&mut self, v: &GpuProp<T>);
 
-pub trait Properties {
+    fn visit<T: Propertable, V: Visitable<T>>(&mut self, name: &str, style_prop: &StyleProp<T>, value_prop: &V, can_zoom: bool, can_feature: bool);
+}
+
+
+pub trait Properties: Default {
     type SourceLayerType: ::map::style::StyleLayer;
 
+    /// Generates layout structure for shader compilation
+    fn accept<V: PropertiesVisitor>(&self, layer: &Self::SourceLayerType, visitor: &mut V);
+
+
+    /// Evaluates the property values, for this object, using specified evaluator
     fn eval(&mut self, layer: &Self::SourceLayerType, evaluator: &PropertiesEvaluator) -> Result<bool>;
 }
 
+use map::render::shaders::{UniformPropertyLayout, FeaturePropertyLayout, PropertyItemLayout};
+
+#[derive(Debug, Default)]
+pub struct PropertyLayoutBuilder {
+    uniforms: UniformPropertyLayout,
+    features: FeaturePropertyLayout,
+
+    last_attr_type: Option<glium::vertex::AttributeType>,
+}
+
+
+impl PropertyLayoutBuilder {
+    pub fn build<P: Properties>(layer: &P::SourceLayerType) -> (UniformPropertyLayout, FeaturePropertyLayout) {
+        let mut builder = PropertyLayoutBuilder::default();
+        let tmp = P::default();
+        tmp.accept(&layer, &mut builder);
+
+        return (builder.uniforms, builder.features);
+    }
+}
+
+impl PropertiesVisitor for PropertyLayoutBuilder {
+    #[inline]
+    fn visit_base<T: Propertable>(&mut self, v: &BaseProp<T>) {
+        self.last_attr_type = None;
+        // Noop, not a property that will be used on GPU
+    }
+
+    #[inline]
+    fn visit_gpu<T: Propertable + glium::vertex::Attribute>(&mut self, v: &GpuProp<T>) {
+        self.last_attr_type = Some(T::get_type());
+    }
+
+    #[inline]
+    fn visit<T: Propertable, V: Visitable<T>>(&mut self, name: &str, style_prop: &StyleProp<T>, value_prop: &V, can_zoom: bool, can_feature: bool) {
+        value_prop.visit(self);
+
+        if !can_zoom && style_prop.is_zoom() {
+            panic!("Style not supported, `{}` can't be a zoom property", name);
+        }
+
+        if !can_feature && style_prop.is_feature() {
+            panic!("Style not supported, `{}` can't be a feature property", name);
+        }
+
+        debug!("Visited : {} ", name);
+        debug!("\t Zoom    : allowed {} , used : {}", can_zoom, style_prop.is_zoom());
+        debug!("\t Feature : allowed {} , used : {}", can_feature, style_prop.is_feature());
+        debug!("\t Attribute type : {:?}", self.last_attr_type);
+
+        if let Some(attr) = self.last_attr_type {
+            if style_prop.is_feature() {
+                self.features.push(name, attr);
+            } else {
+                self.uniforms.push(name, attr);
+            }
+        }
+    }
+}
+
+#[derive(Debug, Default)]
+pub struct FeaturePropertyData {}
+
+#[derive(Default)]
+pub struct UniformPropertyData {
+    pub values: Vec<(String, glium::uniforms::UniformValue<'static>)>
+}
+
+impl glium::uniforms::Uniforms for UniformPropertyData {
+    fn visit_values<'a, F: FnMut(&str, glium::uniforms::UniformValue<'a>)>(&'a self, mut f: F) {
+        for (n, v) in self.values.iter() {
+            f(&n, v.clone())
+        }
+    }
+}
+
+pub struct MergeUniforms<'u, A: Uniforms + 'u, B: Uniforms + 'u>(pub &'u A, pub &'u B);
+
+
+impl<'u, A: Uniforms + 'u, B: Uniforms + 'u> Uniforms for MergeUniforms<'u, A, B> {
+    fn visit_values<'a, F: FnMut(&str, UniformValue<'a>)>(&'a self, mut f: F) {
+        self.0.visit_values(&mut f);
+        self.1.visit_values(f);
+    }
+}
+
+
+impl fmt::Debug for UniformPropertyData {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        f.write_str("UniformPropertyData")
+    }
+}
+
+
+pub struct UniformPropertyBinder<'a> {
+    gpu: bool,
+    layout: &'a UniformPropertyLayout,
+    data: &'a mut UniformPropertyData,
+    last_val: Option<glium::uniforms::UniformValue<'static>>,
+}
+
+impl<'a> UniformPropertyBinder<'a> {
+    fn new(layout: &'a UniformPropertyLayout, data: &'a mut UniformPropertyData) -> Self {
+        UniformPropertyBinder {
+            layout,
+            gpu: false,
+            data,
+            last_val: None,
+        }
+    }
+    #[inline]
+    pub fn bind<P: Properties>(layout: &UniformPropertyLayout, props: &P, style: &P::SourceLayerType, data: &mut UniformPropertyData) -> Result<()> {
+        data.values.clear();
+        let mut binder = UniformPropertyBinder::new(layout, data);
+        props.accept(style, &mut binder);
+        trace!("Uniform propery binder : got {:?} uniforms", binder.data.values.len());
+        Ok(())
+    }
+}
+
+fn fixup<T: AsUniformValue>(t: T) -> UniformValue<'static> {
+    // Yaaay, hacks....
+    unsafe { ::std::mem::transmute(t.as_uniform_value()) }
+}
+
+
+impl<'a> PropertiesVisitor for UniformPropertyBinder<'a> {
+    #[inline]
+    fn visit_base<T: Propertable>(&mut self, v: &BaseProp<T>) {
+        self.gpu = false;
+        self.last_val = None;
+    }
+
+    #[inline]
+    fn visit_gpu<T: Propertable + Attribute + AsUniformValue>(&mut self, v: &GpuProp<T>) {
+        self.gpu = true;
+
+
+        let x = v.get().clone();
+        let u = fixup(x);
+        self.last_val = Some(u);//.unwrap();
+    }
+
+    #[inline]
+    fn visit<T: Propertable, V: Visitable<T>>(&mut self, name: &str, style_prop: &StyleProp<T>, value_prop: &V, can_zoom: bool, can_feature: bool) {
+        value_prop.visit(self);
+
+        if let Some(val) = self.last_val.take() {
+            if self.layout.is_uniform(name) {
+                self.data.values.push((name.into(), val));
+            }
+        }
+    }
+}

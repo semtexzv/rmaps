@@ -140,10 +140,12 @@ pub struct Camera {
     pub window_size: PixelSize,
     /// Camera position in 0-1 scale,
     pub pos: WorldPoint,
-    pub zoom: f32,
 
     projection: Option<::cgmath::Matrix4<f32>>,
     view: Option<::cgmath::Matrix4<f32>>,
+
+
+    pub zoom: f32,
 }
 
 impl Camera {

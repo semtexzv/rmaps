@@ -5,6 +5,8 @@ pub mod layers;
 
 pub mod property;
 
+pub mod shaders;
+
 
 use map::style;
 use map::tiles::data;

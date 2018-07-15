@@ -5,7 +5,7 @@ authors = ["Michal Hornický <semtexzv@gmail.com>"]
 
 [dependencies]
 gl = "*"
-glium = { version = "*" }
+glium = { git  = "https://github.com/semtexzv/glium"  }
 glium_derive = { git  = "https://github.com/semtexzv/glium_derive" }
 num = "*"
 rayon = "*"
@@ -14,6 +14,7 @@ log = "*"
 fern = { version = "*", features = ["colored"] }
 time = "*"
 chrono = "*"
+regex = "*"
 
 cgmath = "*"
 failure = "*"

@@ -5,7 +5,7 @@ use super::{
     LayerCommon,
     BaseLayout,
     Visibility,
-    Function,
+    StyleProp,
 };
 
 
@@ -21,13 +21,13 @@ pub struct LineLayer {
 #[derive(Deserialize, Debug, Clone)]
 pub struct LineLayout {
     #[serde(rename = "line-cap")]
-    cap: Option<Function<String>>,
+    cap: Option<StyleProp<String>>,
     #[serde(rename = "line-join")]
-    join: Option<Function<String>>,
+    join: Option<StyleProp<String>>,
     #[serde(rename = "line-miter-limit")]
-    miter_limit: Option<Function<f32>>,
+    miter_limit: Option<StyleProp<f32>>,
     #[serde(rename = "line-round-limit")]
-    round_limit: Option<Function<f32>>,
+    round_limit: Option<StyleProp<f32>>,
 
     visibility: Option<Visibility>,
 }
@@ -35,32 +35,32 @@ pub struct LineLayout {
 #[derive(Deserialize, Debug, Clone)]
 pub struct LinePaint {
     #[serde(rename = "line-opacity")]
-    opacity: Option<Function<f32>>,
+    opacity: Option<StyleProp<f32>>,
 
     #[serde(rename = "line-color")]
-    color: Option<Function<Color>>,
+    color: Option<StyleProp<Color>>,
 
     #[serde(rename = "line-translate")]
-    translate: Option<Function<[f32; 2]>>,
+    translate: Option<StyleProp<[f32; 2]>>,
 
     #[serde(rename = "line-translate-anchor")]
     translate_anchor: Option<String>,
 
     #[serde(rename = "line-width")]
-    width: Option<Function<f32>>,
+    width: Option<StyleProp<f32>>,
 
     #[serde(rename = "line-gap_width")]
-    gap_width: Option<Function<f32>>,
+    gap_width: Option<StyleProp<f32>>,
 
     #[serde(rename = "line-offset")]
-    offset: Option<Function<f32>>,
+    offset: Option<StyleProp<f32>>,
 
     #[serde(rename = "line-blur")]
-    blur: Option<Function<f32>>,
+    blur: Option<StyleProp<f32>>,
 
     #[serde(rename = "line-dasharray")]
-    dash_array: Option<Function<Vec<f32>>>,
+    dash_array: Option<StyleProp<Vec<f32>>>,
 
     #[serde(rename = "line-pattern")]
-    pattern: Option<Function<String>>,
+    pattern: Option<StyleProp<String>>,
 }

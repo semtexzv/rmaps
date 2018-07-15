@@ -38,6 +38,12 @@ pub use rayon::{
     prelude::*,
 };
 
+pub use regex::{
+    self,
+    Regex,
+    RegexBuilder,
+};
+
 pub use num;
 
 pub use css_color_parser;

@@ -17,13 +17,11 @@ use map::{
 #[derive(Debug, Clone, Default, Properties)]
 #[properties(BackgroundLayer)]
 pub struct BackgroundLayerProperties {
-    #[property(name = "color", nofeature)]
-    color: BaseProperty<Color>,
-
-    opacity: BaseProperty<f32>,
-
-    #[property(name = "pattern", nofeature, nozoom)]
-    pattern: BaseProperty<Option<String>>,
+    #[property(src_name = "color", nofeature)]
+    color: BaseProp<Color>,
+    opacity: BaseProp<f32>,
+    #[property(src_name = "pattern", nofeature, nozoom)]
+    pattern: BaseProp<Option<String>>,
 }
 
 #[derive(Debug)]

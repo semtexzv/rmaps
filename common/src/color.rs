@@ -61,6 +61,12 @@ unsafe impl glium::vertex::Attribute for Color {
     }
 }
 
+impl glium::uniforms::AsUniformValue for Color {
+    fn as_uniform_value(&self) -> glium::uniforms::UniformValue {
+        glium::uniforms::UniformValue::Vec4(self.0)
+    }
+}
+
 impl ::std::str::FromStr for Color {
     type Err = Error;
 
