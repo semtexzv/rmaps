@@ -188,6 +188,7 @@ impl MapViewImpl {
         println!("DEVICE : {:?}", dev);
         let world = self.camera.device_to_world(dev);
         println!("WORLD : {:?}", world);
+
     }
     pub fn render(&mut self, target: &mut glium::Frame) {
         let projection = self.camera.projection();
@@ -201,6 +202,8 @@ impl MapViewImpl {
 
             frame_start: PreciseTime::now(),
         };
+
+        let cover = TileCover::from_camera(&self.camera);
         self.renderer.render(params).unwrap();
 
         if let Some(ref style) = self.style {

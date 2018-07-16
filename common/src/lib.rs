@@ -1,4 +1,6 @@
 #![feature(use_extern_macros)]
+#![feature(nll)]
+
 #![allow(unused_variables, unused_mut, dead_code, non_snake_case, unused_parens, unused_imports)]
 
 pub extern crate glium;
@@ -11,6 +13,7 @@ pub extern crate rand;
 pub extern crate rayon;
 
 pub extern crate regex;
+
 
 #[macro_use]
 pub extern crate log;

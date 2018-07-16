@@ -8,6 +8,11 @@ name="rmaps_android"
 crate-type = ["dylib"]
 
 [dependencies]
-android_injected_glue = "0.2.3"
 common = { path = "../../common" }
 rmaps = { path = "../../rmaps" }
+
+[target.arm-linux-androideabi.dependencies]
+android_injected_glue = "0.2.3"
+
+[target.aarch64-linux-androide.dependencies]
+android_injected_glue = "0.2.3"

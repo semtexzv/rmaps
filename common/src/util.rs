@@ -1,6 +1,5 @@
 use prelude::*;
 use coord::*;
-
 use cgmath::{SquareMatrix, Matrix4, Vector4};
 
 #[derive(Debug, Clone, Copy, Hash, PartialOrd, PartialEq, Ord, Eq)]
@@ -80,6 +79,146 @@ impl TileCoords {
     }
 }
 
+/// Structure holding information about Tile IDs needed to cover certain area at zoom level.
+/// This structure is used to calculate which tiles need to be rendered
+#[derive(Debug, Clone)]
+pub struct TileCover {
+    tiles: Vec<TileCoords>
+}
+
+impl TileCover {
+    fn new_raw(tl: WorldPoint, tr: WorldPoint, br: WorldPoint, bl: WorldPoint, c: WorldPoint, z: i32) -> Self {
+        #[derive(Default, Clone, Copy)]
+        struct edge {
+            x0: f64,
+            y0: f64,
+            x1: f64,
+            y1: f64,
+            dx: f64,
+            dy: f64,
+        }
+        impl edge {
+            unsafe fn new(mut a: WorldPoint, mut b: WorldPoint) -> Self {
+                if (a.y > b.y) {
+                    mem::swap(&mut a, &mut b);
+                }
+                edge {
+                    x0: a.x,
+                    y0: a.y,
+                    x1: b.x,
+                    y1: b.y,
+                    dx: b.x - a.x,
+                    dy: b.y - a.y,
+                }
+            }
+        }
+
+        fn scan_spans<F: FnMut(i32, i32, i32)>(mut e0: edge, mut e1: edge, ymin: i32, ymax: i32, mut scanner: F) {
+            let fmin = |a: f64, b: f64| { if a < b { a } else { b } };
+            let fmax = |a: f64, b: f64| { if a < b { a } else { b } };
+
+            let y0 = fmax(ymin as _, f64::floor(e1.y0));
+            let y1 = fmin(ymax as _, f64::ceil(e1.y1));
+
+            let check = if e0.x0 == e1.x0 && e0.y0 == e1.y0 {
+                (e0.x0 + e1.dy / e0.dy * e0.dx < e1.x1)
+            } else {
+                (e0.x1 - e1.dy / e0.dy * e0.dx < e1.x0)
+            };
+            if check {
+                mem::swap(&mut e0, &mut e1);
+            }
+
+            let m0 = e0.dx / e0.dy;
+            let m1 = e1.dx / e1.dy;
+            let d0 = if e0.dx > 0. { 1. } else { 0. }; // use y + 1 to compute x0
+            let d1 = if e1.dx < 0. { 1. } else { 0. }; // use y + 1 to compute x1
+
+            //println!("Span : {:?} to {:?}", y0, y1);
+            for y in (y0 as i32)..(y1 as i32) {
+                let x0 = m0 * fmax(0., fmin(e0.dy, y as f64 + d0 - e0.y0)) + e0.x0;
+                let x1 = m1 * fmax(0., fmin(e1.dy, y as f64 + d1 - e1.y0)) + e1.x0;
+                scanner(f64::floor(x1) as _, f64::ceil(x0) as _, y);
+            }
+        }
+        fn scan_triangle<F: FnMut(i32, i32, i32)>(a: WorldPoint, b: WorldPoint, c: WorldPoint, ymin: i32, ymax: i32, mut scanner: F) {
+            unsafe {
+                let mut ab = edge::new(a, b);
+                let mut bc = edge::new(b, c);
+                let mut ca = edge::new(c, a);
+
+                if (ab.dy > bc.dy) { mem::swap(&mut ab, &mut bc); }
+                if (ab.dy > ca.dy) { mem::swap(&mut ab, &mut ca); }
+                if (bc.dy > ca.dy) { mem::swap(&mut bc, &mut ca); }
+
+
+                if (ab.dy != 0.) { scan_spans(ca, ab, ymin, ymax, &mut scanner) };
+                if (bc.dy != 0.) { scan_spans(ca, bc, ymin, ymax, &mut scanner) };
+            }
+        }
+        let tiles: i32 = 1 << z;
+        #[derive(Debug, PartialOrd, PartialEq)]
+        struct ID {
+            sq_dst: f64,
+            x: i32,
+            y: i32,
+        };
+
+        let mut t = vec![];
+
+        let mut scanner = |x0, x1, y| {
+            // println!("range : y: {:?} tiles: {:?} x0: {:?} x1: {:?} ", y, tiles, x0, x1);
+            if y >=0 && y <= tiles {
+                for x in x0..x1 {
+                    let dx = x as f64 + 0.5 - c.x;
+                    let dy = y as f64 + 0.5 - c.y;
+                    t.push(ID {
+                        x: x,
+                        y: y,
+                        sq_dst: dx * dx + dy * dy,
+                    });
+                }
+            }
+        };
+
+        scan_triangle(tl, tr, br, 0, tiles, &mut scanner);
+        scan_triangle(br, bl, tl, 0, tiles, &mut scanner);
+
+
+        { t.sort_by(|a, b| a.partial_cmp(b).unwrap_or(::std::cmp::Ordering::Less)); }
+        { t.dedup_by(|a, b| a.x == b.x && a.y == b.y); }
+
+        TileCover {
+            tiles: t.into_iter().map(|t| TileCoords {
+                x: t.x,
+                y: t.y,
+                z: z,
+            }).collect()
+        }
+    }
+
+    pub fn from_camera(camera: &Camera) -> Self {
+        let mut size = camera.size();
+        let z = camera.zoom.round() as i32;
+        let w = size.w;
+        let h = size.h;
+
+        let tl = camera.window_to_world(PixelPoint::new(0, 0));
+        let tr = camera.window_to_world(PixelPoint::new(w, 0));
+        let br = camera.window_to_world(PixelPoint::new(w, h));
+        let bl = camera.window_to_world(PixelPoint::new(0, h));
+
+        let c = camera.window_to_world(PixelPoint::new(w / 2., h / 2.));
+
+        let cover = TileCover::new_raw(tl, tr, br, bl, c, z);
+        println!("Cover: {:#?}", cover);
+
+        TileCover {
+            tiles: vec![]
+        }
+    }
+}
+
 
 #[derive(Debug, Default, Clone, Copy, PartialOrd, PartialEq)]
 pub struct LatLng {
@@ -135,15 +274,13 @@ impl LatLngBounds {
     }
 }
 
+use std::cell::Cell;
+
 #[derive(Debug, Clone)]
 pub struct Camera {
     pub window_size: PixelSize,
     /// Camera position in 0-1 scale,
     pub pos: WorldPoint,
-
-    projection: Option<::cgmath::Matrix4<f32>>,
-    view: Option<::cgmath::Matrix4<f32>>,
-
 
     pub zoom: f32,
 }
@@ -161,7 +298,6 @@ impl Camera {
         if self.zoom < 0. {
             self.zoom = 0.;
         }
-        self.view = None;
     }
 
     pub fn size(&self) -> PixelSize {
@@ -169,7 +305,6 @@ impl Camera {
     }
     pub fn set_size(&mut self, s: PixelSize) {
         self.window_size = s;
-        self.projection = None;
     }
 
     pub fn pos(&self) -> WorldPoint {
@@ -177,47 +312,34 @@ impl Camera {
     }
     pub fn set_pos(&mut self, pos: WorldPoint) {
         self.pos = pos;
-        trace!("Camera position changed to : {:?}", pos);
-        self.view = None;
     }
 
-
-    pub fn projection(&mut self) -> Matrix4<f32> {
-        return if let Some(ref mut p) = self.projection {
-            p.clone()
-        } else {
-            let projection = Mercator::projection(&self);
-            self.projection = Some(projection.clone());
-            projection
-        };
+    pub fn projection(&self) -> Matrix4<f32> {
+        Mercator::projection(&self)
+    }
+    pub fn view(&self) -> Matrix4<f32> {
+        Mercator::world_to_screen(&self)
     }
 
-    pub fn view(&mut self) -> Matrix4<f32> {
-        return if let Some(ref mut p) = self.view {
-            p.clone()
-        } else {
-            let view = Mercator::world_to_screen(&self);
-            self.view = Some(view.clone());
-            view
-        };
+    pub fn inverse_view_projection(&self) -> Matrix4<f32> {
+        (self.projection() * self.view()).invert().unwrap()
     }
-
     #[inline]
-    pub fn window_to_world(&mut self, point: PixelPoint) -> WorldPoint {
+    pub fn window_to_world(&self, point: PixelPoint) -> WorldPoint {
         let a = self.window_to_device(point);
         return self.device_to_world(a);
     }
 
     #[inline]
-    pub fn window_to_device(&mut self, point: PixelPoint) -> DevicePoint {
+    pub fn window_to_device(&self, point: PixelPoint) -> DevicePoint {
         let multiplied = (point.x / self.size().w - 0.5, point.y / self.size().h - 0.5);
 
         DevicePoint::new(2. * multiplied.0 as f32, 2. * -multiplied.1 as f32)
     }
 
     #[inline]
-    pub fn device_to_world(&mut self, point: DevicePoint) -> WorldPoint {
-        let pt = (self.projection() * self.view()).invert().unwrap() * Vector4::new(point.x as f32, point.y as f32, 0., 1.);
+    pub fn device_to_world(&self, point: DevicePoint) -> WorldPoint {
+        let pt = self.inverse_view_projection() * Vector4::new(point.x as f32, point.y as f32, 0., 1.);
 
         WorldPoint::new(pt.x, pt.y)
     }
@@ -229,8 +351,6 @@ impl Default for Camera {
             window_size: Default::default(),
             pos: WorldPoint::new(0.5, 0.5),
             zoom: 0.,
-            projection: None,
-            view: None,
         }
     }
 }

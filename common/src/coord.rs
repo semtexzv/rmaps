@@ -31,6 +31,7 @@ impl PixelPoint {
             y: y.into(),
         }
     }
+
 }
 
 
@@ -47,6 +48,9 @@ impl WorldPoint {
             x: x.into(),
             y: y.into(),
         }
+    }
+    pub fn scaled(&mut self, f : f64) -> WorldPoint{
+        WorldPoint::new(self.x *f , self.y * f)
     }
 }
 
