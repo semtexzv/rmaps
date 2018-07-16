@@ -233,21 +233,25 @@ impl PropertiesVisitor for PropertyLayoutBuilder {
 use ::common::glium::uniforms::UniformBuffer;
 use ::common::glium::texture::buffer_texture::*;
 
+use glium::{implement_uniform_block, implement_buffer_content};
+
+pub struct FeatureDataUbo {
+    pub feature_data: [[f32; 4]],
+}
+
+implement_buffer_content!(FeatureDataUbo);
+implement_uniform_block!(FeatureDataUbo,feature_data);
 
 pub struct FeaturePropertyData {
-    pub data: UniformBuffer<[[f32; 4]; 1024]>,
-    storage: Box<[[f32; 4]; 1024]>,
+    pub data: UniformBuffer<FeatureDataUbo>,
     position: usize,
-
 }
 
 
 impl FeaturePropertyData {
     pub fn new(d: &glium::backend::Facade) -> Result<Self> {
-        let len = 2048;
         Ok(FeaturePropertyData {
-            data: UniformBuffer::empty_dynamic(d)?,
-            storage: Box::new([[0.; 4]; 1024]),
+            data: UniformBuffer::empty_unsized_dynamic(d, mem::size_of::<[f32; 4]>() * 1024)?,
             position: 0,
         })
     }
@@ -255,6 +259,11 @@ impl FeaturePropertyData {
     pub fn clear(&mut self) {
         self.position = 0;
     }
+
+    pub fn map_write(&mut self) -> glium::buffer::WriteMapping<FeatureDataUbo> {
+        self.data.map_write()
+    }
+
 
     pub fn push<A: Attribute>(&mut self, v: A) {
         use std::mem;
@@ -276,16 +285,18 @@ impl FeaturePropertyData {
             };
             let ptr = &data as *const helper<A> as *const f32;
             let slice = ptr as *const [f32; 4];
-            self.storage[self.position] = (*slice);
+            let mut map = self.data.map();
+            map.feature_data[self.position] = (*slice);
             self.position += 1;
         };
     }
 
+
     pub fn upload(&mut self, disp: &Display) -> Result<()> {
-        self.data.write(&self.storage);
         Ok(())
     }
 }
+
 
 impl fmt::Debug for FeaturePropertyData {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
@@ -330,7 +341,7 @@ impl fmt::Debug for UniformPropertyData {
 }
 
 
-pub struct MergeUniforms<'u, A: Uniforms + 'u, B: Uniforms + 'u>(pub &'u A, pub &'u B);
+pub struct MergeUniforms<'u, A: Uniforms + 'u, B: Uniforms + 'u> (pub &'u A, pub &'u B);
 
 
 impl<'u, A: Uniforms + 'u, B: Uniforms + 'u> Uniforms for MergeUniforms<'u, A, B> {
@@ -366,7 +377,7 @@ impl<'a> UniformPropertyBinder<'a> {
 }
 
 fn fixup<T: AsUniformValue>(t: T) -> UniformValue<'static> {
-    // Yaaay, hacks....
+// Yaaay, hacks....
     unsafe { ::std::mem::transmute(t.as_uniform_value()) }
 }
 
@@ -405,8 +416,8 @@ impl<'a> FeaturePropertyBinder<'a> {
     fn new(layout: &'a FeaturePropertyLayout, data: &'a mut FeaturePropertyData) -> Self {
         FeaturePropertyBinder {
             layout,
-            start_size: data.storage.len(),
-            data,
+            start_size: data.position,
+            data: data,
             push: false,
         }
     }
@@ -415,7 +426,7 @@ impl<'a> FeaturePropertyBinder<'a> {
         let mut binder = Self::new(layout, data);
 
         props.accept(style, &mut binder);
-        trace!("Feature propery binder finished  start : {}, end {}", binder.start_size, binder.data.storage.len());
+        trace!("Feature propery binder finished  start : {}, end {}", binder.start_size, binder.data.position);
     }
 }
 

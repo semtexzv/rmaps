@@ -1,9 +1,6 @@
 #![feature(use_extern_macros)]
 #![allow(unused_variables, unused_mut, dead_code, non_snake_case, unused_parens, unused_imports)]
 
-
-#[macro_use]
-pub extern crate gl;
 pub extern crate glium;
 pub extern crate glium_derive;
 pub extern crate cgmath;

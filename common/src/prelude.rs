@@ -10,8 +10,8 @@ pub use std::{
     ops::{Deref, DerefMut},
     rc::Rc,
     sync::Arc,
+    mem,
 };
-pub use gl;
 pub use glium::{
     self,
     implement_vertex,

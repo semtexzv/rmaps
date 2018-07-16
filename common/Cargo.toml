@@ -4,8 +4,8 @@ version = "0.1.0"
 authors = ["Michal Hornický <semtexzv@gmail.com>"]
 
 [dependencies]
-gl = "*"
-glium = { git  = "https://github.com/semtexzv/glium", branch="master"  }
+glium = { git  = "https://github.com/semtexzv/glium", branch="tmp-working"  }
+#glium = { path  = "../libs/glium" }
 glium_derive = { git  = "https://github.com/semtexzv/glium_derive" }
 num = "*"
 rayon = "*"

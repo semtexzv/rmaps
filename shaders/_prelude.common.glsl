@@ -1,4 +1,6 @@
-
+layout(std140) uniform feature_data_ubo {
+    vec4 feature_data[1024];
+};
 
 float feature_get_float(float idx, float offset) {
     return feature_data[int(idx * PER_FEATURE_SIZE + offset)].x;
