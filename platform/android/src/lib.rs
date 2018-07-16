@@ -1,7 +1,7 @@
-#[cfg(test)]
-mod tests {
-    #[test]
-    fn it_works() {
-        assert_eq!(2 + 2, 4);
-    }
+pub extern crate common;
+pub extern crate rmaps;
+
+extern "C" fn init() {
+    common::init_log();
+    rmaps::init();
 }

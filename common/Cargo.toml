@@ -20,7 +20,6 @@ regex = "*"
 
 cgmath = "*"
 failure = "*"
-reqwest = "*"
 itertools="*"
 
 scoped-tls = { version = "*", features = ["nightly"] }
@@ -34,7 +33,8 @@ futures = "0.1"
 tokio = "0.1"
 
 actix =  { path = "../libs/actix"}
-actix-web = { path = "../libs/actix-web", features= ["tls"] }
+actix-web = { path = "../libs/actix-web",  features= ["tls"] }
+#defayult-features=false }
 
 
 palette = "0.4"

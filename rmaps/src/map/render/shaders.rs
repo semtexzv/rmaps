@@ -36,10 +36,9 @@ impl FeaturePropertyLayout {
     }
 
     pub fn size_per_feature(&self) -> usize {
-        let i = self.items.last().unwrap();
-
-        return i.offset + i.size;
+        self.items.last().map(|x| x.offset + x.size).unwrap_or(0)
     }
+
     pub fn item(&self, prop_name: &str) -> PropertyItemLayout {
         return self.items.iter().filter(|&a| a.name == prop_name).next().unwrap().clone();
     }
@@ -145,8 +144,8 @@ impl ShaderProcessor {
 
         let frag_processed = regex.replace_all(&frag, process);
 
-         trace!("Vertex shader processed \n Orig: \n{}\n New : \n{}", vert, vert_processed);
-         trace!("Fragment shader processed \n Orig: \n{}\n New : \n{}", frag, frag_processed);
+        trace!("Vertex shader processed \n Orig: \n{}\n New : \n{}", vert, vert_processed);
+        trace!("Fragment shader processed \n Orig: \n{}\n New : \n{}", frag, frag_processed);
 
 
         // panic!("\nOLD: {}, \nNEW: {}", vert, vert_processed);3

@@ -3,4 +3,11 @@ name = "android"
 version = "0.1.0"
 authors = ["Michal Hornický <semtexzv@gmail.com>"]
 
+[lib]
+name="rmaps_android"
+crate-type = ["dylib"]
+
 [dependencies]
+android_injected_glue = "0.2.3"
+common = { path = "../../common" }
+rmaps = { path = "../../rmaps" }
