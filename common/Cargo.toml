@@ -34,8 +34,8 @@ tokio = "0.1"
 
 actix =  { path = "../libs/actix"}
 actix-web = { path = "../libs/actix-web",  features= ["tls"] }
-#defayult-features=false }
-
+#default-features=false }
+geo =  { version = "0.9.1", default_features = false }
 
 palette = "0.4"
 url = "1.7.0"

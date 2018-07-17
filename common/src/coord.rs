@@ -31,7 +31,6 @@ impl PixelPoint {
             y: y.into(),
         }
     }
-
 }
 
 
@@ -49,11 +48,25 @@ impl WorldPoint {
             y: y.into(),
         }
     }
-    pub fn scaled(&mut self, f : f64) -> WorldPoint{
-        WorldPoint::new(self.x *f , self.y * f)
+    pub fn scaled(&mut self, f: f64) -> WorldPoint {
+        WorldPoint::new(self.x * f, self.y * f)
     }
 }
 
+impl Into<geo::Coordinate<f64>> for WorldPoint {
+    fn into(self) -> geo::Coordinate<f64> {
+        geo::Coordinate {
+            x: self.x,
+            y: self.y,
+        }
+    }
+}
+
+impl Into<geo::Point<f64>> for WorldPoint {
+    fn into(self) -> geo::Point<f64> {
+        geo::Point(self.into())
+    }
+}
 
 #[repr(C)]
 #[derive(Debug, Clone, Copy, Default, PartialOrd, PartialEq, Add, Sub)]

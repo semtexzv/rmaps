@@ -65,7 +65,7 @@ pub use actix::{
     prelude::*,
 };
 
-
+pub use geo;
 pub use failure::{Error, Fail, bail};
 
 pub type Result<T> = StdResult<T, Error>;

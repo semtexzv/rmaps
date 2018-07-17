@@ -5,8 +5,8 @@ use cgmath::{SquareMatrix, Matrix4, Vector4};
 #[derive(Debug, Clone, Copy, Hash, PartialOrd, PartialEq, Ord, Eq)]
 pub struct TileCoords {
     pub z: i32,
-    pub x: i32,
     pub y: i32,
+    pub x: i32,
 }
 
 impl TileCoords {
@@ -87,128 +87,93 @@ pub struct TileCover {
 }
 
 impl TileCover {
-    fn new_raw(tl: WorldPoint, tr: WorldPoint, br: WorldPoint, bl: WorldPoint, c: WorldPoint, z: i32) -> Self {
-        #[derive(Default, Clone, Copy)]
-        struct edge {
-            x0: f64,
-            y0: f64,
-            x1: f64,
-            y1: f64,
-            dx: f64,
-            dy: f64,
-        }
-        impl edge {
-            unsafe fn new(mut a: WorldPoint, mut b: WorldPoint) -> Self {
-                if (a.y > b.y) {
-                    mem::swap(&mut a, &mut b);
-                }
-                edge {
-                    x0: a.x,
-                    y0: a.y,
-                    x1: b.x,
-                    y1: b.y,
-                    dx: b.x - a.x,
-                    dy: b.y - a.y,
-                }
+    fn new_raw(tl: WorldPoint, tr: WorldPoint, br: WorldPoint, bl: WorldPoint, z: i32) -> Self {
+        use geo::prelude::*;
+        let ring: Vec<geo::Point<f64>> = vec![tl.into(), tr.into(), br.into(), bl.into(), tl.into()];
+        let poly = geo::Polygon::<f64>::new(ring.into(), vec![]);
+        let bbox: geo::Bbox<f64> = poly.bbox().unwrap();
+
+
+        fn float_step<F: FnMut(f64)>(min: f64, max: f64, step: f64, mut op: F) {
+            let mut v = min;
+            while v <= max {
+                (&mut op)(v);
+                v += step
             }
         }
 
-        fn scan_spans<F: FnMut(i32, i32, i32)>(mut e0: edge, mut e1: edge, ymin: i32, ymax: i32, mut scanner: F) {
-            let fmin = |a: f64, b: f64| { if a < b { a } else { b } };
-            let fmax = |a: f64, b: f64| { if a < b { a } else { b } };
-
-            let y0 = fmax(ymin as _, f64::floor(e1.y0));
-            let y1 = fmin(ymax as _, f64::ceil(e1.y1));
-
-            let check = if e0.x0 == e1.x0 && e0.y0 == e1.y0 {
-                (e0.x0 + e1.dy / e0.dy * e0.dx < e1.x1)
-            } else {
-                (e0.x1 - e1.dy / e0.dy * e0.dx < e1.x0)
-            };
-            if check {
-                mem::swap(&mut e0, &mut e1);
-            }
-
-            let m0 = e0.dx / e0.dy;
-            let m1 = e1.dx / e1.dy;
-            let d0 = if e0.dx > 0. { 1. } else { 0. }; // use y + 1 to compute x0
-            let d1 = if e1.dx < 0. { 1. } else { 0. }; // use y + 1 to compute x1
-
-            //println!("Span : {:?} to {:?}", y0, y1);
-            for y in (y0 as i32)..(y1 as i32) {
-                let x0 = m0 * fmax(0., fmin(e0.dy, y as f64 + d0 - e0.y0)) + e0.x0;
-                let x1 = m1 * fmax(0., fmin(e1.dy, y as f64 + d1 - e1.y0)) + e1.x0;
-                scanner(f64::floor(x1) as _, f64::ceil(x0) as _, y);
-            }
-        }
-        fn scan_triangle<F: FnMut(i32, i32, i32)>(a: WorldPoint, b: WorldPoint, c: WorldPoint, ymin: i32, ymax: i32, mut scanner: F) {
-            unsafe {
-                let mut ab = edge::new(a, b);
-                let mut bc = edge::new(b, c);
-                let mut ca = edge::new(c, a);
-
-                if (ab.dy > bc.dy) { mem::swap(&mut ab, &mut bc); }
-                if (ab.dy > ca.dy) { mem::swap(&mut ab, &mut ca); }
-                if (bc.dy > ca.dy) { mem::swap(&mut bc, &mut ca); }
-
-
-                if (ab.dy != 0.) { scan_spans(ca, ab, ymin, ymax, &mut scanner) };
-                if (bc.dy != 0.) { scan_spans(ca, bc, ymin, ymax, &mut scanner) };
-            }
-        }
         let tiles: i32 = 1 << z;
-        #[derive(Debug, PartialOrd, PartialEq)]
-        struct ID {
-            sq_dst: f64,
-            x: i32,
-            y: i32,
-        };
 
-        let mut t = vec![];
+        let center = poly.centroid().unwrap();
+        // Expand polygon by 10%, so it will contain extreme screen coordinates
+        let exp = poly.map_coords(&|c| {
+            ((c.0 - center.x()) * 1.1 + center.x(),
+             (c.1 - center.y()) * 1.1 + center.y())
+        });
 
-        let mut scanner = |x0, x1, y| {
-            // println!("range : y: {:?} tiles: {:?} x0: {:?} x1: {:?} ", y, tiles, x0, x1);
-            if y >=0 && y <= tiles {
-                for x in x0..x1 {
-                    let dx = x as f64 + 0.5 - c.x;
-                    let dy = y as f64 + 0.5 - c.y;
-                    t.push(ID {
-                        x: x,
-                        y: y,
-                        sq_dst: dx * dx + dy * dy,
+
+        let mut cover = vec![];
+
+        float_step(bbox.xmin, bbox.xmax, (bbox.xmax - bbox.xmin) / 8., |x| {
+            float_step(bbox.ymin, bbox.ymax, (bbox.ymax - bbox.ymin) / 8., |y| {
+                let pt: geo::Point<_> = (x, y).into();
+                if exp.contains(&pt) {
+                    let xx = x * tiles as f64;
+                    let yy = y * tiles as f64;
+                    // Integer coordinates, we need to override rounding for negative numbers
+                    // TODO: Verify whether floor operation on all shouldnt be better
+                    let tx = xx.floor() as i32;
+                    let ty = yy.floor() as i32;
+
+                    //info!("Should add pt : {:?}, {:?}", (x * tiles as f64) as i32, (y * tiles as f64) as i32);
+                    cover.push(TileCoords {
+                        x: tx,
+                        y: ty,
+                        z: z,
                     });
                 }
-            }
-        };
+            });
+        });
 
-        scan_triangle(tl, tr, br, 0, tiles, &mut scanner);
-        scan_triangle(br, bl, tl, 0, tiles, &mut scanner);
+        { cover.retain(|&x| x.y >= 0 && x.y < tiles); }
+        { cover.sort_by(|a, b| a.partial_cmp(b).unwrap_or(::std::cmp::Ordering::Less)); }
+        { cover.dedup_by(|a, b| a.x == b.x && a.y == b.y); }
 
-
-        { t.sort_by(|a, b| a.partial_cmp(b).unwrap_or(::std::cmp::Ordering::Less)); }
-        { t.dedup_by(|a, b| a.x == b.x && a.y == b.y); }
+        println!("Cover: {:#?}", cover);
 
         TileCover {
-            tiles: t.into_iter().map(|t| TileCoords {
-                x: t.x,
-                y: t.y,
-                z: z,
-            }).collect()
+            tiles: vec![]
         }
     }
-
+    /*
     pub fn from_camera(camera: &Camera) -> Self {
         let mut size = camera.size();
-        let z = camera.zoom.round() as i32;
+        let z = camera.zoom.ceil() as i32;
         let w = size.w;
         let h = size.h;
 
-        let tl = camera.window_to_world(PixelPoint::new(0, 0));
-        let tr = camera.window_to_world(PixelPoint::new(w, 0));
-        let br = camera.window_to_world(PixelPoint::new(w, h));
-        let bl = camera.window_to_world(PixelPoint::new(0, h));
+        let mut tl = camera.window_to_world(PixelPoint::new(0, 0));
+        let mut tr = camera.window_to_world(PixelPoint::new(w, 0));
+        let mut br = camera.window_to_world(PixelPoint::new(w, h));
+        let mut bl = camera.window_to_world(PixelPoint::new(0, h));
+        let mut c = camera.window_to_world(PixelPoint::new(w / 2., h / 2.));
 
-        let c = camera.window_to_world(PixelPoint::new(w / 2., h / 2.));
+        tl.y = 1. - tl.y;
+        tr.y = 1. - tr.y;
+        br.y = 1. - br.y;
+        bl.y = 1. - bl.y;
+        c.y = 1. - c.y;
+        //mem::swap(&mut tl.y, &mut bl.y);
+        //mem::swap(&mut tr.y, &mut br.y);
+
+
+        println!("TL : {:?}", tl);
+        println!("TR : {:?}", tr);
+        println!("BR : {:?}", br);
+        println!("BL : {:?}", bl);
+
+        println!("Camera x in : [{:?}  ===  {:?}]", tl.x,br.x);
+        println!("Camera y in : [{:?}  ===  {:?}]", tl.y,br.y);
 
         let cover = TileCover::new_raw(tl, tr, br, bl, c, z);
         println!("Cover: {:#?}", cover);
@@ -216,6 +181,22 @@ impl TileCover {
         TileCover {
             tiles: vec![]
         }
+    }
+    */
+
+    pub fn from_camera(camera: &Camera) -> Self {
+
+        let mut size = camera.size();
+        let z = camera.zoom.ceil() as i32;
+        let w = size.w;
+        let h = size.h;
+
+        let mut tl = camera.window_to_world(PixelPoint::new(0, 0));
+        let mut tr = camera.window_to_world(PixelPoint::new(w, 0));
+        let mut br = camera.window_to_world(PixelPoint::new(w, h));
+        let mut bl = camera.window_to_world(PixelPoint::new(0, h));
+
+        TileCover::new_raw(tl, tr, br, bl, z)
     }
 }
 
