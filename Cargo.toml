@@ -1,2 +1,6 @@
 [workspace]
 members = ["common" , "rmaps", "platform/*", "libs/*"]
+
+
+[replace]
+"glium:0.22.0" = { git  = "https://github.com/semtexzv/glium", branch = "tmp-working"  }

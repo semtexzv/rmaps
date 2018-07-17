@@ -12,7 +12,7 @@
 #![feature(macro_literal_matcher)]
 #![feature(macro_at_most_once_rep)]
 #![feature(specialization)]
-#![feature(unsize)]
+#![feature(nll)]
 
 #![allow(unused_imports, dead_code, unused_mut, unused_variables, unused_macros, unreachable_code, unreachable_patterns, unused_parens)]
 pub extern crate common;

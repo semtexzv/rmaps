@@ -43,6 +43,9 @@ pub extern crate actix_web;
 pub extern crate futures;
 pub extern crate tokio;
 
+pub extern crate imgui;
+pub extern crate imgui_glium_renderer;
+
 pub extern crate geo;
 pub extern crate url;
 pub extern crate uuid;
