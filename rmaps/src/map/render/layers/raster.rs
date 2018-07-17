@@ -37,6 +37,11 @@ impl Layer for RasterLayer {
         Ok(())
     }
 
+    fn prepare(&mut self, params: render::PrepareParams) -> Result<()> {
+        unimplemented!()
+    }
+
+
     fn evaluate(&mut self, params: &render::EvaluationParams) -> Result<()> {
         unimplemented!()
     }

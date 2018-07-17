@@ -188,21 +188,14 @@ impl MapViewImpl {
         println!("DEVICE : {:?}", dev);
         let world = self.camera.device_to_world(dev);
         println!("WORLD : {:?}", world);
-        let cover = TileCover::from_camera(&self.camera);
-
+        let tile = world.tile_at_zoom(self.camera.zoom_int());
+        println!("TILE : {:?}", tile);
     }
     pub fn render(&mut self, target: &mut glium::Frame) {
-        let projection = self.camera.projection();
-        let view = self.camera.view();
-        let params = self::render::RenderParams {
-            disp: self.facade.deref(),
+        let params = self::render::RendererParams {
+            display: self.facade.deref(),
             frame: target,
-            projection,
-            view,
             camera: &self.camera,
-
-            // TODO: 2 levels of renderparams, dont generate tileCover here, generate it and associated info in renderer
-            tiles : TileCover::from_camera(&self.camera).0.iter().map(|t| t.wrap()).collect(),
 
             frame_start: PreciseTime::now(),
         };

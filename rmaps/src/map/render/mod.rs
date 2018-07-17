@@ -14,8 +14,16 @@ use std::hash;
 
 
 pub struct RendererParams<'a> {
-    disp : &'a Display,
-    
+    pub display: &'a Display,
+    pub frame: &'a mut glium::Frame,
+    pub camera: &'a Camera,
+
+    pub frame_start: PreciseTime,
+}
+
+pub struct PrepareParams<'a> {
+    pub camera: &'a Camera,
+    pub cover: &'a TileCover,
 }
 
 /// Idea:
@@ -24,13 +32,9 @@ pub struct RendererParams<'a> {
 ///
 
 pub struct RenderParams<'a> {
-    pub disp: &'a Display,
+    pub display: &'a Display,
     pub frame: &'a mut glium::Frame,
-    pub projection: cgmath::Matrix4<f32>,
-    pub view: cgmath::Matrix4<f32>,
     pub camera: &'a Camera,
-
-    pub tiles : Vec<TileCoords>,
 
     pub frame_start: PreciseTime,
 }
@@ -40,6 +44,7 @@ pub struct RenderParams<'a> {
 pub struct EvaluationParams {
     pub zoom: f32,
     pub time: u64,
+
 }
 
 impl EvaluationParams {
@@ -56,6 +61,10 @@ pub struct LayerData {
     pub layer: Box<layers::Layer>,
     pub evaluated: Option<EvaluationParams>,
 }
+
+unsafe impl Send for LayerData {}
+
+unsafe impl Sync for LayerData {}
 
 pub struct Renderer {
     pub display: Box<Display>,
@@ -85,7 +94,16 @@ impl Renderer {
             l.layer.new_tile(&self.display, &tile).unwrap();
         }
     }
-    pub fn render(&mut self, mut params: RenderParams) -> Result<()> {
+    pub fn render(&mut self, mut params: RendererParams) -> Result<()> {
+        let camera = params.camera;
+        let cover = TileCover::from_camera(camera);
+        self.layers.deref_mut().par_iter_mut().for_each(|l| {
+            l.layer.prepare(PrepareParams {
+                camera,
+                cover : &cover,
+            }).unwrap();
+        });
+
         let eval_params = EvaluationParams::new(params.camera.zoom);
 
         for l in self.layers.iter_mut() {
@@ -94,14 +112,21 @@ impl Renderer {
                 Some(ref e) if e.zoom != eval_params.zoom => (true, false),
                 _ => (false, false),
             };
-            let t = PreciseTime::now();
-            if should_eval && (params.frame_start.to(t).num_milliseconds() < 2 || really) {
+
+            if should_eval {
                 l.layer.evaluate(&eval_params)?;
             }
         }
 
+        let cover = TileCover::from_camera(&params.camera);
         for l in self.layers.iter_mut() {
-            l.layer.render(&mut params).unwrap();
+            l.layer.render(&mut RenderParams {
+                display: &params.display,
+                frame: &mut params.frame,
+                camera: &params.camera,
+                frame_start: params.frame_start,
+
+            }).unwrap();
         }
 
         Ok(())

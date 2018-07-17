@@ -61,7 +61,6 @@ pub struct FeatureBucketData {
 
 #[derive(Debug)]
 pub struct FillBucket {
-    pub coord: TileCoords,
     pub features: BTreeMap<u64, FeatureBucketData>,
 
     pub indices: Vec<u16>,
@@ -139,7 +138,6 @@ impl FillBucket {
                 return Ok(
                     Some(
                         FillBucket {
-                            coord: data.coord,
                             features,
                             properties: Default::default(),
                             uniforms: Default::default(),
@@ -180,6 +178,7 @@ impl layers::Bucket for FillBucket {
         Ok(())
     }
 }
+
 #[derive(Debug)]
 pub struct FillLayer {
     style_layer: style::FillLayer,
@@ -236,10 +235,10 @@ impl layers::BucketLayer for FillLayer {
         Ok(())
     }
 
-    fn render_bucket(&mut self, params: &mut render::RenderParams, bucket: &Self::Bucket) -> Result<()> {
+    fn render_bucket(&mut self, params: &mut render::RenderParams, coord: UnwrappedTileCoords, bucket: &Self::Bucket) -> Result<()> {
         //println!("{:?}", ::std::mem::size_of::<FillVertexProperties>());
-        let tile_matrix = Mercator::tile_to_world(&bucket.coord);
-        let matrix = params.projection * params.view * tile_matrix;
+        let tile_matrix = Mercator::tile_to_world(coord);
+        let matrix = params.camera.projection() * params.camera.view() * tile_matrix;
         let matrix: [[f32; 4]; 4] = matrix.into();
         let u_t: [f32; 4] = Default::default();
 

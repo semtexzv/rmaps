@@ -13,6 +13,7 @@ pub extern crate rand;
 pub extern crate rayon;
 
 pub extern crate regex;
+pub extern crate rusqlite;
 
 
 #[macro_use]

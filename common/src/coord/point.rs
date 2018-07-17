@@ -52,6 +52,19 @@ impl WorldPoint {
     pub fn scaled(&mut self, f: f64) -> WorldPoint {
         WorldPoint::new(self.x * f, self.y * f)
     }
+
+    pub fn tile_at_zoom(&self, zoom: i32) -> super::tile::UnwrappedTileCoords {
+        let tiles = 1 << zoom;
+        let xx = self.x * tiles as f64;
+        let yy = self.y * tiles as f64;
+        let tx = xx.floor() as i32; //if xx < 0. { xx.ceil() } else { xx.floor() }  as i32;
+        let ty = yy.floor() as i32;
+        super::tile::UnwrappedTileCoords {
+            x: tx,
+            y: ty,
+            z : zoom,
+        }
+    }
 }
 
 impl Into<geo::Coordinate<f64>> for WorldPoint {

@@ -1,11 +1,12 @@
 use prelude::*;
+
 use coord::*;
 use mercator::*;
 
 /// Structure holding information about Tile IDs needed to cover certain area at zoom level.
 /// This structure is used to calculate which tiles need to be rendered
 #[derive(Debug, Clone)]
-pub struct TileCover(pub Vec<UnwrappedTileCoords>);
+pub struct TileCover(pub BTreeSet<UnwrappedTileCoords>);
 
 impl TileCover {
     fn new_raw(tl: WorldPoint, tr: WorldPoint, br: WorldPoint, bl: WorldPoint, z: i32) -> Self {
@@ -28,27 +29,25 @@ impl TileCover {
         let center = poly.centroid().unwrap();
         // Expand polygon by 10%, so it will contain extreme screen coordinates
         let exp = poly.map_coords(&|c| {
-            ((c.0 - center.x()) * 0.9 + center.x(),
-             (c.1 - center.y()) * 0.9 + center.y())
+            ((c.0 - center.x()) * 0.8 + center.x(),
+             (c.1 - center.y()) * 0.8 + center.y())
         });
 
 
-        let mut cover = vec![];
-        const SAMPLES : f64 = 32.;
+        let mut cover = BTreeSet::new();
+        const SAMPLES: f64 = 32.;
 
         float_step(bbox.xmin, bbox.xmax, (bbox.xmax - bbox.xmin) / SAMPLES, |x| {
             float_step(bbox.ymin, bbox.ymax, (bbox.ymax - bbox.ymin) / SAMPLES, |y| {
                 let pt: geo::Point<_> = (x, y).into();
                 if exp.contains(&pt) {
+                    let tile = WorldPoint::new(x,y).tile_at_zoom(z);
                     let xx = x * tiles as f64;
                     let yy = y * tiles as f64;
-                    // Integer coordinates, we need to override rounding for negative numbers
-                    // TODO: Verify whether floor operation on all shouldnt be better
-                    let tx = xx.floor() as i32;
+                    let tx = xx.floor() as i32; //if xx < 0. { xx.ceil() } else { xx.floor() }  as i32;
                     let ty = yy.floor() as i32;
 
-                    //info!("Should add pt : {:?}, {:?}", (x * tiles as f64) as i32, (y * tiles as f64) as i32);
-                    cover.push(UnwrappedTileCoords {
+                    cover.insert(UnwrappedTileCoords {
                         x: tx,
                         y: ty,
                         z: z,
@@ -57,11 +56,12 @@ impl TileCover {
             });
         });
 
-        { cover.retain(|&x| x.y >= 0 && x.y < tiles); }
-        { cover.sort_by(|a, b| a.partial_cmp(b).unwrap_or(::std::cmp::Ordering::Less)); }
-        { cover.dedup_by(|a, b| a.x == b.x && a.y == b.y); }
+        let mut cover = cover.into_iter()
+            .filter(|t| t.y >= 0 && t.y < tiles)
+            .collect();
 
-        println!("Cover: {:#?}", cover);
+
+        //println!("Cover: {:#?}", cover);
 
         TileCover(cover)
     }
@@ -78,7 +78,7 @@ impl TileCover {
 
     pub fn from_camera(camera: &Camera) -> Self {
         let mut size = camera.size();
-        let z = (camera.zoom.ceil() as i32 + 1);
+        let z = camera.zoom_int();
         let w = size.w;
         let h = size.h;
 
@@ -88,6 +88,10 @@ impl TileCover {
         let mut bl = camera.window_to_world(PixelPoint::new(0, h));
 
         TileCover::new_raw(tl, tr, br, bl, z)
+    }
+
+    pub fn tiles(&self) -> BTreeSet<UnwrappedTileCoords> {
+        self.0.clone()
     }
 }
 
@@ -169,7 +173,7 @@ pub struct Camera {
     pub window_size: PixelSize,
     /// Camera position in 0-1 scale,
     pub pos: WorldPoint,
-    pub bearing : f32,
+    pub bearing: f32,
 
     pub zoom: f32,
 }
@@ -182,6 +186,9 @@ impl Camera {
     pub fn zoom(&self) -> f32 {
         return self.zoom;
     }
+    pub fn zoom_int(&self) ->i32 {
+        (self.zoom.round() + 1.) as i32
+    }
     pub fn set_zoom(&mut self, z: f32) {
         self.zoom = z;
         if self.zoom < 0. {
@@ -193,7 +200,7 @@ impl Camera {
         self.bearing
     }
 
-    pub fn set_bearing(&mut self, v : f32) {
+    pub fn set_bearing(&mut self, v: f32) {
         self.bearing = v
     }
     pub fn size(&self) -> PixelSize {
@@ -208,6 +215,7 @@ impl Camera {
     }
     pub fn set_pos(&mut self, pos: WorldPoint) {
         self.pos = pos;
+        self.pos.y = f64::min(f64::max(0., self.pos.y), 1.);
     }
 
     pub fn projection(&self) -> Matrix4<f32> {
@@ -246,7 +254,7 @@ impl Default for Camera {
         Camera {
             window_size: Default::default(),
             pos: WorldPoint::new(0.5, 0.5),
-            bearing : 0.,
+            bearing: 0.,
             zoom: 0.,
         }
     }

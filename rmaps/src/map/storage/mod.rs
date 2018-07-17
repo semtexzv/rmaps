@@ -4,6 +4,7 @@ pub mod resource;
 
 pub mod local;
 pub mod network;
+pub mod offline_cache;
 mod url;
 
 pub use self::resource::*;
@@ -23,6 +24,7 @@ impl Message for ResourceRequest {
 
 //#[derive(Actor)]
 pub struct DefaultFileSource {
+    cache: offline_cache::OfflineCache,
     local: SyncAddr<local::LocalFileSource>,
     network: SyncAddr<network::NetworkFileSource>,
 }
@@ -34,11 +36,12 @@ impl Actor for DefaultFileSource {
 impl Handler<ResourceRequest> for DefaultFileSource {
     type Result = ();
 
-    fn handle(&mut self, msg: ResourceRequest, _ctx: &mut Context<Self>)  {
+    fn handle(&mut self, msg: ResourceRequest, _ctx: &mut Context<Self>) {
+
         let url = { msg.0.url().to_string() };
         if url.starts_with("file://") || url.starts_with("local://") {
             self.local.do_send(msg);
-        } else if url.starts_with("http://") || url.starts_with("https://")  {
+        } else if url.starts_with("http://") || url.starts_with("https://") {
             self.network.do_send(msg);
         } else {
             panic!("No data source available for {:?}", url);
@@ -50,6 +53,8 @@ impl Handler<ResourceRequest> for DefaultFileSource {
 impl DefaultFileSource {
     pub fn new() -> Self {
         DefaultFileSource {
+            // TODO: Better location selection
+            cache : offline_cache::OfflineCache::new("./tile-data/cache.db").unwrap(),
             local: local::LocalFileSource::spawn(),
             network: network::NetworkFileSource::spawn(),
         }

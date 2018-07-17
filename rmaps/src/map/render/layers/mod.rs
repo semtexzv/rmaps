@@ -40,6 +40,9 @@ pub trait Layer: Debug {
     /// Called when new tile data arrives, individual layers will need to copy the Rc, if they need to keep the data around
     fn new_tile(&mut self, display: &Display, data: &Rc<data::TileData>) -> Result<()>;
 
+    /// Called before start of rendering each frame, layer should request needed resources
+    fn prepare(&mut self, params: render::PrepareParams) -> Result<()>;
+
     /// Called for new layers, or layers that have been explicitly changed
     /// Also called when zoom level changes
     fn evaluate(&mut self, params: &render::EvaluationParams) -> Result<()>;
@@ -91,7 +94,7 @@ pub trait BucketLayer: Debug {
     }
     fn eval_bucket(&mut self, params: &render::EvaluationParams, bucket: &mut Self::Bucket) -> Result<()>;
 
-    fn render_bucket(&mut self, params: &mut render::RenderParams, bucket: &Self::Bucket) -> Result<()>;
+    fn render_bucket(&mut self, params: &mut render::RenderParams, coords: UnwrappedTileCoords, bucket: &Self::Bucket) -> Result<()>;
 }
 
 #[derive(Debug)]
@@ -104,6 +107,7 @@ pub struct BucketState<B: Bucket> {
 pub struct BucketLayerHolder<L: BucketLayer> {
     pub layer: L,
     pub buckets: BTreeMap<TileCoords, BucketState<L::Bucket>>,
+    pub tiles: BTreeSet<UnwrappedTileCoords>,
 }
 
 impl<L: BucketLayer> BucketLayerHolder<L> {
@@ -111,6 +115,7 @@ impl<L: BucketLayer> BucketLayerHolder<L> {
         BucketLayerHolder {
             layer: l,
             buckets: BTreeMap::new(),
+            tiles: BTreeSet::new(),
         }
     }
 }
@@ -128,41 +133,78 @@ impl<L: BucketLayer> Layer for BucketLayerHolder<L> {
         Ok(())
     }
 
-    /// TODO, better system for re-evaluating and uploading  modified data,
-    /// Only re-evaluate on zoom change of integer coordinates ?
-    fn evaluate(&mut self, params: &render::EvaluationParams) -> Result<()> {
-        let zoom = params.zoom as _;
-        let pred = |(k, _): &(&TileCoords, &mut BucketState<L::Bucket>)| {
-            k.z < zoom as i32 + 1
-        };
-
-        for (k, mut v) in self.buckets.iter_mut().filter(pred) {
-            let should_eval = match v.evaluated {
-                None => true,
-                Some(ref e) if e.zoom != zoom => true,
-                _ => false,
-            };
-            if should_eval {
-                self.layer.eval_bucket(params, &mut v.bucket)?;
-            }
-
-            v.evaluated = Some(render::EvaluationParams::new(zoom));
-        }
+    fn prepare(&mut self, params: render::PrepareParams) -> Result<()> {
+        self.tiles = self.get_renderable_tiles(&params.cover);
 
         Ok(())
     }
 
-    // TODO: beter render picking system, checkout mapbox tile cover
+
+    /// TODO, better system for re-evaluating and uploading  modified data,
+    /// Only re-evaluate on zoom change of integer coordinates ?
+    fn evaluate(&mut self, params: &render::EvaluationParams) -> Result<()> {
+        let zoom = params.zoom;
+        for t in self.tiles.iter() {
+            if let Some(mut v) = self.buckets.get_mut(&t.wrap()) {
+                let should_eval = match v.evaluated {
+                    None => true,
+                    Some(ref e) if e.zoom != zoom => true,
+                    _ => false,
+                };
+                if should_eval {
+                    self.layer.eval_bucket(params, &mut v.bucket)?;
+                }
+
+                v.evaluated = Some(render::EvaluationParams::new(zoom));
+            } else {
+               // warn!("Tile {:?} should be loaded, but wasnt", t);
+            }
+        }
+        Ok(())
+    }
+
     fn render(&mut self, params: &mut render::RenderParams) -> Result<()> {
         self.layer.begin_pass(params, RenderPass::Opaque)?;
-        let tiles = params.tiles.clone();
 
-        for (k, mut v) in self.buckets.iter_mut().filter(|(k, _)| tiles.contains(k)) {
-            v.bucket.upload(params.disp)?;
-            self.layer.render_bucket(params, &mut v.bucket)?;
+
+        for t in self.tiles.iter() {
+            if let Some(mut v) = self.buckets.get_mut(&t.wrap()) {
+                v.bucket.upload(params.display)?;
+                self.layer.render_bucket(params, *t, &mut v.bucket)?;
+            } else {
+                warn!("Tile {:?} should be loaded, but wasnt", t);
+            }
         }
+
         self.layer.end_pass(params, RenderPass::Opaque)?;
         Ok(())
+    }
+}
+
+impl<L: BucketLayer> BucketLayerHolder<L> {
+    fn get_renderable_tiles(&self, cover: &TileCover) -> BTreeSet<UnwrappedTileCoords> {
+        let mut expected_tiles = cover.tiles().clone();
+
+        for i in 0..10 {
+            let mut to_add = BTreeSet::new();
+            let mut to_remove = BTreeSet::new();
+
+
+            for t in expected_tiles.iter() {
+                if !self.buckets.contains_key(&t.wrap()) {
+                    if let Some(p) = t.parent() {
+                        to_add.insert(p);
+                        to_remove.insert(*t);
+                    }
+                }
+            }
+
+            expected_tiles.extend(to_add.iter());
+            for r in to_remove {
+                expected_tiles.remove(&r);
+            }
+        }
+        expected_tiles
     }
 }
 

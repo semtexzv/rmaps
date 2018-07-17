@@ -45,7 +45,7 @@ pub use tokio;
 pub use palette;
 pub use url;
 pub use uuid::prelude::*;
-
+pub use rusqlite;
 
 pub use enumflags::*;
 pub use enumflags_derive::*;

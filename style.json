@@ -27,9 +27,9 @@
             "zoom"
           ],
           0,
-          "#0FF",
+          "#000",
           10,
-          "#F00"
+          "#008"
         ],
         "background-opacity": [
           "interpolate",
@@ -69,10 +69,7 @@
           0,
           [
             "rgb",
-            [
-              "get",
-              "abc"
-            ],
+            1,
             [
               "get",
               "abc"
@@ -85,10 +82,7 @@
           3,
           [
             "rgba",
-            [
-              "get",
-              "abc"
-            ],
+           1,
             [
               "get",
               "abc"

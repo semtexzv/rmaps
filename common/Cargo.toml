@@ -22,6 +22,8 @@ cgmath = "*"
 failure = "*"
 itertools="*"
 
+rusqlite= { version =  "*", features =  ["bundled"] }
+
 scoped-tls = { version = "*", features = ["nightly"] }
 
 serde="*"

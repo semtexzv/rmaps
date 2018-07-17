@@ -1,8 +1,7 @@
 use ::prelude::*;
 
-use util::{LatLng, LatLngBounds,Camera};
+use util::{LatLng, LatLngBounds, Camera};
 use coord::*;
-
 
 
 use std::f64::consts::PI;
@@ -38,13 +37,15 @@ DEVICE : Normalized device coordinates
 impl Mercator {
     /// Create a matrix that converts coordinates from internal tile coordinates : 8192x 8192
     /// into 1x1 square with 0,0 in top left corner
-    pub fn tile_to_world(coord: &TileCoords) -> ::cgmath::Matrix4<f32> {
-        let n = num::pow(2.0f32, coord.z as usize);
-        let w = 1. / n;
-        let h = 1. / n;
+    pub fn tile_to_world(coord: impl Into<UnwrappedTileCoords>) -> ::cgmath::Matrix4<f32> {
+        let coord: UnwrappedTileCoords = coord.into();
+        let tiles = (1 << coord.z) as f32;
+        let w = 1. / tiles;
+        let h = 1. / tiles;
 
-        let cx = ((coord.x as f32 + 0.5) / n);
-        let cy = (((coord.y as f32 + 0.5)) / n);
+
+        let cx = ((coord.x as f32 + 0.5) / tiles);
+        let cy = (((coord.y as f32 + 0.5)) / tiles);
         //println!("{:?} - c: {:?} , B: {:?}", coord, (cx, cy), (w, h));
 
         let translate = ::cgmath::Matrix4::from_translation((cx, cy, 0.).into());

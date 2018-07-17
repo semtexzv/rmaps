@@ -82,6 +82,16 @@ impl TileCoords {
     }
 }
 
+impl Into<UnwrappedTileCoords> for TileCoords {
+    fn into(self) -> UnwrappedTileCoords {
+        UnwrappedTileCoords {
+            x: self.x,
+            y: self.y,
+            z: self.z,
+        }
+    }
+}
+
 #[derive(Debug, Clone, Copy, Hash, PartialOrd, PartialEq, Ord, Eq)]
 pub struct UnwrappedTileCoords {
     pub z: i32,
@@ -100,8 +110,14 @@ impl UnwrappedTileCoords {
 
     pub fn parent(&self) -> Option<Self> {
         if self.z > 0 {
+            let x = if self.x < 0 {
+                self.x / 2 - 1
+            } else {
+                self.x / 2
+            };
+
             return Some(Self::new(
-                self.x / 2,
+                x,
                 self.y / 2,
                 self.z - 1,
             ));
@@ -160,7 +176,12 @@ impl UnwrappedTileCoords {
     }
 
     pub fn wrap(&self) -> TileCoords {
+        let x = self.x;
         let tiles = 1 << self.z;
-        return TileCoords::new(self.x % tiles, self.y % tiles, self.z);
+
+        let wrap = (if x < 0 { x - tiles + 1 } else { x }) / tiles;
+        let cx = self.x - wrap * tiles;
+
+        return TileCoords::new(cx, self.y % tiles, self.z);
     }
 }

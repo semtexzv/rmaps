@@ -35,6 +35,11 @@ impl Layer for BackgroundLayer {
         Ok(())
     }
 
+    fn prepare(&mut self, params: render::PrepareParams) -> Result<()> {
+        Ok(())
+    }
+
+
     fn evaluate(&mut self, params: &render::EvaluationParams) -> Result<()> {
         let evaluator = PropertiesEvaluator::from(params);
         self.properties.eval(&self.style_layer, &evaluator).unwrap();
