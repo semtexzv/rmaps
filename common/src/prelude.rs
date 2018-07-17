@@ -27,6 +27,8 @@ pub use glium::{
         ProgramCreationInput,
     },
 };
+pub use cgmath::{SquareMatrix, Matrix4, Vector4};
+
 
 pub use time::{
     Duration,

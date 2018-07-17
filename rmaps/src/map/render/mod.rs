@@ -13,6 +13,11 @@ use map::tiles::data;
 use std::hash;
 
 
+pub struct RendererParams<'a> {
+    disp : &'a Display,
+    
+}
+
 /// Idea:
 /// Stencil test for each tile, by utilizing encoding tile ids into 8 or 16 bits
 /// and using Equality tests for stencil clipping, therefore, no overlaps will be rendered
@@ -25,8 +30,11 @@ pub struct RenderParams<'a> {
     pub view: cgmath::Matrix4<f32>,
     pub camera: &'a Camera,
 
+    pub tiles : Vec<TileCoords>,
+
     pub frame_start: PreciseTime,
 }
+
 
 #[derive(Debug)]
 pub struct EvaluationParams {

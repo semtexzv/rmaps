@@ -155,12 +155,9 @@ impl<L: BucketLayer> Layer for BucketLayerHolder<L> {
     // TODO: beter render picking system, checkout mapbox tile cover
     fn render(&mut self, params: &mut render::RenderParams) -> Result<()> {
         self.layer.begin_pass(params, RenderPass::Opaque)?;
-        let zoom = params.camera.zoom;
+        let tiles = params.tiles.clone();
 
-        let pred = |(k, _): &(&TileCoords, &mut BucketState<L::Bucket>)| {
-            k.z < zoom as i32 + 1
-        };
-        for (k, mut v) in self.buckets.iter_mut().filter(pred) {
+        for (k, mut v) in self.buckets.iter_mut().filter(|(k, _)| tiles.contains(k)) {
             v.bucket.upload(params.disp)?;
             self.layer.render_bucket(params, &mut v.bucket)?;
         }

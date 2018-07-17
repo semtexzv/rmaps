@@ -201,6 +201,9 @@ impl MapViewImpl {
             view,
             camera: &self.camera,
 
+            // TODO: 2 levels of renderparams, dont generate tileCover here, generate it and associated info in renderer
+            tiles : TileCover::from_camera(&self.camera).0.iter().map(|t| t.wrap()).collect(),
+
             frame_start: PreciseTime::now(),
         };
 

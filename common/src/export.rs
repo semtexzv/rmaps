@@ -1,10 +1,9 @@
 pub use prelude::*;
 
 
-pub use ::glium::program;
-pub use ::glium::uniform;
-
 pub use ::glium::{
+    program,
+    uniform,
     Surface,
     backend::Facade,
 };
@@ -58,3 +57,4 @@ pub use ::geometry;
 pub use color::*;
 
 pub use coord::*;
+pub use mercator::Mercator;
