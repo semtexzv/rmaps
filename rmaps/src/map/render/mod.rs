@@ -11,7 +11,7 @@ pub mod shaders;
 use map::style;
 use map::tiles::{
     TileLoader,
-    data
+    data,
 };
 use std::hash;
 
@@ -20,20 +20,17 @@ pub struct RendererParams<'a> {
     pub display: &'a Display,
     pub frame: &'a mut glium::Frame,
     pub camera: &'a Camera,
-    pub tile_loader : &'a TileLoader,
 
     pub frame_start: PreciseTime,
+
 }
 
 pub struct PrepareParams<'a> {
     pub camera: &'a Camera,
     pub cover: &'a TileCover,
-}
 
-/// Idea:
-/// Stencil test for each tile, by utilizing encoding tile ids into 8 or 16 bits
-/// and using Equality tests for stencil clipping, therefore, no overlaps will be rendered
-///
+    pub requestor: &'a mut dyn FnMut(&str, TileCoords) ,
+}
 
 pub struct RenderParams<'a> {
     pub display: &'a Display,
@@ -101,16 +98,34 @@ impl Renderer {
     pub fn render(&mut self, mut params: RendererParams) -> Result<()> {
         let camera = params.camera;
         let cover = TileCover::from_camera(camera);
-        self.layers.deref_mut().par_iter_mut().for_each(|l| {
-            l.layer.prepare(PrepareParams {
-                camera,
-                cover : &cover,
-            }).unwrap();
-        });
 
         let eval_params = EvaluationParams::new(params.camera.zoom);
 
-        for l in self.layers.iter_mut() {
+        let requests: Result<BTreeSet<(String, TileCoords)>> = self.layers
+            .deref_mut()
+            .par_iter_mut()
+            .map(|l| {
+                let mut req = vec![];
+                l.layer.prepare(PrepareParams {
+                    camera,
+                    cover: &cover,
+                    requestor: &mut |source, tile| {
+                        req.push((source.to_string(), tile));
+                    },
+                })?;
+
+                Ok(req)
+            })
+            .collect::<Result<Vec<_>>>()
+            .map(|outer| {
+                outer.into_iter().flat_map(|inner| inner.into_iter())
+            })
+            .map(|r| r.collect());
+
+
+        trace!("Needed tiles: {:#?}", requests);
+
+        self.layers.deref_mut().par_iter_mut().for_each(|l| {
             let (should_eval, really) = match l.evaluated {
                 None => (true, true),
                 Some(ref e) if e.zoom != eval_params.zoom => (true, false),
@@ -118,11 +133,10 @@ impl Renderer {
             };
 
             if should_eval {
-                l.layer.evaluate(&eval_params)?;
+                l.layer.evaluate(&eval_params).unwrap();
             }
-        }
+        });
 
-        let cover = TileCover::from_camera(&params.camera);
         for l in self.layers.iter_mut() {
             l.layer.render(&mut RenderParams {
                 display: &params.display,

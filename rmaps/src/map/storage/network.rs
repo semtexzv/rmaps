@@ -71,7 +71,7 @@ impl Handler<super::ResourceRequest> for NetworkFileSource {
                                             request: msg.request,
                                         };
 
-                                        msg.callback.send(cb).wait();
+                                        msg.callback.send(cb).wait().unwrap();
                                     }
                                     Err(e) => {
                                         let cb = super::ResourceCallback {

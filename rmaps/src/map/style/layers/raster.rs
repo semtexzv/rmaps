@@ -4,6 +4,8 @@ use super::{
     LayerCommon,
     BaseLayout,
     Visibility,
+    StyleLayer,
+    StyleLayerExt,
     StyleProp,
 };
 
@@ -13,11 +15,20 @@ pub struct RasterLayer {
     pub common: LayerCommon,
     #[serde(default = "BaseLayout::default")]
     pub layout: BaseLayout,
-    pub  paint: Option<RasterPaint>,
+    #[serde(default)]
+    pub  paint: RasterPaint,
+}
+
+impl StyleLayer for RasterLayer {
+    type PaintType = RasterPaint;
+    type LayoutType = BaseLayout;
+
+    fn get_paint(&self) -> &Self::PaintType { &self.paint }
+    fn get_layout(&self) -> &Self::LayoutType { &self.layout }
 }
 
 
-#[derive(Deserialize, Debug, Clone)]
+#[derive(Deserialize, Default, Debug, Clone)]
 pub struct RasterPaint {
     #[serde(rename = "raster-opacity")]
     opacity: Option<StyleProp<f32>>,

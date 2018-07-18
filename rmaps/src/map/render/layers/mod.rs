@@ -8,7 +8,6 @@ use map::{
     },
 };
 
-
 macro_rules! layer_program {
     ($facade:expr, $name:expr, $uniforms:expr, $features:expr) => { {
             let vert_src = include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/../shaders/",$name,".vert.glsl"));
@@ -67,6 +66,19 @@ pub trait Layer: Debug {
     }
 }
 
+pub trait LayerExt: Layer {
+    type StyleLayer: style::StyleLayer;
+    // TODO: This will probably hold runtime specialization of source
+    type Source: Debug = ();
+
+    fn new(facade: &Display, style_layer: &Self::StyleLayer) -> Self;
+    fn source_name(&self) -> Option<&str>;
+}
+
+pub trait WithSource {
+    type Source: Debug = ();
+    fn source_name(&self) -> Option<&str>;
+}
 
 pub trait Bucket: Debug {
     fn needs_explicit_eval(&self) -> bool {
@@ -75,7 +87,7 @@ pub trait Bucket: Debug {
     fn upload(&mut self, display: &Display) -> Result<()>;
 }
 
-pub trait BucketLayer: Debug {
+pub trait BucketLayer: Debug + WithSource {
     type Bucket: Bucket;
 
     fn begin_pass(&mut self, params: &mut render::RenderParams, pass: RenderPass) -> Result<()> {
@@ -133,8 +145,14 @@ impl<L: BucketLayer> Layer for BucketLayerHolder<L> {
         Ok(())
     }
 
-    fn prepare(&mut self, params: render::PrepareParams) -> Result<()> {
-        self.tiles = self.get_renderable_tiles(&params.cover);
+    fn prepare(&mut self, mut params: render::PrepareParams) -> Result<()> {
+        let (next, missing) = self.get_renderable_tiles(&params.cover);
+        self.tiles = next;
+        if let Some(name) = self.layer.source_name() {
+            for m in missing {
+                (params.requestor)(name, m.wrap());
+            }
+        }
 
         Ok(())
     }
@@ -156,8 +174,6 @@ impl<L: BucketLayer> Layer for BucketLayerHolder<L> {
                 }
 
                 v.evaluated = Some(render::EvaluationParams::new(zoom));
-            } else {
-               // warn!("Tile {:?} should be loaded, but wasnt", t);
             }
         }
         Ok(())
@@ -171,8 +187,6 @@ impl<L: BucketLayer> Layer for BucketLayerHolder<L> {
             if let Some(mut v) = self.buckets.get_mut(&t.wrap()) {
                 v.bucket.upload(params.display)?;
                 self.layer.render_bucket(params, *t, &mut v.bucket)?;
-            } else {
-                warn!("Tile {:?} should be loaded, but wasnt", t);
             }
         }
 
@@ -182,9 +196,9 @@ impl<L: BucketLayer> Layer for BucketLayerHolder<L> {
 }
 
 impl<L: BucketLayer> BucketLayerHolder<L> {
-    fn get_renderable_tiles(&self, cover: &TileCover) -> BTreeSet<UnwrappedTileCoords> {
+    fn get_renderable_tiles(&self, cover: &TileCover) -> (BTreeSet<UnwrappedTileCoords>, BTreeSet<UnwrappedTileCoords>) {
         let mut expected_tiles = cover.tiles().clone();
-
+        let mut missing = BTreeSet::new();
         for i in 0..10 {
             let mut to_add = BTreeSet::new();
             let mut to_remove = BTreeSet::new();
@@ -194,6 +208,7 @@ impl<L: BucketLayer> BucketLayerHolder<L> {
                 if !self.buckets.contains_key(&t.wrap()) {
                     if let Some(p) = t.parent() {
                         to_add.insert(p);
+                        missing.insert(*t);
                         to_remove.insert(*t);
                     }
                 }
@@ -204,9 +219,10 @@ impl<L: BucketLayer> BucketLayerHolder<L> {
                 expected_tiles.remove(&r);
             }
         }
-        expected_tiles
+        (expected_tiles, missing)
     }
 }
+
 
 pub fn parse_style_layers(facade: &Display, style: &style::Style) -> Vec<Box<dyn Layer>> {
     let mut res: Vec<Box<Layer>> = vec![];

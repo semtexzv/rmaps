@@ -17,7 +17,7 @@ pub use cgmath::{
 
 
 pub use rand;
-pub use itertools::{self, Itertools};
+pub use itertools::{self};
 
 pub use serde::{
     self,

@@ -82,7 +82,7 @@ pub struct MapViewImpl {
     tile_worker: Addr<Syn, tiles::data::TileDataWorker>,
     facade: Box<glium::Display>,
     style: Option<style::Style>,
-    tile_storage: tiles::TileLoader,
+    tile_loader: tiles::TileLoader,
 
 }
 
@@ -106,7 +106,7 @@ impl MapViewImpl {
 
             facade: Box::new((*f).clone()),
             style: None,
-            tile_storage: tiles::TileLoader::new(),
+            tile_loader: tiles::TileLoader::new(),
         };
 
 
@@ -142,13 +142,13 @@ impl MapViewImpl {
             display: self.facade.deref(),
             frame: target,
             camera: &self.camera,
-            tile_loader : &TileLoader,
 
             frame_start: PreciseTime::now(),
         };
 
         self.renderer.render(params).unwrap();
 
+        /*
         if let Some(ref style) = self.style {
             for (src_id, src) in style.sources.iter() {
                 let needed = self.tile_storage.needed_tiles();
@@ -161,6 +161,7 @@ impl MapViewImpl {
                 }
             }
         }
+        */
     }
 }
 
@@ -188,7 +189,7 @@ impl Handler<storage::ResourceCallback> for MapViewImpl {
                         self.set_style(parsed);
                     }
                     storage::Request::Tile(storage::TileRequestData { coords, ref source, .. }) => {
-                        self.tile_storage.finished_tile(&coords);
+                        //self.tile_storage.finished_tile(&coords);
                         let source_data = self.style.as_ref().unwrap().sources.get(source).unwrap().clone();
 
                         let rq = tiles::data::DecodeTile {

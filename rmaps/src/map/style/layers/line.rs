@@ -5,6 +5,8 @@ use super::{
     LayerCommon,
     BaseLayout,
     Visibility,
+    StyleLayer,
+    StyleLayerExt,
     StyleProp,
 };
 
@@ -13,12 +15,21 @@ use super::{
 pub struct LineLayer {
     #[serde(flatten)]
     pub common: LayerCommon,
-    pub layout: Option<LineLayout>,
-    pub paint: Option<LinePaint>,
+    #[serde(default)]
+    pub layout: LineLayout,
+    #[serde(default)]
+    pub paint: LinePaint,
 }
 
+impl StyleLayer for LineLayer {
+    type PaintType = LinePaint;
+    type LayoutType = LineLayout;
 
-#[derive(Deserialize, Debug, Clone)]
+    fn get_paint(&self) -> &Self::PaintType { &self.paint }
+    fn get_layout(&self) -> &Self::LayoutType { &self.layout }
+}
+
+#[derive(Deserialize, Debug, Default, Clone)]
 pub struct LineLayout {
     #[serde(rename = "line-cap")]
     cap: Option<StyleProp<String>>,
@@ -32,7 +43,7 @@ pub struct LineLayout {
     visibility: Option<Visibility>,
 }
 
-#[derive(Deserialize, Debug, Clone)]
+#[derive(Deserialize, Debug, Default, Clone)]
 pub struct LinePaint {
     #[serde(rename = "line-opacity")]
     opacity: Option<StyleProp<f32>>,

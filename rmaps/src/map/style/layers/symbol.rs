@@ -4,6 +4,8 @@ use super::{
     LayerCommon,
     BaseLayout,
     Visibility,
+    StyleLayer,
+    StyleLayerExt,
     StyleProp,
 };
 
@@ -11,12 +13,21 @@ use super::{
 pub struct SymbolLayer {
     #[serde(flatten)]
     pub  common: LayerCommon,
-    pub  layout: Option<SymbolLayout>,
-    pub paint: Option<SymbolPaint>,
+    #[serde(default)]
+    pub  layout: SymbolLayout,
+    #[serde(default)]
+    pub paint: SymbolPaint,
 }
 
+impl StyleLayer for SymbolLayer {
+    type PaintType = SymbolPaint;
+    type LayoutType = SymbolLayout;
 
-#[derive(Deserialize, Debug, Clone)]
+    fn get_paint(&self) -> &Self::PaintType { &self.paint }
+    fn get_layout(&self) -> &Self::LayoutType { &self.layout }
+}
+
+#[derive(Deserialize,Default, Debug, Clone)]
 pub struct SymbolLayout {
     #[serde(default, rename = "symbol-placement")]
     placement: StyleProp<Option<String>>,
@@ -28,5 +39,5 @@ pub struct SymbolLayout {
     avoid_edges: Option<bool>,
 }
 
-#[derive(Deserialize, Debug, Clone)]
+#[derive(Deserialize,Default, Debug, Clone)]
 pub struct SymbolPaint {}

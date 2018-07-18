@@ -185,6 +185,11 @@ pub struct FillLayer {
     shader_program: glium::Program,
     layout: (UniformPropertyLayout, FeaturePropertyLayout),
 }
+impl layers::WithSource for FillLayer{
+    fn source_name(&self) -> Option<&str> {
+        self.style_layer.common.source.as_ref().map(Deref::deref)
+    }
+}
 
 impl layers::BucketLayer for FillLayer {
     type Bucket = FillBucket;
@@ -214,22 +219,6 @@ impl layers::BucketLayer for FillLayer {
 
             FeaturePropertyBinder::extend(&self.layout.1, &data.props, &self.style_layer, &mut bucket.feature_data)
         }
-        /*
-        for (id, data) in bucket.features.iter_mut() {
-            let evaluator = PropertiesEvaluator::only_zoom(params.zoom).with_feature(&data.feature);
-            data.props.eval(&self.style_layer, &evaluator)?;
-
-
-            let prop = FillVertexProperties {
-                col: data.props.color.get(),
-                opacity: data.props.opacity.get(),
-            };
-
-            for p in bucket.properties[data.start..data.end].iter_mut() {
-                *p = prop;
-            }
-        }
-        */
         bucket.eval_dirty = false;
         bucket.upload_dirty = true;
         Ok(())

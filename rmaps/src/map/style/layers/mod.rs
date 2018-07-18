@@ -74,6 +74,10 @@ pub trait StyleLayer {
     fn get_layout(&self) -> &Self::LayoutType;
 }
 
+pub trait StyleLayerExt: StyleLayer + Sized {
+    type RenderLayer: ::map::render::layers::LayerExt<StyleLayer=Self>;
+}
+
 use super::expr::DescribeType;
 
 #[derive(Debug, Clone, Deserialize)]
@@ -101,12 +105,11 @@ impl<T: DescribeType + Debug> StyleProp<T> {
     }
 }
 
-impl<T: DescribeType + Debug> From<T> for  StyleProp<T> {
+impl<T: DescribeType + Debug> From<T> for StyleProp<T> {
     fn from(v: T) -> Self {
         StyleProp::Value(v)
     }
 }
-
 
 
 impl<T: Debug + Default + super::expr::DescribeType> Default for StyleProp<T> {
