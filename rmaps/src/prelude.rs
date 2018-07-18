@@ -1,4 +1,5 @@
 pub use ::common::export::*;
+pub use common::failure;
 pub use rmaps_derive::*;
 
 pub fn start_in_thread<A: Actor<Context=Context<A>> + Send + 'static, F: FnOnce() -> A + Send + 'static>(a: F) -> Addr<Syn, A> {

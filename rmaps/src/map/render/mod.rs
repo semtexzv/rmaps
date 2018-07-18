@@ -9,7 +9,10 @@ pub mod shaders;
 
 
 use map::style;
-use map::tiles::data;
+use map::tiles::{
+    TileLoader,
+    data
+};
 use std::hash;
 
 
@@ -17,6 +20,7 @@ pub struct RendererParams<'a> {
     pub display: &'a Display,
     pub frame: &'a mut glium::Frame,
     pub camera: &'a Camera,
+    pub tile_loader : &'a TileLoader,
 
     pub frame_start: PreciseTime,
 }

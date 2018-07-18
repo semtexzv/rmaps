@@ -82,7 +82,7 @@ pub struct MapViewImpl {
     tile_worker: Addr<Syn, tiles::data::TileDataWorker>,
     facade: Box<glium::Display>,
     style: Option<style::Style>,
-    tile_storage: tiles::TileStorage,
+    tile_storage: tiles::TileLoader,
 
 }
 
@@ -106,7 +106,7 @@ impl MapViewImpl {
 
             facade: Box::new((*f).clone()),
             style: None,
-            tile_storage: tiles::TileStorage::new(),
+            tile_storage: tiles::TileLoader::new(),
         };
 
 
@@ -142,6 +142,7 @@ impl MapViewImpl {
             display: self.facade.deref(),
             frame: target,
             camera: &self.camera,
+            tile_loader : &TileLoader,
 
             frame_start: PreciseTime::now(),
         };

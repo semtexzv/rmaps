@@ -8,8 +8,8 @@ glium = { git  = "https://github.com/semtexzv/glium", branch="tmp-working"  }
 #glium = { path  = "../libs/glium" }
 glium_derive = { git  = "https://github.com/semtexzv/glium_derive" }
 
-imgui = { path = "../../imgui-rs/" }
-imgui-glium-renderer = { path = "../../imgui-rs/imgui-glium-renderer", features = [ "glium-glutin" ] }
+#imgui = { path = "../../imgui-rs/" }
+#imgui-glium-renderer = { path = "../../imgui-rs/imgui-glium-renderer", features = [ "glium-glutin" ] }
 
 num = "*"
 rayon = "*"

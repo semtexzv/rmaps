@@ -9,10 +9,20 @@ mod url;
 
 pub use self::resource::*;
 
+#[derive(Debug, Fail)]
+pub enum ResourceError {
+    #[fail(display = "Resource not found")]
+    NotFound,
+    #[fail(display = "Too many requests")]
+    RateLimited,
+    #[fail(display = "Other errror: {}", 0)]
+    Other(Error)
+}
+
 #[derive(Debug)]
 pub struct ResourceCallback {
     pub request: Request,
-    pub result: Result<Resource>,
+    pub result: StdResult<Resource, ResourceError>,
 }
 
 impl Message for ResourceCallback {
@@ -37,7 +47,6 @@ impl Message for ResourceRequest {
     type Result = ();
 }
 
-//#[derive(Actor)]
 pub struct DefaultFileSource {
     cache: offline_cache::OfflineCache,
     local: SyncAddr<local::LocalFileSource>,

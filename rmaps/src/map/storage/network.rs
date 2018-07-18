@@ -40,7 +40,6 @@ impl Handler<super::ResourceRequest> for NetworkFileSource {
         println!("Getting: {:?}", msg.request.url());
 
         fn get(url: &str, msg: ResourceRequest, allowed_redirect_count: usize) -> Box<dyn Future<Item=(), Error=()>> {
-
             let request = Box::new(client::get(url)
                 .timeout(::std::time::Duration::from_secs(15))
                 .finish().unwrap()
@@ -76,7 +75,7 @@ impl Handler<super::ResourceRequest> for NetworkFileSource {
                                     }
                                     Err(e) => {
                                         let cb = super::ResourceCallback {
-                                            result: Err(e.into()),
+                                            result: Err(ResourceError::Other(e.into())),
                                             request: msg.request,
                                         };
                                         msg.callback.send(cb).wait().unwrap();
@@ -97,7 +96,6 @@ impl Handler<super::ResourceRequest> for NetworkFileSource {
 
         let fut = get(&msg.request.url(), msg, 3);
         Arbiter::handle().spawn(fut);
-
     }
 }
 
