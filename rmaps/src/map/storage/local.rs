@@ -11,8 +11,8 @@ impl Actor for LocalFileSource{
 impl Handler<super::ResourceRequest> for LocalFileSource {
     type Result = ();
 
-    fn handle(&mut self, msg: ResourceRequest, _ctx: &mut Context<Self>) {
-        let req = &msg.0;
+    fn handle(&mut self, mut msg: ResourceRequest, _ctx: &mut Context<Self>) {
+        let req = &msg.request;
         let url = {
             req.url().to_string()
         };
@@ -27,7 +27,11 @@ impl Handler<super::ResourceRequest> for LocalFileSource {
             req:req.clone(),
             data,
         };
-        msg.1.do_send(super::ResourceCallback(Ok(resp))).unwrap();
+        let cb = super::ResourceCallback {
+            request : msg.request,
+            result : Ok(resp),
+        };
+        msg.callback.send(cb).wait().unwrap();
     }
 }
 impl LocalFileSource {

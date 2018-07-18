@@ -1,6 +1,6 @@
 [package]
 name = "actix-web"
-version = "0.6.12"
+version = "0.6.15"
 authors = ["Nikolay Kim <fafhrd91@gmail.com>"]
 description = "Actix web is a simple, pragmatic and extremely fast web framework for Rust."
 readme = "README.md"
@@ -26,7 +26,7 @@ name = "actix_web"
 path = "src/lib.rs"
 
 [features]
-default = ["brotli", "flate2-c"]
+default = ["session", "brotli", "flate2-c"]
 
 # tls
 tls = ["native-tls", "tokio-tls"]
@@ -50,8 +50,8 @@ flate2-rust = ["flate2/rust_backend"]
 features = ["tls", "alpn", "session", "brotli", "flate2-c"]
 
 [dependencies]
-#actix = "^0.5.8"
-actix = { path = "../actix" }
+actix = "^0.5.8"
+
 base64 = "0.9"
 bitflags = "1.0"
 failure = "0.1.1"
@@ -111,3 +111,9 @@ version_check = "0.1"
 lto = true
 opt-level = 3
 codegen-units = 1
+
+#[workspace]
+#members = [
+#  "./",
+#  "tools/wsload/",
+#]

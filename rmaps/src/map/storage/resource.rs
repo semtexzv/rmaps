@@ -20,34 +20,18 @@ pub struct SourceRequestData {
 
 
 #[derive(Debug, Clone)]
-pub enum LoadPreference {
-    None,
-    Cache,
-    Network,
-    CacheOnly,
-    NetworkOnly,
-    Any,
-}
-
-#[derive(Debug, Clone)]
-pub enum RequestData {
+pub enum Request {
     Tile(TileRequestData),
     StyleJson(StyleRequestData),
     SourceJson(SourceRequestData),
 }
 
-#[derive(Debug, Clone)]
-pub struct Request {
-    pub load_pref: LoadPreference,
-    pub data: RequestData,
-}
-
 impl Request {
     pub fn url<'a>(&'a self) -> String {
-        return match &self.data {
-            RequestData::StyleJson(StyleRequestData { ref url, .. }) => url.to_string(),
-            RequestData::SourceJson(SourceRequestData { ref url, .. }) => url.to_string(),
-            RequestData::Tile(TileRequestData { ref template, ref coords, .. }) => {
+        return match &self {
+            Request::StyleJson(StyleRequestData { ref url, .. }) => url.to_string(),
+            Request::SourceJson(SourceRequestData { ref url, .. }) => url.to_string(),
+            Request::Tile(TileRequestData { ref template, ref coords, .. }) => {
                 template
                     .replace("{x}", &format!("{}", coords.x))
                     .replace("{y}", &format!("{}", coords.y))
@@ -59,54 +43,45 @@ impl Request {
         };
     }
     pub fn style(url: String) -> Request {
-        Request {
-            load_pref: LoadPreference::Any,
-            data: RequestData::StyleJson(
-                StyleRequestData {
-                    url: url,
-                }
-            ),
-        }
+        Request::StyleJson(
+            StyleRequestData {
+                url: url,
+            })
     }
     pub fn source(url: String) -> Request {
-        Request {
-            load_pref: LoadPreference::Any,
-            data: RequestData::SourceJson(
-                SourceRequestData {
-                    url: url,
-                }
-            ),
-        }
+        Request::SourceJson(
+            SourceRequestData {
+                url: url,
+            }
+        )
     }
 
     pub fn tile(src_id: String, url_template: String, coords: TileCoords) -> Request {
-        Request {
-            load_pref: LoadPreference::Any,
-            data: RequestData::Tile(
-                TileRequestData {
-                    template: url_template,
-                    coords,
-                    source: src_id,
-                }),
-        }
+        Request::Tile(
+            TileRequestData {
+                template: url_template,
+                coords,
+                source: src_id,
+            }
+        )
     }
 
     pub fn is_style(&self) -> bool {
-        return if let RequestData::StyleJson(..) = self.data {
+        return if let Request::StyleJson(..) = self {
             true
         } else {
             false
         };
     }
     pub fn is_source(&self) -> bool {
-        return if let RequestData::SourceJson(..) = self.data {
+        return if let Request::SourceJson(..) = self {
             true
         } else {
             false
         };
     }
     pub fn is_tile(&self) -> bool {
-        return if let RequestData::Tile(..) = self.data {
+        return if let Request::Tile(..) = self {
             true
         } else {
             false
@@ -115,21 +90,21 @@ impl Request {
 
 
     pub fn style_data(&self) -> Option<&StyleRequestData> {
-        return match self.data {
-            RequestData::StyleJson(ref s) => Some(s),
+        return match self {
+            Request::StyleJson(ref s) => Some(s),
             _ => None
         };
     }
 
     pub fn source_data(&self) -> Option<&SourceRequestData> {
-        return match self.data {
-            RequestData::SourceJson(ref s) => Some(s),
+        return match self {
+            Request::SourceJson(ref s) => Some(s),
             _ => None,
         };
     }
     pub fn tile_data(&self) -> Option<&TileRequestData> {
-        return match self.data {
-            RequestData::Tile(ref s) => Some(s),
+        return match self {
+            Request::Tile(ref s) => Some(s),
             _ => None,
         };
     }

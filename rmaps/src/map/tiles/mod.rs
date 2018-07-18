@@ -29,11 +29,11 @@ impl TileStorage {
 
         return self.available
             .iter()
-            .filter(|x| x.z < 4)
+            .filter(|x| x.z < 3)
             .flat_map(|x| Vec::from(&x.children()[..]))
             .filter(|t| !self.in_flight.contains(&t))
             .filter(|t| !self.available.contains(&t))
-            .take(4).collect();
+            .take(1).collect();
     }
     pub fn requested_tile(&mut self, coords: &TileCoords) {
         self.in_flight.insert(coords.clone());

@@ -1,5 +1,36 @@
 # Changes
 
+## [0.6.15] - 2018-07-11
+
+### Fixed
+
+* Fix h2 compatibility #352
+
+* Fix duplicate tail of StaticFiles with index_file. #344
+
+
+## [0.6.14] - 2018-06-21
+
+### Added
+
+* Allow to disable masking for websockets client
+
+### Fixed
+
+* SendRequest execution fails with the "internal error: entered unreachable code" #329
+
+
+## [0.6.13] - 2018-06-13
+
+### Fixed
+
+* http/2 end-of-frame is not set if body is empty bytes #307
+
+* InternalError can trigger memory unsafety #301
+
+* Fix docs.rs build
+
+
 ## [0.6.12] - 2018-06-08
 
 ### Added

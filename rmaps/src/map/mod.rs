@@ -71,60 +71,6 @@ impl MapView {
     }
 }
 
-use common::imgui_glium_renderer;
-use common::imgui::{
-    self,
-    im_str,
-    Ui,
-    ImGui,
-    ImGuiCond,
-    ImFontConfig,
-    FontGlyphRange,
-};
-
-pub struct DebugRenderer {
-    gui: ImGui,
-    renderer: imgui_glium_renderer::Renderer,
-}
-
-impl DebugRenderer {
-    pub fn new(display: &glium::backend::glutin::Display) -> Self {
-        let mut imgui = ImGui::init();
-        //imgui.set_ini_filename(None);
-
-        let mut renderer = imgui_glium_renderer::Renderer::init(&mut imgui, display).expect("Failed to initialize renderer");
-
-        Self {
-            gui: imgui,
-            renderer,
-        }
-    }
-
-    pub fn render(&mut self, target: &mut glium::Frame) {
-        let ui = self.gui.frame((600,600),(600,600),0.006);
-        hello_world(&ui);
-        self.renderer.render(target, ui).unwrap()
-    }
-}
-
-fn hello_world<'a>(ui: &Ui<'a>) -> bool {
-    ui.window(im_str!("Hello world"))
-        .size((300.0, 100.0), ImGuiCond::FirstUseEver)
-        .build(|| {
-            ui.text(im_str!("Hello world!"));
-            ui.text(im_str!("This...is...imgui-rs!"));
-            ui.separator();
-            let mouse_pos = ui.imgui().mouse_pos();
-            ui.text(im_str!(
-                "Mouse Position: ({:.1},{:.1})",
-                mouse_pos.0,
-                mouse_pos.1
-            ));
-        });
-
-    true
-}
-
 pub struct MapViewImpl {
     addr: Option<Addr<Unsync, MapViewImpl>>,
     sync_addr: Option<Addr<Syn, MapViewImpl>>,
@@ -138,7 +84,6 @@ pub struct MapViewImpl {
     style: Option<style::Style>,
     tile_storage: tiles::TileStorage,
 
-    debug: DebugRenderer,
 }
 
 impl MapViewImpl {
@@ -152,7 +97,6 @@ impl MapViewImpl {
         let m = MapViewImpl {
             addr: None,
             sync_addr: None,
-            debug: DebugRenderer::new(f),
 
             camera,
             renderer: render::Renderer::new(&f),
@@ -175,10 +119,12 @@ impl MapViewImpl {
     }
 
     pub fn set_style_url(&mut self, url: &str) {
-
         let req = storage::Request::style(url.into());
         let addr: Addr<Syn, MapViewImpl> = self.sync_addr.clone().unwrap().into();
-        self.source.do_send(storage::ResourceRequest(req, addr.recipient()));
+        self.source.do_send( storage::ResourceRequest {
+            request : req,
+            callback : addr.recipient(),
+        })
     }
 
     pub fn clicked(&mut self, pixel: PixelPoint) {
@@ -210,11 +156,10 @@ impl MapViewImpl {
                     self.tile_storage.requested_tile(&coord);
                     let req = storage::Request::tile(src_id.clone(), src.url_template(), coord);
                     let addr: Addr<Syn, MapViewImpl> = self.sync_addr.clone().unwrap().into();
-                    self.source.do_send(storage::ResourceRequest(req, addr.recipient()));
+                    self.source.do_send(storage::ResourceRequest::new(req, addr.recipient()));
                 }
             }
         }
-        self.debug.render(target);
     }
 }
 
@@ -234,14 +179,14 @@ impl Handler<storage::ResourceCallback> for MapViewImpl {
     type Result = ();
 
     fn handle(&mut self, msg: storage::ResourceCallback, _ctx: &mut Context<Self>) {
-        match msg.0 {
+        match msg.result {
             Ok(res) => {
-                match res.req.data {
-                    storage::RequestData::StyleJson { .. } => {
+                match res.req {
+                    storage::Request::StyleJson { .. } => {
                         let parsed = json::from_slice(&res.data).unwrap();
                         self.set_style(parsed);
                     }
-                    storage::RequestData::Tile(storage::TileRequestData { coords, ref source, .. }) => {
+                    storage::Request::Tile(storage::TileRequestData { coords, ref source, .. }) => {
                         self.tile_storage.finished_tile(&coords);
                         let source_data = self.style.as_ref().unwrap().sources.get(source).unwrap().clone();
 
@@ -251,7 +196,7 @@ impl Handler<storage::ResourceCallback> for MapViewImpl {
                             res: res.clone(),
                             cb: self.sync_addr.as_ref().unwrap().clone().recipient(),
                         };
-                        self.tile_worker.do_send(rq);
+                        self.tile_worker.send(rq).wait().unwrap();
                     }
                     _ => {
                         panic!("Resource {:?}", res);
@@ -259,7 +204,7 @@ impl Handler<storage::ResourceCallback> for MapViewImpl {
                 }
             }
             Err(_e) => {
-//   panic!("Resource request failed : {:?}", e)
+                panic!("Resource request failed : {:?}", _e)
             }
         }
     }

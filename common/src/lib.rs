@@ -23,6 +23,8 @@ extern crate fern;
 pub extern crate chrono;
 pub extern crate time;
 
+pub extern crate bytes;
+
 
 pub extern crate failure;
 pub extern crate itertools;
@@ -39,6 +41,7 @@ pub extern crate palette;
 
 pub extern crate actix;
 pub extern crate actix_web;
+//pub extern crate reqwest;
 
 pub extern crate futures;
 pub extern crate tokio;
@@ -67,8 +70,6 @@ pub mod geometry;
 
 pub fn init_log() {
     use fern::colors::{Color, ColoredLevelConfig};
-
-    let mut e = ::std::fs::create_dir_all("./logs/");
 
     let normal_filter = log::LevelFilter::Trace;
     let other_filter = log::LevelFilter::Off;

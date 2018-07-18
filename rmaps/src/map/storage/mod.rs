@@ -10,13 +10,28 @@ mod url;
 pub use self::resource::*;
 
 #[derive(Debug)]
-pub struct ResourceCallback(pub Result<Resource>);
+pub struct ResourceCallback {
+    pub request: Request,
+    pub result: Result<Resource>,
+}
 
 impl Message for ResourceCallback {
     type Result = ();
 }
 
-pub struct ResourceRequest(pub Request, pub Recipient<Syn, ResourceCallback>);
+pub struct ResourceRequest {
+    pub request: Request,
+    pub callback: Recipient<Syn, ResourceCallback>,
+}
+
+impl ResourceRequest {
+    pub fn new(req: Request, callback: Recipient<Syn, ResourceCallback>) -> Self {
+        ResourceRequest {
+            request: req,
+            callback,
+        }
+    }
+}
 
 impl Message for ResourceRequest {
     type Result = ();
@@ -27,6 +42,8 @@ pub struct DefaultFileSource {
     cache: offline_cache::OfflineCache,
     local: SyncAddr<local::LocalFileSource>,
     network: SyncAddr<network::NetworkFileSource>,
+
+    requests: BTreeMap<String, Recipient<Syn, ResourceCallback>>,
 }
 
 impl Actor for DefaultFileSource {
@@ -37,14 +54,43 @@ impl Handler<ResourceRequest> for DefaultFileSource {
     type Result = ();
 
     fn handle(&mut self, msg: ResourceRequest, _ctx: &mut Context<Self>) {
+        let url = { msg.request.url().to_string() };
 
-        let url = { msg.0.url().to_string() };
+        if let Some(res) = self.cache.get(&msg.request).unwrap() {
+            msg.callback.do_send(ResourceCallback {
+                request: msg.request,
+                result: Ok(res),
+            }).unwrap();
+            return;
+        }
+
+
+        let mut recipient = _ctx.sync_address().recipient();
+
+
         if url.starts_with("file://") || url.starts_with("local://") {
-            self.local.do_send(msg);
+            self.requests.insert(msg.request.url(), msg.callback);
+            self.local.send(ResourceRequest { request: msg.request, callback: recipient }).wait().unwrap();
         } else if url.starts_with("http://") || url.starts_with("https://") {
-            self.network.do_send(msg);
+            self.requests.insert(msg.request.url(), msg.callback);
+            self.network.send(ResourceRequest { request: msg.request, callback: recipient }).wait().unwrap();
         } else {
             panic!("No data source available for {:?}", url);
+        }
+    }
+}
+
+impl Handler<ResourceCallback> for DefaultFileSource {
+    type Result = ();
+
+    fn handle(&mut self, msg: ResourceCallback, _ctx: &mut Context<Self>) {
+        if let Some(cb) = self.requests.remove(&msg.request.url()) {
+            {
+                if let Ok(ref resource) = msg.result {
+                    self.cache.put(resource).unwrap();
+                }
+            }
+            cb.send(msg).wait().unwrap();
         }
     }
 }
@@ -54,9 +100,10 @@ impl DefaultFileSource {
     pub fn new() -> Self {
         DefaultFileSource {
             // TODO: Better location selection
-            cache : offline_cache::OfflineCache::new("./tile-data/cache.db").unwrap(),
+            cache: offline_cache::OfflineCache::new("./tile-data/cache.db").unwrap(),
             local: local::LocalFileSource::spawn(),
             network: network::NetworkFileSource::spawn(),
+            requests: BTreeMap::new(),
         }
     }
 

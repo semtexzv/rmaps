@@ -32,11 +32,13 @@ pub use log::{log, info, error, debug, warn, trace};
 
 pub use scoped_tls::*;
 
-pub use std::borrow::Cow;
+
+pub use bytes;
 
 pub use actix;
-pub use actix_web;
 
+pub use actix_web;
+//pub use reqwest;
 
 pub use futures;
 pub use tokio;

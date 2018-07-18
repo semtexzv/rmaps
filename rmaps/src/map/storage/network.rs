@@ -1,7 +1,27 @@
 use prelude::*;
 
-use actix_web::client;
-use common::actix_web::HttpMessage;
+/*
+use common::reqwest::{
+    unstable::async::*,
+};
+
+*/
+use common::actix_web::{
+    http::{
+        StatusCode,
+        header::{
+            self, Header, HeaderName,
+            LOCATION, CONTENT_LOCATION,
+        },
+    },
+    client::{
+        self,
+        ClientConnector, ClientRequest, ClientResponse,
+    },
+    Body,
+    HttpMessage,
+    HttpResponse,
+};
 
 use super::*;
 
@@ -11,39 +31,73 @@ impl Actor for NetworkFileSource {
     type Context = Context<Self>;
 }
 
+use common::futures::future::*;
+
 impl Handler<super::ResourceRequest> for NetworkFileSource {
     type Result = ();
 
     fn handle(&mut self, msg: ResourceRequest, _ctx: &mut Context<Self>) {
-        //println!("Getting: {:?}", msg.0.url());
+        println!("Getting: {:?}", msg.request.url());
 
-        let fut = client::get(msg.0.url().clone())   // <- Create request builder
-            .timeout(::std::time::Duration::from_secs(15))
-            .finish().unwrap()
-            .send()                               // <- Send http request
-            .timeout(::std::time::Duration::from_secs(15))
-            .map_err(|x| {
-                println!("Retrieval failed: {}", x);
-                x.into()
-            })
-            .and_then(move |res| res.body().map_err(|e| e.into()))
-            .then(move |body| {
-               // println!("THEN : {:?}", body);
-                match body {
-                    Ok(data) => {
-                        let resource = super::Resource {
-                            req : msg.0.clone(),
-                            data: data.to_vec()// vec![] //data,
-                        };
-                        msg.1.do_send(super::ResourceCallback(Ok(resource))).unwrap();
+        fn get(url: &str, msg: ResourceRequest, allowed_redirect_count: usize) -> Box<dyn Future<Item=(), Error=()>> {
+
+            let request = Box::new(client::get(url)
+                .timeout(::std::time::Duration::from_secs(15))
+                .finish().unwrap()
+                .send());
+
+
+            let next_action: Box<dyn Future<Item=(), Error=()>> = Box::new(request
+                .map_err(|e| ())
+                .and_then(move |response: ClientResponse| -> Box<dyn Future<Item=(), Error=()>> {
+                    if response.status().is_redirection() {
+                        if let Some(location) = response.headers().get("Location") {
+                            if allowed_redirect_count > 0 {
+                                return box get(location.to_str().unwrap(), msg, allowed_redirect_count - 1).then(|_| Ok(()));
+                            }
+                            panic!("Too many redirects")
+                        }
                     }
-                    Err(e) => {
-                        msg.1.do_send(super::ResourceCallback(Err(e))).unwrap()
+
+                    if response.status().is_success() {
+                        return box response.body()
+                            .then(move |body| {
+                                match body {
+                                    Ok(data) => {
+                                        let cb = super::ResourceCallback {
+                                            result: Ok(super::Resource {
+                                                req: msg.request.clone(),
+                                                data: data.to_vec(),
+                                            }),
+                                            request: msg.request,
+                                        };
+
+                                        msg.callback.send(cb).wait();
+                                    }
+                                    Err(e) => {
+                                        let cb = super::ResourceCallback {
+                                            result: Err(e.into()),
+                                            request: msg.request,
+                                        };
+                                        msg.callback.send(cb).wait().unwrap();
+                                    }
+                                };
+
+                                Ok(())
+                            });
                     }
-                }
-                Ok(())
-            });
+
+                    error!("Failed to retrieve : {:?}", response);
+                    return box ok(());
+                }));
+
+
+            return next_action;
+        }
+
+        let fut = get(&msg.request.url(), msg, 3);
         Arbiter::handle().spawn(fut);
+
     }
 }
 
