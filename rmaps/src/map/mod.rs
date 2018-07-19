@@ -6,80 +6,102 @@ pub mod style;
 pub mod storage;
 pub mod tiles;
 
+use std::ptr;
+use std::sync::mpsc::{channel, Sender, Receiver};
 
 pub struct MapView {
-    addr: Addr<Unsync, MapViewImpl>,
+    addr: *mut MapViewImpl,
     sys: SystemRunner,
+}
+
+fn pulse(sys: &mut SystemRunner) {
+    sys.block_on(::common::futures::future::lazy(|| {
+        ::tokio_timer::sleep(::std::time::Duration::from_millis(1))
+    })).unwrap();
 }
 
 impl MapView {
     pub fn new(f: &Display) -> Self {
-        let sys = System::new("Map");
-        let _impl = MapViewImpl::new(f);
-
+        let mut sys = System::new("Map");
+        let (tx, rx) = channel();
+        let mut _impl = MapViewImpl::new(f, tx);
         let addr = _impl.start();
+        pulse(&mut sys);
+        pulse(&mut sys);
+        println!("Receiving");
+        let ptr = rx.recv().unwrap();
+        println!("Received");
 
         return MapView {
             sys,
-            addr,
+            addr: ptr,
         };
     }
 
-    pub fn do_run<R>(&mut self, f: impl FnOnce(Addr<Unsync, MapViewImpl>) -> R) -> R {
-        let addr = self.addr.clone();
-        let res = self.sys.run_until_complete(::common::futures::future::lazy(|| {
-            Ok::<R, !>(f(addr))
-        }));
-        self.sys.pulse();
-        res.unwrap()
+
+    pub fn do_run<R>(&mut self, f: impl FnOnce(&mut MapViewImpl) -> R) -> R {
+        use ::common::futures::future::*;
+
+        let res = unsafe {
+            let addr = self.addr;
+            self.sys.block_on(lazy(|| {
+                ok::<_, ()>(f(&mut (*addr)))
+            }))
+        }.unwrap();
+
+        res
     }
 
-    pub fn render(&mut self, surface: glium::Frame) {
-        self.do_run(|add| {
-            add.do_send(MapMethodArgs::Render(surface));
+    pub fn pulse(&mut self) {
+        self.sys.block_on(::common::futures::future::lazy(|| {
+            ::tokio_timer::sleep(::std::time::Duration::from_millis(3))
+        })).unwrap();
+    }
+
+    pub fn render(&mut self, mut surface: glium::Frame) {
+        self.do_run(|map: &mut MapViewImpl| {
+            map.render(&mut surface);
         });
+        surface.finish().unwrap();
+        self.pulse();
+        //info!("Render")
     }
 
     pub fn set_style_url(&mut self, url: &str) {
-        self.do_run(|add| {
-            add.do_send(MapMethodArgs::SetStyleUrl(url.into()));
+        self.do_run(|map: &mut MapViewImpl| {
+            map.set_style_url(url);
         });
     }
 
     pub fn get_camera(&mut self) -> Camera {
-        self.do_run(|add| {
-            add.send(Invoke::new(|i: &mut MapViewImpl| {
-                i.camera.clone()
-            }))
-        }).wait().unwrap().unwrap()
+        self.do_run(|map: &mut MapViewImpl| {
+            map.camera.clone()
+        })
     }
 
     pub fn set_camera(&mut self, camera: Camera) {
-        self.do_run(|add| {
-            add.send(Invoke::new(|i: &mut MapViewImpl| {
-                i.camera = camera;
-            }))
-        }).wait().unwrap().unwrap()
+        self.do_run(|map: &mut MapViewImpl| {
+            map.camera = camera;
+        });
     }
 
     pub fn clicked(&mut self, point: PixelPoint) {
-        self.do_run(|add| {
-            add.send(Invoke::new(move |i: &mut MapViewImpl| {
-                i.clicked(point);
-            }))
-        }).wait().unwrap().unwrap()
+        self.do_run(|map: &mut MapViewImpl| {
+            map.clicked(point)
+        });
     }
 }
 
 pub struct MapViewImpl {
-    addr: Option<Addr<Unsync, MapViewImpl>>,
-    sync_addr: Option<Addr<Syn, MapViewImpl>>,
+    tx: Sender<*mut MapViewImpl>,
+
+    addr: Option<Addr<MapViewImpl>>,
 
     camera: Camera,
     renderer: Option<render::Renderer>,
 
-    source: Addr<Syn, storage::DefaultFileSource>,
-    tile_loader: Addr<Syn, tiles::TileLoader>,
+    source: Addr<storage::DefaultFileSource>,
+    tile_loader: Addr<tiles::TileLoader>,
 
     facade: Box<glium::Display>,
     style: Option<Rc<style::Style>>,
@@ -87,7 +109,7 @@ pub struct MapViewImpl {
 }
 
 impl MapViewImpl {
-    pub fn new(f: &Display) -> Self {
+    pub fn new(f: &Display, tx: Sender<*mut Self>) -> Self {
         let src_add = storage::DefaultFileSource::spawn();
         let tile_loader = tiles::TileLoader::spawn(src_add.clone());
 
@@ -95,8 +117,8 @@ impl MapViewImpl {
         camera.pos = Mercator::latlng_to_world(LatLng::new(49, 16));
 
         let m = MapViewImpl {
+            tx,
             addr: None,
-            sync_addr: None,
 
             camera,
             renderer: None,
@@ -119,8 +141,9 @@ impl MapViewImpl {
     }
 
     pub fn set_style_url(&mut self, url: &str) {
-        let req = storage::Request::style(url.into());
-        let addr: Addr<Syn, MapViewImpl> = self.sync_addr.clone().unwrap().into();
+        println!("Style uRL");
+        let req = storage::resource::Request::style(url.into());
+        let addr: Addr<MapViewImpl> = self.addr.clone().unwrap().into();
         spawn(self.source.send(storage::ResourceRequest {
             request: req,
             callback: addr.recipient(),
@@ -158,8 +181,11 @@ impl Actor for MapViewImpl {
     type Context = Context<Self>;
 
     fn started(&mut self, ctx: &mut <Self as Actor>::Context) {
+        unsafe {
+            let ptr = self as *mut _;
+            self.tx.send(ptr).unwrap();
+        }
         self.addr = Some(ctx.address());
-        self.sync_addr = Some(ctx.address());
         let add = ctx.address();
         self.tile_loader.do_send(Invoke::new(|x: &mut tiles::TileLoader| x.map = Some(add)));
     }

@@ -45,6 +45,7 @@ pub extern crate actix_web;
 
 pub extern crate futures;
 pub extern crate tokio;
+pub extern crate tokio_timer;
 
 
 pub extern crate geo;

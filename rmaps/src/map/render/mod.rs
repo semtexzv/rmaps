@@ -21,7 +21,7 @@ pub struct RendererParams<'a> {
     pub frame: &'a mut glium::Frame,
     pub camera: &'a Camera,
 
-    pub loader: Addr<Syn, TileLoader>,
+    pub loader: Addr< TileLoader>,
 
     pub frame_start: PreciseTime,
 
@@ -123,21 +123,20 @@ impl Renderer {
             .map(|r| r.collect());
 
 
-        //trace!("Needed tiles: {:#?}", requests);
         for t in requests.unwrap() {
             if let Some(source) = self.style.sources.get(&t.0) {
                 let name: String = t.0.into();
                 let coord = t.1;
                 let source = source.clone();
                 let fut = params.loader.send(Invoke::new(move |loader: &mut TileLoader|  {
-                    loader.request_tile(name, &source, coord);
+                    loader.request_tile(&name, &source, coord);
                 }))
                     .map(|_|());
                 spawn(fut);
             }
         }
 
-        self.layers.deref_mut().par_iter_mut().for_each(|l| {
+        self.layers.deref_mut().iter_mut().for_each(|l| {
             let (should_eval, really) = match l.evaluated {
                 None => (true, true),
                 Some(ref e) if e.zoom != eval_params.zoom => (true, false),

@@ -33,11 +33,11 @@ impl Message for ResourceResponse {
 
 pub struct ResourceRequest {
     pub request: Request,
-    pub callback: Recipient<Syn, ResourceResponse>,
+    pub callback: Recipient< ResourceResponse>,
 }
 
 impl ResourceRequest {
-    pub fn new(req: Request, callback: Recipient<Syn, ResourceResponse>) -> Self {
+    pub fn new(req: Request, callback: Recipient< ResourceResponse>) -> Self {
         ResourceRequest {
             request: req,
             callback,
@@ -51,10 +51,10 @@ impl Message for ResourceRequest {
 
 pub struct DefaultFileSource {
     cache: offline_cache::OfflineCache,
-    local: SyncAddr<local::LocalFileSource>,
-    network: SyncAddr<network::NetworkFileSource>,
+    local: Addr<local::LocalFileSource>,
+    network: Addr<network::NetworkFileSource>,
 
-    requests: BTreeMap<String, Recipient<Syn, ResourceResponse>>,
+    requests: BTreeMap<String, Recipient< ResourceResponse>>,
 }
 
 impl Actor for DefaultFileSource {
@@ -65,8 +65,9 @@ impl Handler<ResourceRequest> for DefaultFileSource {
     type Result = ();
 
     fn handle(&mut self, msg: ResourceRequest, _ctx: &mut Context<Self>) {
-        let url = { msg.request.url().to_string() };
 
+        let url = { msg.request.url().to_string() };
+        println!("Req : {:?}", url);
         if let Some(res) = self.cache.get(&msg.request).unwrap() {
             spawn(msg.callback.send(ResourceResponse {
                 request: msg.request,
@@ -76,7 +77,7 @@ impl Handler<ResourceRequest> for DefaultFileSource {
         }
 
 
-        let mut recipient = _ctx.sync_address().recipient();
+        let mut recipient = _ctx.address().recipient();
 
 
         if url.starts_with("file://") || url.starts_with("local://") {
@@ -118,7 +119,7 @@ impl DefaultFileSource {
         }
     }
 
-    pub fn spawn() -> Addr<Syn, Self> {
+    pub fn spawn() -> Addr< Self> {
         start_in_thread::<DefaultFileSource, _>(|| DefaultFileSource::new())
     }
 }

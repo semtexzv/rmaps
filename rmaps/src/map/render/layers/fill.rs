@@ -171,7 +171,7 @@ impl layers::Bucket for FillBucket {
                 self.pos_vbo = Some(VertexBuffer::new(display, &self.vertices)?);
             }
 
-            self.feature_data.upload(display)?;
+            //self.feature_data.upload(display)?;
 
             self.upload_dirty = false;
         }

@@ -65,7 +65,15 @@ pub use futures::prelude::*;
 pub use actix::{
     self,
     SystemRunner,
-    prelude::*,
+    Actor,
+    Context,
+    Handler,
+    Message,
+    System,
+    Arbiter,
+    Addr,
+    Recipient,
+    AsyncContext,
 };
 
 pub use geo;
@@ -74,7 +82,6 @@ pub use failure::{Error, Fail, bail};
 pub type Result<T> = StdResult<T, Error>;
 
 pub type BoxFuture<T, E> = Box<Future<Item=T, Error=E>>;
-pub type SyncAddr<A> = Addr<Syn, A>;
 
 pub const EXTENT: f32 = 8192.0;
 
@@ -126,7 +133,8 @@ impl<A, F, R> Message for Invoke<A, F, R>
 use actix::dev::*;
 
 pub fn spawn<E: Into<Error>>(fut: impl Future<Item=(), Error=E> + 'static) {
-    Arbiter::handle().spawn(fut.map_err(|e| {
+
+    ::actix::Arbiter::spawn(fut.map_err(|e| {
         error!("Error occured: {}", e.into());
         ()
     }));

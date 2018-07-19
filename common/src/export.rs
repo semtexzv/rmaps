@@ -41,6 +41,7 @@ pub use actix_web;
 
 pub use futures;
 pub use tokio;
+pub use tokio_timer;
 
 
 pub use palette;

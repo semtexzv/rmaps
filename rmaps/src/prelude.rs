@@ -2,16 +2,19 @@ pub use ::common::export::*;
 pub use common::failure;
 pub use rmaps_derive::*;
 
-pub fn start_in_thread<A: Actor<Context=Context<A>> + Send + 'static, F: FnOnce() -> A + Send + 'static>(a: F) -> Addr<Syn, A> {
+pub fn start_in_thread<A: Actor<Context=Context<A>> + Send + 'static, F: FnOnce() -> A + Send + 'static>(a: F) -> Addr< A> {
     let (tx, rx) = ::std::sync::mpsc::channel();
 
     ::std::thread::spawn(move || {
-        let sys = System::new("aa");
+        System::run(move || {
 
-        let actor = a();
-        let addr = actor.start();
-        let _ = tx.send(addr);
-        let _ = sys.run();
+            let actor = a();
+            let addr = actor.start();
+            let _ = tx.send(addr);
+        });
+        //let sys = System::new("aa");
+
+      //  let _ = sys.run();
     });
 
     rx.recv().unwrap()

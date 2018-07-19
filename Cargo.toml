@@ -4,4 +4,4 @@ members = ["common" , "rmaps", "platform/*", "libs/*"]
 
 [replace]
 "glium:0.22.0" = { git  = "https://github.com/semtexzv/glium", branch = "tmp-working"  }
-"actix:0.5.8" = {  path = "./libs/actix" }
+"actix:0.7.0" = { git = "https://github.com/actix/actix/" , rev= "96d45d143403d7cb86bafb05933b026982165a24"}

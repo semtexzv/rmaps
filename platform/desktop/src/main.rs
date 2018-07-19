@@ -49,7 +49,7 @@ fn main() {
 
 
     let mut map = rmaps::map::MapView::new(&display.clone());//.unwrap();
-    map.set_style_url("file://std.json");
+    map.set_style_url("file://style.json");
     let mut running = true;
 
     let mut down_pos = None;
@@ -59,6 +59,7 @@ fn main() {
 
 
     while running {
+        let t1 = PreciseTime::now();
         let surface = display.draw();
         map.render(surface);
 
@@ -116,5 +117,7 @@ fn main() {
 
             map.set_camera(camera);
         });
+        // let t2 = PreciseTime::now();
+        // info!("Time: {:?}",t1.to(t2).num_milliseconds());
     }
 }

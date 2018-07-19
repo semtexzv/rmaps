@@ -38,7 +38,7 @@ impl LocalFileSource {
     pub fn new() -> LocalFileSource {
         LocalFileSource {}
     }
-    pub fn spawn() -> Addr<Syn,Self> {
+    pub fn spawn() -> Addr<Self> {
         start_in_thread(|| Self::new())
     }
 }

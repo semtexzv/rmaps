@@ -234,6 +234,7 @@ use ::common::glium::uniforms::UniformBuffer;
 use ::common::glium::texture::buffer_texture::*;
 
 use glium::{implement_uniform_block, implement_buffer_content};
+pub const FEATURE_UBO_VECS : usize = 1024;
 
 pub struct FeatureDataUbo {
     pub feature_data: [[f32; 4]],
@@ -251,7 +252,7 @@ pub struct FeaturePropertyData {
 impl FeaturePropertyData {
     pub fn new(d: &glium::backend::Facade) -> Result<Self> {
         Ok(FeaturePropertyData {
-            data: UniformBuffer::empty_unsized_dynamic(d, mem::size_of::<[f32; 4]>() * 1024)?,
+            data: UniformBuffer::empty_unsized_dynamic(d, mem::size_of::<[f32; 4]>() * FEATURE_UBO_VECS)?,
             position: 0,
         })
     }
@@ -260,18 +261,20 @@ impl FeaturePropertyData {
         self.position = 0;
     }
 
-    pub fn map_write(&mut self) -> glium::buffer::WriteMapping<FeatureDataUbo> {
-        self.data.map_write()
+    pub fn map_write(&mut self) -> glium::buffer::Mapping<FeatureDataUbo> {
+        self.data.map()
     }
 
-
-    pub fn push<A: Attribute>(&mut self, v: A) {
+    pub fn push_into<A: Attribute>(map: &mut glium::buffer::Mapping<FeatureDataUbo>, v: A, pos: usize) {
         use std::mem;
         use std::ptr;
         use std::slice;
 
         assert!(A::get_type().get_size_bytes() <= mem::size_of::<f32>() * 4, "Size is : {:?}", A::get_type());
         assert!(mem::size_of::<A>() == A::get_type().get_size_bytes());
+        if pos >= FEATURE_UBO_VECS {
+            panic!("Too many attributes, TODO");
+        }
 
         #[repr(C)]
         struct helper<A: Sized> {
@@ -285,16 +288,11 @@ impl FeaturePropertyData {
             };
             let ptr = &data as *const helper<A> as *const f32;
             let slice = ptr as *const [f32; 4];
-            let mut map = self.data.map();
-            map.feature_data[self.position] = (*slice);
-            self.position += 1;
+            map.feature_data[pos] = (*slice);
         };
     }
 
 
-    pub fn upload(&mut self, disp: &Display) -> Result<()> {
-        Ok(())
-    }
 }
 
 
@@ -371,7 +369,7 @@ impl<'a> UniformPropertyBinder<'a> {
         data.clear();
         let mut binder = UniformPropertyBinder::new(layout, data);
         props.accept(style, &mut binder);
-       // trace!("Uniform propery binder : got {:?} uniforms", binder.data.values.len());
+        // trace!("Uniform propery binder : got {:?} uniforms", binder.data.values.len());
         Ok(())
     }
 }
@@ -407,26 +405,35 @@ impl<'a> PropertiesVisitor for UniformPropertyBinder<'a> {
 
 pub struct FeaturePropertyBinder<'a> {
     layout: &'a FeaturePropertyLayout,
-    data: &'a mut FeaturePropertyData,
+    map: glium::buffer::Mapping<'a, FeatureDataUbo>,
     start_size: usize,
+    pos: usize,
     push: bool,
 }
 
 impl<'a> FeaturePropertyBinder<'a> {
-    fn new(layout: &'a FeaturePropertyLayout, data: &'a mut FeaturePropertyData) -> Self {
+    pub fn new(layout: &'a FeaturePropertyLayout, data: &'a mut FeaturePropertyData) -> Self {
         FeaturePropertyBinder {
             layout,
             start_size: data.position,
-            data: data,
+            pos: data.position,
+            map: data.map_write(),
             push: false,
         }
     }
+
     #[inline]
     pub fn extend<P: Properties>(layout: &FeaturePropertyLayout, props: &P, style: &P::SourceLayerType, data: &mut FeaturePropertyData) {
-        let mut binder = Self::new(layout, data);
+        let pos = {
+            let mut binder = Self::new(layout, data);
 
-        props.accept(style, &mut binder);
-        //trace!("Feature propery binder finished  start : {}, end {}", binder.start_size, binder.data.position);
+            props.accept(style, &mut binder);
+
+            binder.pos
+        };
+
+
+        data.position = pos;
     }
 }
 
@@ -437,7 +444,8 @@ impl<'a> PropertiesVisitor for FeaturePropertyBinder<'a> {
     #[inline]
     fn visit_gpu<T: Propertable + Attribute + AsUniformValue>(&mut self, v: &GpuProp<T>) {
         if self.push {
-            self.data.push(v.get());
+            FeaturePropertyData::push_into(&mut self.map, v.get(), self.pos);
+            self.pos += 1;
             self.push = false;
         }
     }

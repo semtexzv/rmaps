@@ -39,7 +39,7 @@ pub struct DecodeTile {
     pub res: ::map::storage::Resource,
     pub source_name: String,
     pub source: Arc<::map::style::StyleSource>,
-    pub cb: Recipient<Syn, TileReady>,
+    pub cb: Recipient< TileReady>,
 }
 
 #[derive(Debug, Clone)]
@@ -109,7 +109,7 @@ impl TileDataWorker {
     pub fn new() -> Self {
         return TileDataWorker();
     }
-    pub fn spawn() -> Addr<Syn, TileDataWorker> {
+    pub fn spawn() -> Addr< TileDataWorker> {
         start_in_thread(|| {
             Self::new()
         })

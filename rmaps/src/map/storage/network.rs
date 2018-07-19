@@ -42,6 +42,7 @@ impl Handler<super::ResourceRequest> for NetworkFileSource {
         fn get(url: &str, msg: ResourceRequest, allowed_redirect_count: usize) -> Box<dyn Future<Item=(), Error=()>> {
             let request = Box::new(client::get(url)
                 .timeout(::std::time::Duration::from_secs(15))
+
                 .finish().unwrap()
                 .send());
 
@@ -60,6 +61,7 @@ impl Handler<super::ResourceRequest> for NetworkFileSource {
 
                     if response.status().is_success() {
                         return box response.body()
+                            .limit(1024 * 1024 * 32)
                             .then(move |body| {
                                 match body {
                                     Ok(data) => {
@@ -84,6 +86,13 @@ impl Handler<super::ResourceRequest> for NetworkFileSource {
 
                                 Ok(())
                             });
+                    } else if response.status().is_client_error() {
+                        let cb = super::ResourceResponse {
+                            result: Err(ResourceError::NotFound),
+                            request: msg.request,
+                        };
+                        spawn(msg.callback.send(cb));
+                        return box ok(());
                     }
 
                     error!("Failed to retrieve : {:?}", response);
@@ -95,7 +104,9 @@ impl Handler<super::ResourceRequest> for NetworkFileSource {
         }
 
         let fut = get(&msg.request.url(), msg, 3);
-        Arbiter::handle().spawn(fut);
+        ::actix::Arbiter::spawn(fut);
+        //spawn(fut.map_);
+
     }
 }
 
@@ -103,7 +114,7 @@ impl NetworkFileSource {
     pub fn new() -> Self {
         return NetworkFileSource {};
     }
-    pub fn spawn() -> Addr<Syn, Self> {
+    pub fn spawn() -> Addr< Self> {
         start_in_thread(|| NetworkFileSource::new())
     }
 }

@@ -10,7 +10,6 @@ mvt = { path = "../libs/mvt" }
 rmaps_derive = { path = "../libs/rmaps_derive"}
 
 serde= { version = "*", features = ["rc"] }
-actix = {path ="../libs/actix"}
 image = "*"
 
 tess2 =  { path = "../libs/tess2" }

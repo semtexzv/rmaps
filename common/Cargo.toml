@@ -34,9 +34,11 @@ serde_json="*"
 
 futures = "0.1"
 tokio = "0.1"
+tokio-timer ="*"
 
-actix =  { path = "../libs/actix"}
-actix-web = { version = "0.6.15", default-features=false,  features= ["tls", "flate2-c"] }
+#actix =  { path = "../libs/actix"}
+actix = { git = "https://github.com/actix/actix/" , rev= "96d45d143403d7cb86bafb05933b026982165a24"}
+actix-web = { git = "https://github.com/actix/actix-web/", default-features=false,  features= ["tls", "flate2-c"] }
 geo =  { version = "0.9.1", default_features = false }
 
 palette = "0.4"
@@ -47,3 +49,9 @@ enumflags_derive = "*"
 
 derive_more = "*"
 css-color-parser = "0.1.2"
+
+
+
+[replace]
+"glium:0.22.0" = { git  = "https://github.com/semtexzv/glium", branch = "tmp-working"  }
+"actix:0.7.0" = { git = "https://github.com/actix/actix/" , rev= "96d45d143403d7cb86bafb05933b026982165a24"}
