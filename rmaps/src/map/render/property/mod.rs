@@ -371,7 +371,7 @@ impl<'a> UniformPropertyBinder<'a> {
         data.clear();
         let mut binder = UniformPropertyBinder::new(layout, data);
         props.accept(style, &mut binder);
-        trace!("Uniform propery binder : got {:?} uniforms", binder.data.values.len());
+       // trace!("Uniform propery binder : got {:?} uniforms", binder.data.values.len());
         Ok(())
     }
 }
@@ -426,7 +426,7 @@ impl<'a> FeaturePropertyBinder<'a> {
         let mut binder = Self::new(layout, data);
 
         props.accept(style, &mut binder);
-        trace!("Feature propery binder finished  start : {}, end {}", binder.start_size, binder.data.position);
+        //trace!("Feature propery binder finished  start : {}, end {}", binder.start_size, binder.data.position);
     }
 }
 

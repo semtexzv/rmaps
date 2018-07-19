@@ -5,10 +5,10 @@ use address::EnvelopeProxy;
 use address::{sync_channel, Addr, Syn, SyncAddressReceiver, Unsync, UnsyncAddrReceiver};
 
 /// Maximum number of consecutive polls in a loop
-const MAX_SYNC_POLLS: u32 = 512;
+const MAX_SYNC_POLLS: u32 = 256;
 
 /// Default address channel capacity
-pub const DEFAULT_CAPACITY: usize = 128;
+pub const DEFAULT_CAPACITY: usize = 512;
 
 pub(crate) struct Mailbox<A>
 where

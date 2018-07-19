@@ -38,7 +38,7 @@ impl Actor for TileDataWorker {
 pub struct DecodeTile {
     pub res: ::map::storage::Resource,
     pub source_name: String,
-    pub source: ::map::style::StyleSource,
+    pub source: Arc<::map::style::StyleSource>,
     pub cb: Recipient<Syn, TileReady>,
 }
 
@@ -60,7 +60,7 @@ impl Handler<DecodeTile> for TileDataWorker {
     type Result = ();
 
     fn handle(&mut self, msg: DecodeTile, ctx: &mut Context<Self>) {
-        let data = match msg.source {
+        let data = match msg.source.deref() {
             ::map::style::StyleSource::Raster(_) => {
                 let data = &msg.res.data;
                 let format = ::image::guess_format(data).unwrap();
@@ -98,9 +98,9 @@ impl Handler<DecodeTile> for TileDataWorker {
             }
         };
 
-        msg.cb.do_send(TileReady {
+        spawn(msg.cb.send(TileReady {
             data: data,
-        }).unwrap();
+        }));
     }
 }
 

@@ -15,6 +15,7 @@
 #![feature(nll)]
 
 #![allow(unused_imports, dead_code, unused_mut, unused_variables, unused_macros, unreachable_code, unreachable_patterns, unused_parens)]
+#[macro_use]
 pub extern crate common;
 pub extern crate mvt;
 #[macro_use]

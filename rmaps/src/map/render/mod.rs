@@ -21,6 +21,8 @@ pub struct RendererParams<'a> {
     pub frame: &'a mut glium::Frame,
     pub camera: &'a Camera,
 
+    pub loader: Addr<Syn, TileLoader>,
+
     pub frame_start: PreciseTime,
 
 }
@@ -29,7 +31,7 @@ pub struct PrepareParams<'a> {
     pub camera: &'a Camera,
     pub cover: &'a TileCover,
 
-    pub requestor: &'a mut dyn FnMut(&str, TileCoords) ,
+    pub requestor: &'a mut dyn FnMut(&str, TileCoords),
 }
 
 pub struct RenderParams<'a> {
@@ -69,26 +71,24 @@ unsafe impl Sync for LayerData {}
 
 pub struct Renderer {
     pub display: Box<Display>,
+    pub style: Rc<style::Style>,
     pub layers: Vec<LayerData>,
 }
 
 
 impl Renderer {
-    pub fn new(display: &Display) -> Self {
+    pub fn new(display: &Display, style: Rc<style::Style>) -> Self {
         Renderer {
             display: Box::new(display.clone()),
-            layers: vec![],
-        }
-    }
+            layers: layers::parse_style_layers(&display, &style).into_iter().map(|l| {
+                LayerData {
+                    layer: l,
+                    evaluated: None,
+                }
+            }).collect(),
+            style,
 
-    pub fn style_changed(&mut self, style: &style::Style) -> Result<()> {
-        self.layers = layers::parse_style_layers(&self.display, style).into_iter().map(|l| {
-            LayerData {
-                layer: l,
-                evaluated: None,
-            }
-        }).collect();
-        Ok(())
+        }
     }
     pub fn tile_ready(&mut self, tile: Rc<data::TileData>) {
         for l in self.layers.iter_mut() {
@@ -123,7 +123,19 @@ impl Renderer {
             .map(|r| r.collect());
 
 
-        trace!("Needed tiles: {:#?}", requests);
+        //trace!("Needed tiles: {:#?}", requests);
+        for t in requests.unwrap() {
+            if let Some(source) = self.style.sources.get(&t.0) {
+                let name: String = t.0.into();
+                let coord = t.1;
+                let source = source.clone();
+                let fut = params.loader.send(Invoke::new(move |loader: &mut TileLoader|  {
+                    loader.request_tile(name, &source, coord);
+                }))
+                    .map(|_|());
+                spawn(fut);
+            }
+        }
 
         self.layers.deref_mut().par_iter_mut().for_each(|l| {
             let (should_eval, really) = match l.evaluated {

@@ -35,7 +35,7 @@ pub struct Style {
     //metadata: json::Value,
     pub center: Option<[f64; 2]>,
     pub zoom: Option<f32>,
-    pub sources: BTreeMap<String, StyleSource>,
+    pub sources: BTreeMap<String, Arc<StyleSource>>,
     pub sprite: Option<String>,
     pub glyphs: Option<String>,
     pub layers: Vec<BaseStyleLayer>,
@@ -55,12 +55,12 @@ pub enum StyleSource {
 }
 
 impl StyleSource {
-    pub fn   url_template(&self) -> String {
+    pub fn tile_urls(&self) -> Vec<String> {
         match &self {
             &StyleSource::Vector(ref v) => v,
             &StyleSource::Raster(ref v) => v,
             &StyleSource::Image(ref v) => v,
-        }.tilejson.tiles.as_ref().unwrap()[0].clone()
+        }.tilejson.tiles.as_ref().map(|x|x.clone()).unwrap_or(vec![])
     }
 }
 

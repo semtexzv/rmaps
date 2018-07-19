@@ -27,11 +27,11 @@ impl Handler<super::ResourceRequest> for LocalFileSource {
             req:req.clone(),
             data,
         };
-        let cb = super::ResourceCallback {
+        let cb = super::ResourceResponse {
             request : msg.request,
             result : Ok(resp),
         };
-        msg.callback.send(cb).wait().unwrap();
+        spawn(msg.callback.send(cb));
     }
 }
 impl LocalFileSource {

@@ -61,7 +61,7 @@ impl MapView {
             }))
         }).wait().unwrap().unwrap()
     }
-    // TODO, what coordinate system ?
+
     pub fn clicked(&mut self, point: PixelPoint) {
         self.do_run(|add| {
             add.send(Invoke::new(move |i: &mut MapViewImpl| {
@@ -76,20 +76,20 @@ pub struct MapViewImpl {
     sync_addr: Option<Addr<Syn, MapViewImpl>>,
 
     camera: Camera,
-    renderer: render::Renderer,
+    renderer: Option<render::Renderer>,
 
     source: Addr<Syn, storage::DefaultFileSource>,
-    tile_worker: Addr<Syn, tiles::data::TileDataWorker>,
+    tile_loader: Addr<Syn, tiles::TileLoader>,
+
     facade: Box<glium::Display>,
-    style: Option<style::Style>,
-    tile_loader: tiles::TileLoader,
+    style: Option<Rc<style::Style>>,
 
 }
 
 impl MapViewImpl {
     pub fn new(f: &Display) -> Self {
         let src_add = storage::DefaultFileSource::spawn();
-        let tile_worker_add = tiles::data::TileDataWorker::spawn();
+        let tile_loader = tiles::TileLoader::spawn(src_add.clone());
 
         let mut camera: Camera = Default::default();
         camera.pos = Mercator::latlng_to_world(LatLng::new(49, 16));
@@ -99,14 +99,13 @@ impl MapViewImpl {
             sync_addr: None,
 
             camera,
-            renderer: render::Renderer::new(&f),
+            renderer: None,
 
-            source: src_add,
-            tile_worker: tile_worker_add,
+            source: src_add.clone(),
 
             facade: Box::new((*f).clone()),
             style: None,
-            tile_loader: tiles::TileLoader::new(),
+            tile_loader: tile_loader,
         };
 
 
@@ -114,17 +113,18 @@ impl MapViewImpl {
     }
 
     pub fn set_style(&mut self, style: style::Style) {
-        self.renderer.style_changed(&style).unwrap();
+        let style = Rc::new(style);
+        self.renderer = Some(render::Renderer::new(&self.facade, style.clone()));
         self.style = Some(style);
     }
 
     pub fn set_style_url(&mut self, url: &str) {
         let req = storage::Request::style(url.into());
         let addr: Addr<Syn, MapViewImpl> = self.sync_addr.clone().unwrap().into();
-        self.source.do_send( storage::ResourceRequest {
-            request : req,
-            callback : addr.recipient(),
-        })
+        spawn(self.source.send(storage::ResourceRequest {
+            request: req,
+            callback: addr.recipient(),
+        }))
     }
 
     pub fn clicked(&mut self, pixel: PixelPoint) {
@@ -142,26 +142,14 @@ impl MapViewImpl {
             display: self.facade.deref(),
             frame: target,
             camera: &self.camera,
+            loader: self.tile_loader.clone(),
 
             frame_start: PreciseTime::now(),
         };
 
-        self.renderer.render(params).unwrap();
-
-        /*
-        if let Some(ref style) = self.style {
-            for (src_id, src) in style.sources.iter() {
-                let needed = self.tile_storage.needed_tiles();
-                //  println!("Needed : {:?}\n in flight : {:?}", needed, self.tile_storage.in_flight);
-                for coord in needed {
-                    self.tile_storage.requested_tile(&coord);
-                    let req = storage::Request::tile(src_id.clone(), src.url_template(), coord);
-                    let addr: Addr<Syn, MapViewImpl> = self.sync_addr.clone().unwrap().into();
-                    self.source.do_send(storage::ResourceRequest::new(req, addr.recipient()));
-                }
-            }
+        if let Some(ref mut render) = self.renderer {
+            render.render(params).unwrap();
         }
-        */
     }
 }
 
@@ -172,41 +160,29 @@ impl Actor for MapViewImpl {
     fn started(&mut self, ctx: &mut <Self as Actor>::Context) {
         self.addr = Some(ctx.address());
         self.sync_addr = Some(ctx.address());
+        let add = ctx.address();
+        self.tile_loader.do_send(Invoke::new(|x: &mut tiles::TileLoader| x.map = Some(add)));
     }
 }
 
 use self::tiles::data;
 
-impl Handler<storage::ResourceCallback> for MapViewImpl {
+impl Handler<storage::ResourceResponse> for MapViewImpl {
     type Result = ();
 
-    fn handle(&mut self, msg: storage::ResourceCallback, _ctx: &mut Context<Self>) {
-        match msg.result {
-            Ok(res) => {
-                match res.req {
-                    storage::Request::StyleJson { .. } => {
-                        let parsed = json::from_slice(&res.data).unwrap();
-                        self.set_style(parsed);
-                    }
-                    storage::Request::Tile(storage::TileRequestData { coords, ref source, .. }) => {
-                        //self.tile_storage.finished_tile(&coords);
-                        let source_data = self.style.as_ref().unwrap().sources.get(source).unwrap().clone();
-
-                        let rq = tiles::data::DecodeTile {
-                            source: source_data,
-                            source_name: source.clone(),
-                            res: res.clone(),
-                            cb: self.sync_addr.as_ref().unwrap().clone().recipient(),
-                        };
-                        self.tile_worker.send(rq).wait().unwrap();
-                    }
-                    _ => {
-                        panic!("Resource {:?}", res);
-                    }
-                }
+    fn handle(&mut self, msg: storage::ResourceResponse, _ctx: &mut Context<Self>) {
+        match msg.request {
+            storage::Request::Tile(req) => {
+                //self.tile_loader.tile_arrived(req, msg.result)
             }
-            Err(_e) => {
-                panic!("Resource request failed : {:?}", _e)
+            storage::Request::SourceJson(req) => {}
+            storage::Request::StyleJson(req) => {
+                let parsed: Result<style::Style> = msg.result
+                    .map_err(|e| e.into())
+                    .and_then(|x| {
+                        json::from_slice(&x.data[..]).map_err(|e| e.into())
+                    });
+                self.set_style(parsed.unwrap());
             }
         }
     }
@@ -217,7 +193,9 @@ impl Handler<tiles::data::TileReady> for MapViewImpl {
 
     fn handle(&mut self, msg: tiles::data::TileReady, ctx: &mut Context<Self>) {
         let data = Rc::new(msg.data);
-        self.renderer.tile_ready(data);
+        if let Some(ref mut r) = self.renderer {
+            r.tile_ready(data);
+        }
     }
 }
 
@@ -247,39 +225,6 @@ impl Handler<MapMethodArgs> for MapViewImpl {
     }
 }
 
-pub struct Invoke<A, F, R>
-    where A: Actor,
-          F: FnOnce(&mut A) -> R,
-          R: 'static
-
-{
-    f: F,
-    _a: ::std::marker::PhantomData<A>,
-    _r: ::std::marker::PhantomData<R>,
-}
-
-impl<A, F, R> Invoke<A, F, R>
-    where A: Actor,
-          F: FnOnce(&mut A) -> R,
-          R: 'static
-
-{
-    fn new(f: F) -> Self {
-        Invoke {
-            f: f,
-            _a: ::std::marker::PhantomData,
-            _r: ::std::marker::PhantomData,
-        }
-    }
-}
-
-impl<A, F, R> Message for Invoke<A, F, R>
-    where A: Actor,
-          F: FnOnce(&mut A) -> R,
-          R: 'static
-{
-    type Result = Result<R>;
-}
 
 impl<F, R> Handler<Invoke<MapViewImpl, F, R>> for MapViewImpl
     where F: FnOnce(&mut MapViewImpl) -> R,

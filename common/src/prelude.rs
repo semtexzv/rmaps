@@ -77,3 +77,75 @@ pub type BoxFuture<T, E> = Box<Future<Item=T, Error=E>>;
 pub type SyncAddr<A> = Addr<Syn, A>;
 
 pub const EXTENT: f32 = 8192.0;
+
+
+pub struct Invoke<A, F, R>
+    where A: Actor,
+          F: FnOnce(&mut A) -> R,
+          R: 'static
+
+{
+    pub f: F,
+    _a: ::std::marker::PhantomData<A>,
+    _r: ::std::marker::PhantomData<R>,
+}
+
+impl<A, F, R> Invoke<A, F, R>
+    where A: Actor,
+          F: FnOnce(&mut A) -> R,
+          R: 'static
+
+{
+    pub fn new(f: F) -> Self {
+        Invoke {
+            f: f,
+            _a: ::std::marker::PhantomData,
+            _r: ::std::marker::PhantomData,
+        }
+    }
+}
+
+impl<A, F, R> From<F> for Invoke<A, F, R>
+    where A: Actor,
+          F: FnOnce(&mut A) -> R,
+          R: 'static
+{
+    fn from(f: F) -> Self {
+        Self::new(f)
+    }
+}
+
+impl<A, F, R> Message for Invoke<A, F, R>
+    where A: Actor,
+          F: FnOnce(&mut A) -> R,
+          R: 'static
+{
+    type Result = Result<R>;
+}
+
+use actix::dev::*;
+
+pub fn spawn<E: Into<Error>>(fut: impl Future<Item=(), Error=E> + 'static) {
+    Arbiter::handle().spawn(fut.map_err(|e| {
+        error!("Error occured: {}", e.into());
+        ()
+    }));
+}
+
+
+#[macro_export]
+macro_rules! impl_invoke_handler {
+    ($ty:ty) => {
+        impl<F, R> Handler<Invoke<$ty, F, R>> for $ty
+        where F: FnOnce(&mut $ty) -> R,
+              R: 'static
+        {
+            type Result = Result<R>;
+
+            fn handle(&mut self, msg: Invoke<$ty, F, R>, _ctx: &mut Context<Self>) -> Result<R> {
+                Ok((msg.f)(self))
+            }
+        }
+
+    };
+}

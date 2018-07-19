@@ -49,7 +49,7 @@ fn main() {
 
 
     let mut map = rmaps::map::MapView::new(&display.clone());//.unwrap();
-    map.set_style_url("file://style-mapbox.json");
+    map.set_style_url("file://std.json");
     let mut running = true;
 
     let mut down_pos = None;

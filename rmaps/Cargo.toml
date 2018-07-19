@@ -9,7 +9,7 @@ common = { path = "../common" }
 mvt = { path = "../libs/mvt" }
 rmaps_derive = { path = "../libs/rmaps_derive"}
 
-serde="*"
+serde= { version = "*", features = ["rc"] }
 actix = {path ="../libs/actix"}
 image = "*"
 

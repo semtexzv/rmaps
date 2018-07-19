@@ -16,26 +16,28 @@ pub enum ResourceError {
     #[fail(display = "Too many requests")]
     RateLimited,
     #[fail(display = "Other errror: {}", 0)]
-    Other(Error)
+    Other(Error),
 }
 
+pub type ResourceResult = StdResult<Resource, ResourceError>;
+
 #[derive(Debug)]
-pub struct ResourceCallback {
+pub struct ResourceResponse {
     pub request: Request,
     pub result: StdResult<Resource, ResourceError>,
 }
 
-impl Message for ResourceCallback {
+impl Message for ResourceResponse {
     type Result = ();
 }
 
 pub struct ResourceRequest {
     pub request: Request,
-    pub callback: Recipient<Syn, ResourceCallback>,
+    pub callback: Recipient<Syn, ResourceResponse>,
 }
 
 impl ResourceRequest {
-    pub fn new(req: Request, callback: Recipient<Syn, ResourceCallback>) -> Self {
+    pub fn new(req: Request, callback: Recipient<Syn, ResourceResponse>) -> Self {
         ResourceRequest {
             request: req,
             callback,
@@ -52,7 +54,7 @@ pub struct DefaultFileSource {
     local: SyncAddr<local::LocalFileSource>,
     network: SyncAddr<network::NetworkFileSource>,
 
-    requests: BTreeMap<String, Recipient<Syn, ResourceCallback>>,
+    requests: BTreeMap<String, Recipient<Syn, ResourceResponse>>,
 }
 
 impl Actor for DefaultFileSource {
@@ -66,10 +68,10 @@ impl Handler<ResourceRequest> for DefaultFileSource {
         let url = { msg.request.url().to_string() };
 
         if let Some(res) = self.cache.get(&msg.request).unwrap() {
-            msg.callback.do_send(ResourceCallback {
+            spawn(msg.callback.send(ResourceResponse {
                 request: msg.request,
                 result: Ok(res),
-            }).unwrap();
+            }));
             return;
         }
 
@@ -89,10 +91,10 @@ impl Handler<ResourceRequest> for DefaultFileSource {
     }
 }
 
-impl Handler<ResourceCallback> for DefaultFileSource {
+impl Handler<ResourceResponse> for DefaultFileSource {
     type Result = ();
 
-    fn handle(&mut self, msg: ResourceCallback, _ctx: &mut Context<Self>) {
+    fn handle(&mut self, msg: ResourceResponse, _ctx: &mut Context<Self>) {
         if let Some(cb) = self.requests.remove(&msg.request.url()) {
             {
                 if let Ok(ref resource) = msg.result {

@@ -63,7 +63,7 @@ impl Handler<super::ResourceRequest> for NetworkFileSource {
                             .then(move |body| {
                                 match body {
                                     Ok(data) => {
-                                        let cb = super::ResourceCallback {
+                                        let cb = super::ResourceResponse {
                                             result: Ok(super::Resource {
                                                 req: msg.request.clone(),
                                                 data: data.to_vec(),
@@ -71,14 +71,14 @@ impl Handler<super::ResourceRequest> for NetworkFileSource {
                                             request: msg.request,
                                         };
 
-                                        msg.callback.send(cb).wait().unwrap();
+                                        spawn(msg.callback.send(cb))
                                     }
                                     Err(e) => {
-                                        let cb = super::ResourceCallback {
+                                        let cb = super::ResourceResponse {
                                             result: Err(ResourceError::Other(e.into())),
                                             request: msg.request,
                                         };
-                                        msg.callback.send(cb).wait().unwrap();
+                                        spawn(msg.callback.send(cb));
                                     }
                                 };
 

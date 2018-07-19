@@ -4,12 +4,8 @@ version = "0.1.0"
 authors = ["Michal Hornický <semtexzv@gmail.com>"]
 
 [dependencies]
-glium = { git  = "https://github.com/semtexzv/glium", branch="tmp-working"  }
-#glium = { path  = "../libs/glium" }
+glium = { git  = "https://github.com/semtexzv/glium", branch= "tmp-working"  }
 glium_derive = { git  = "https://github.com/semtexzv/glium_derive" }
-
-#imgui = { path = "../../imgui-rs/" }
-#imgui-glium-renderer = { path = "../../imgui-rs/imgui-glium-renderer", features = [ "glium-glutin" ] }
 
 num = "*"
 rayon = "*"
@@ -31,7 +27,7 @@ rusqlite= { version =  "*", features =  ["bundled"] }
 
 scoped-tls = { version = "*", features = ["nightly"] }
 
-serde="*"
+serde= { version = "*", features = ["rc"] }
 serde_derive="*"
 serde_json="*"
 
@@ -40,9 +36,7 @@ futures = "0.1"
 tokio = "0.1"
 
 actix =  { path = "../libs/actix"}
-#reqwest = { version = "*", features = ["unstable"] }
-actix-web = { path = "../libs/actix-web", default-features=false,  features= ["tls", "flate2-c"] }
-#default-features=false }
+actix-web = { version = "0.6.15", default-features=false,  features= ["tls", "flate2-c"] }
 geo =  { version = "0.9.1", default_features = false }
 
 palette = "0.4"
