@@ -1,5 +1,7 @@
 use prelude::*;
 
+pub mod gui;
+pub mod input;
 pub mod render;
 
 pub mod style;
@@ -73,6 +75,31 @@ impl MapView {
         });
     }
 
+    pub fn window_resized(&mut self, dims: PixelSize) {
+        self.do_run(|map: &mut MapViewImpl| {
+            map.window_resized(dims)
+        });
+    }
+
+    pub fn mouse_moved(&mut self, pixel: PixelPoint) {
+        self.do_run(|map: &mut MapViewImpl| {
+            map.mouse_moved(pixel)
+        });
+    }
+
+    pub fn mouse_button(&mut self, down: bool) {
+        self.do_run(|map: &mut MapViewImpl| {
+            map.mouse_button(down)
+        });
+    }
+
+    pub fn mouse_scroll(&mut self, scroll: f64) {
+        self.do_run(|map: &mut MapViewImpl| {
+            map.mouse_scroll(scroll)
+        });
+    }
+
+    /*
     pub fn get_camera(&mut self) -> Camera {
         self.do_run(|map: &mut MapViewImpl| {
             map.camera.clone()
@@ -84,13 +111,18 @@ impl MapView {
             map.camera = camera;
         });
     }
-
-    pub fn clicked(&mut self, point: PixelPoint) {
-        self.do_run(|map: &mut MapViewImpl| {
-            map.clicked(point)
-        });
-    }
+    */
+    /*
+        pub fn clicked(&mut self, point: PixelPoint) {
+            self.do_run(|map: &mut MapViewImpl| {
+                map.clicked(point)
+            });
+        }
+        */
 }
+
+use self::input::InputHandler;
+use self::gui::Gui;
 
 pub struct MapViewImpl {
     tx: Sender<*mut MapViewImpl>,
@@ -105,6 +137,8 @@ pub struct MapViewImpl {
 
     facade: Box<glium::Display>,
     style: Option<Rc<style::Style>>,
+
+    gui: Gui,
 
 }
 
@@ -124,7 +158,7 @@ impl MapViewImpl {
             renderer: None,
 
             source: src_add.clone(),
-
+            gui: Gui::new(f).unwrap(),
             facade: Box::new((*f).clone()),
             style: None,
             tile_loader: tile_loader,
@@ -150,15 +184,25 @@ impl MapViewImpl {
         }))
     }
 
-    pub fn clicked(&mut self, pixel: PixelPoint) {
-        println!("PIXEL : {:?}", pixel);
-        let dev = self.camera.window_to_device(pixel);
-        println!("DEVICE : {:?}", dev);
-        let world = self.camera.device_to_world(dev);
-        println!("WORLD : {:?}", world);
-        let tile = world.tile_at_zoom(self.camera.zoom_int());
-        println!("TILE : {:?}", tile);
+    pub fn window_resized(&mut self, dims: PixelSize) {
+        trace!("Resized: {:?}", dims);
+        self.camera.set_size(dims);
     }
+    pub fn mouse_moved(&mut self, pixel: PixelPoint) {
+        trace!("Moved: {:?}", pixel);
+        Gui::mouse_moved(&mut self.gui, pixel);
+    }
+
+    pub fn mouse_button(&mut self, down: bool) {
+        if !self.gui.mouse_button(down) {
+            info!("Not captured");
+        }
+    }
+
+    pub fn mouse_scroll(&mut self, scroll: f64) {
+        self.gui.mouse_scroll(scroll);
+    }
+
 
     pub fn render(&mut self, target: &mut glium::Frame) {
         let params = self::render::RendererParams {
@@ -173,6 +217,8 @@ impl MapViewImpl {
         if let Some(ref mut render) = self.renderer {
             render.render(params).unwrap();
         }
+
+        self.gui.render(target)
     }
 }
 
@@ -180,11 +226,10 @@ impl MapViewImpl {
 impl Actor for MapViewImpl {
     type Context = Context<Self>;
 
-    fn started(&mut self, ctx: &mut <Self as Actor>::Context) {
-        unsafe {
-            let ptr = self as *mut _;
-            self.tx.send(ptr).unwrap();
-        }
+    fn started(&mut self, ctx: &mut Self::Context) {
+        let ptr = self as *mut _;
+        self.tx.send(ptr).unwrap();
+
         self.addr = Some(ctx.address());
         let add = ctx.address();
         self.tile_loader.do_send(Invoke::new(|x: &mut tiles::TileLoader| x.map = Some(add)));
@@ -225,40 +270,4 @@ impl Handler<tiles::data::TileReady> for MapViewImpl {
     }
 }
 
-
-pub enum MapMethodArgs {
-    Render(glium::Frame),
-    SetStyleUrl(String),
-}
-
-impl Message for MapMethodArgs {
-    type Result = ();
-}
-
-impl Handler<MapMethodArgs> for MapViewImpl {
-    type Result = ();
-
-    fn handle(&mut self, msg: MapMethodArgs, _ctx: &mut Self::Context) -> () {
-        match msg {
-            MapMethodArgs::Render(mut frame) => {
-                self.render(&mut frame);
-                frame.finish().unwrap();
-            }
-            MapMethodArgs::SetStyleUrl(url) => {
-                self.set_style_url(&url)
-            }
-        };
-    }
-}
-
-
-impl<F, R> Handler<Invoke<MapViewImpl, F, R>> for MapViewImpl
-    where F: FnOnce(&mut MapViewImpl) -> R,
-          R: 'static
-{
-    type Result = Result<R>;
-
-    fn handle(&mut self, msg: Invoke<MapViewImpl, F, R>, _ctx: &mut Context<Self>) -> Result<R> {
-        Ok((msg.f)(self))
-    }
-}
+impl_invoke_handler!(MapViewImpl);

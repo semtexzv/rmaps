@@ -14,3 +14,9 @@ image = "*"
 
 tess2 =  { path = "../libs/tess2" }
 earcut = { path = "../libs/earcut" }
+
+#imgui = { git = "https://github.com/semtexzv/imgui-rs" }
+#imgui-glium-renderer = { git = "https://github.com/semtexzv/imgui-rs" }
+
+imgui = { path = "../../imgui-rs" }
+imgui-glium-renderer = { path = "../../imgui-rs/imgui-glium-renderer" }

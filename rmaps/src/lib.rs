@@ -28,6 +28,10 @@ pub extern crate earcut;
 
 extern crate serde;
 
+pub extern crate imgui;
+pub extern crate imgui_glium_renderer;
+
+
 pub mod prelude;
 pub mod map;
 

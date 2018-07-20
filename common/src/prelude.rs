@@ -31,6 +31,10 @@ pub use glium::{
 pub use cgmath::{SquareMatrix, Matrix4, Vector4};
 
 
+pub use std::time::{
+    Instant,
+};
+
 pub use time::{
     Duration,
     PreciseTime,

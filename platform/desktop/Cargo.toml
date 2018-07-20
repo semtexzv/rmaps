@@ -3,10 +3,6 @@ name = "desktop"
 version = "0.1.0"
 authors = ["Michal Hornický <semtexzv@gmail.com>"]
 
-[profile.release]
-debug-assertions =true
-debug = true
-
 [dependencies]
 common = { path = "../../common" }
 rmaps = { path = "../../rmaps" }

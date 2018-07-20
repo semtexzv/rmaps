@@ -2,6 +2,13 @@
 members = ["common" , "rmaps", "platform/*", "libs/*"]
 
 
+[profile.release]
+debug-assertions =true
+debug = true
+
+
 [replace]
 "glium:0.22.0" = { git  = "https://github.com/semtexzv/glium", branch = "tmp-working"  }
-"actix:0.7.0" = { git = "https://github.com/actix/actix/" , rev= "96d45d143403d7cb86bafb05933b026982165a24"}
+"winit:0.16.2" = { git  = "https://github.com/semtexzv/winit"  }
+
+"actix:0.7.0" = { git = "https://github.com/actix/actix/" , rev= "96d45d1434t03d7cb86bafb05933b026982165a24"}
