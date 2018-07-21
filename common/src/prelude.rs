@@ -31,18 +31,44 @@ pub use glium::{
 pub use cgmath::{SquareMatrix, Matrix4, Vector4};
 
 
-pub use std::time::{
-    Instant,
-};
+pub use std::time::Instant;
 
-pub use time::{
-    Duration,
-    PreciseTime,
-};
+pub use time::Duration;
+
+#[derive(Debug, PartialOrd, Ord, PartialEq, Hash, Eq, Copy, Clone)]
+pub struct PreciseTime(u64);
+
+impl PreciseTime {
+    /// Returns a `PreciseTime` representing the current moment in time.
+    pub fn now() -> PreciseTime {
+        PreciseTime(::time::precise_time_ns())
+    }
+
+    /// Returns a `Duration` representing the span of time from the value of
+    /// `self` to the value of `later`.
+    ///
+    /// # Notes
+    ///
+    /// If `later` represents a time before `self`, the result of this method
+    /// is unspecified.
+    ///
+    /// If `later` represents a time more than 293 years after `self`, the
+    /// result of this method is unspecified.
+    #[inline]
+    pub fn to(&self, later: PreciseTime) -> Duration {
+        // NB: even if later is less than self due to overflow, this will work
+        // since the subtraction will underflow properly as well.
+        //
+        // We could deal with the overflow when casting to an i64, but all that
+        // gets us is the ability to handle intervals of up to 584 years, which
+        // seems not very useful :)
+        Duration::nanoseconds((later.0 - self.0) as i64)
+    }
+}
 
 pub use rayon::{
     self,
-    prelude::*,
+    iter::{IntoParallelRefMutIterator, ParallelIterator},
 };
 
 pub use regex::{
@@ -137,8 +163,7 @@ impl<A, F, R> Message for Invoke<A, F, R>
 use actix::dev::*;
 
 pub fn spawn<E: Into<Error>>(fut: impl Future<Item=(), Error=E> + 'static) {
-
-    ::actix::Arbiter::spawn(fut.map_err(|e| {
+    Arbiter::handle().spawn(fut.map_err(|e| {
         error!("Error occured: {}", e.into());
         ()
     }));

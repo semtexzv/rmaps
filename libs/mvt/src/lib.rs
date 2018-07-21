@@ -1,5 +1,5 @@
 #![allow(unused_unsafe, dead_code, unused_variables, unused_imports)]
-pub extern crate common;
+pub extern crate geometry;
 
 pub extern crate prost;
 #[macro_use]
@@ -10,7 +10,7 @@ pub extern crate bytes;
 
 pub extern crate quick_protobuf;
 
-pub use common::geometry::Value;
+pub use geometry::Value;
 
 pub mod vector_tile;
 pub mod tile2;

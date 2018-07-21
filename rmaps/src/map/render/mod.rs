@@ -15,13 +15,14 @@ use map::tiles::{
 };
 use std::hash;
 
+use map::util::profiler;
 
 pub struct RendererParams<'a> {
     pub display: &'a Display,
     pub frame: &'a mut glium::Frame,
     pub camera: &'a Camera,
 
-    pub loader: Addr< TileLoader>,
+    pub loader: Addr<TileLoader>,
 
     pub frame_start: PreciseTime,
 
@@ -96,12 +97,16 @@ impl Renderer {
         }
     }
     pub fn render(&mut self, mut params: RendererParams) -> Result<()> {
+        profiler::begin("cover");
         let camera = params.camera;
         let cover = TileCover::from_camera(camera);
 
         let eval_params = EvaluationParams::new(params.camera.zoom);
+        profiler::end();
+        profiler::begin("prepare");
 
-        let requests: Result<BTreeSet<(String, TileCoords)>> = self.layers
+
+        let requests: Vec<Vec<(String, TileCoords)>> = self.layers
             .deref_mut()
             .par_iter_mut()
             .map(|l| {
@@ -112,51 +117,66 @@ impl Renderer {
                     requestor: &mut |source, tile| {
                         req.push((source.to_string(), tile));
                     },
-                })?;
+                }).unwrap();
 
-                Ok(req)
-            })
-            .collect::<Result<Vec<_>>>()
-            .map(|outer| {
-                outer.into_iter().flat_map(|inner| inner.into_iter())
-            })
-            .map(|r| r.collect());
+                req
+            }).collect();
 
-
-        for t in requests.unwrap() {
+        let requests: Vec<(String, TileCoords, _)> = requests
+            .into_iter()
+            .fold(BTreeSet::new(), |mut acc, v| {
+                acc.extend(v);
+                acc
+            }).into_iter().map(|t| {
             if let Some(source) = self.style.sources.get(&t.0) {
                 let name: String = t.0.into();
                 let coord = t.1;
                 let source = source.clone();
-                let fut = params.loader.send(Invoke::new(move |loader: &mut TileLoader|  {
+                (name, coord, source)
+            } else {
+                panic!()
+            }
+        }).collect();
+
+        profiler::end();
+
+        profiler::frame("request", || {
+            let fut = params.loader.send(Invoke::new(move |loader: &mut TileLoader| {
+                for (name, coord, source) in requests.into_iter() {
                     loader.request_tile(&name, &source, coord);
-                }))
-                    .map(|_|());
-                spawn(fut);
-            }
-        }
+                }
+            }))
+                .map(|_| ());
 
-        self.layers.deref_mut().iter_mut().for_each(|l| {
-            let (should_eval, really) = match l.evaluated {
-                None => (true, true),
-                Some(ref e) if e.zoom != eval_params.zoom => (true, false),
-                _ => (false, false),
-            };
-
-            if should_eval {
-                l.layer.evaluate(&eval_params).unwrap();
-            }
+            //info!("Spawning future");
+            spawn(fut);
         });
 
-        for l in self.layers.iter_mut() {
-            l.layer.render(&mut RenderParams {
-                display: &params.display,
-                frame: &mut params.frame,
-                camera: &params.camera,
-                frame_start: params.frame_start,
+        profiler::frame("eval", || {
+            self.layers.deref_mut().iter_mut().for_each(|l| {
+                let (should_eval, really) = match l.evaluated {
+                    None => (true, true),
+                    Some(ref e) if e.zoom != eval_params.zoom => (true, false),
+                    _ => (false, false),
+                };
 
-            }).unwrap();
-        }
+                if should_eval {
+                    l.layer.evaluate(&eval_params).unwrap();
+                }
+            });
+        });
+
+        profiler::frame("render", || {
+            for l in self.layers.iter_mut() {
+                l.layer.render(&mut RenderParams {
+                    display: &params.display,
+                    frame: &mut params.frame,
+                    camera: &params.camera,
+                    frame_start: params.frame_start,
+
+                }).unwrap();
+            }
+        });
 
         Ok(())
     }

@@ -8,8 +8,12 @@ pub mod style;
 pub mod storage;
 pub mod tiles;
 
+pub mod util;
+
 use std::ptr;
 use std::sync::mpsc::{channel, Sender, Receiver};
+
+use self::util::profiler;
 
 pub struct MapView {
     addr: *mut MapViewImpl,
@@ -17,7 +21,7 @@ pub struct MapView {
 }
 
 fn pulse(sys: &mut SystemRunner) {
-    sys.block_on(::common::futures::future::lazy(|| {
+    sys.run_until_complete(::common::futures::future::lazy(|| {
         ::tokio_timer::sleep(::std::time::Duration::from_millis(1))
     })).unwrap();
 }
@@ -27,7 +31,7 @@ impl MapView {
         let mut sys = System::new("Map");
         let (tx, rx) = channel();
         let mut _impl = MapViewImpl::new(f, tx);
-        let addr = _impl.start();
+        let addr: Addr<MapViewImpl> = _impl.start();
         pulse(&mut sys);
         pulse(&mut sys);
         println!("Receiving");
@@ -44,20 +48,18 @@ impl MapView {
     pub fn do_run<R>(&mut self, f: impl FnOnce(&mut MapViewImpl) -> R) -> R {
         use ::common::futures::future::*;
 
+        let addr = self.addr;
         let res = unsafe {
-            let addr = self.addr;
-            self.sys.block_on(lazy(|| {
+            self.sys.run_until_complete(::common::futures::future::lazy(|| {
                 ok::<_, ()>(f(&mut (*addr)))
-            }))
-        }.unwrap();
+            })).unwrap()
+        };
 
         res
     }
 
     pub fn pulse(&mut self) {
-        self.sys.block_on(::common::futures::future::lazy(|| {
-            ::tokio_timer::sleep(::std::time::Duration::from_millis(3))
-        })).unwrap();
+        pulse(&mut self.sys)
     }
 
     pub fn render(&mut self, mut surface: glium::Frame) {
@@ -83,46 +85,62 @@ impl MapView {
 
     pub fn mouse_moved(&mut self, pixel: PixelPoint) {
         self.do_run(|map: &mut MapViewImpl| {
-            map.mouse_moved(pixel)
+            map.handle_mouse_moved(pixel)
         });
     }
 
     pub fn mouse_button(&mut self, down: bool) {
         self.do_run(|map: &mut MapViewImpl| {
-            map.mouse_button(down)
+            map.handle_mouse_button(down)
         });
     }
 
     pub fn mouse_scroll(&mut self, scroll: f64) {
         self.do_run(|map: &mut MapViewImpl| {
-            map.mouse_scroll(scroll)
+            map.handle_mouse_scroll(scroll)
         });
     }
-
-    /*
-    pub fn get_camera(&mut self) -> Camera {
-        self.do_run(|map: &mut MapViewImpl| {
-            map.camera.clone()
-        })
-    }
-
-    pub fn set_camera(&mut self, camera: Camera) {
-        self.do_run(|map: &mut MapViewImpl| {
-            map.camera = camera;
-        });
-    }
-    */
-    /*
-        pub fn clicked(&mut self, point: PixelPoint) {
-            self.do_run(|map: &mut MapViewImpl| {
-                map.clicked(point)
-            });
-        }
-        */
 }
 
 use self::input::InputHandler;
 use self::gui::Gui;
+
+#[derive(Default)]
+pub struct InputStatus {
+    last_pos: PixelPoint,
+    captured: bool,
+}
+
+
+impl<'a> InputHandler for MapViewImpl {
+    fn has_captured(&mut self) -> bool {
+        return self.input.captured;
+    }
+
+    fn mouse_moved(&mut self, pixel: PixelPoint) -> bool {
+        if self.input.captured {
+            let last = self.input.last_pos;
+            let last = self.camera.window_to_world(last);
+            let now = self.camera.window_to_world(pixel);
+
+            let diff = now - last;
+            self.camera.set_pos(self.camera.pos() - diff);
+        }
+
+        self.input.last_pos = pixel;
+        self.has_captured()
+    }
+
+    fn mouse_button(&mut self, pressed: bool) -> bool {
+        self.input.captured = pressed;
+        self.has_captured()
+    }
+
+    fn mouse_scroll(&mut self, scroll: f64) -> bool {
+        self.camera.set_zoom(self.camera.zoom + scroll as f32);
+        self.has_captured()
+    }
+}
 
 pub struct MapViewImpl {
     tx: Sender<*mut MapViewImpl>,
@@ -139,6 +157,7 @@ pub struct MapViewImpl {
     style: Option<Rc<style::Style>>,
 
     gui: Gui,
+    input: InputStatus,
 
 }
 
@@ -162,6 +181,7 @@ impl MapViewImpl {
             facade: Box::new((*f).clone()),
             style: None,
             tile_loader: tile_loader,
+            input: Default::default(),
         };
 
 
@@ -188,19 +208,33 @@ impl MapViewImpl {
         trace!("Resized: {:?}", dims);
         self.camera.set_size(dims);
     }
-    pub fn mouse_moved(&mut self, pixel: PixelPoint) {
-        trace!("Moved: {:?}", pixel);
-        Gui::mouse_moved(&mut self.gui, pixel);
-    }
 
-    pub fn mouse_button(&mut self, down: bool) {
-        if !self.gui.mouse_button(down) {
-            info!("Not captured");
+
+    pub fn handle_mouse_moved(&mut self, pixel: PixelPoint) {
+        if self.gui.has_captured() {
+            self.gui.mouse_moved(pixel);
+        } else if self.has_captured() {
+            self.mouse_moved(pixel);
+        } else {
+            self.gui.mouse_moved(pixel);
+            self.mouse_moved(pixel);
         }
     }
+    pub fn handle_mouse_button(&mut self, down: bool) {
+        self.gui.mouse_button(down);
+        self.mouse_button(down);
+    }
 
-    pub fn mouse_scroll(&mut self, scroll: f64) {
-        self.gui.mouse_scroll(scroll);
+    pub fn handle_mouse_scroll(&mut self, scroll: f64) {
+        if self.gui.has_captured() {
+            self.gui.mouse_scroll(scroll);
+        } else if self.has_captured() {
+            self.mouse_scroll(scroll);
+        }
+
+        if !self.gui.mouse_scroll(scroll) {
+            self.mouse_scroll(scroll);
+        }
     }
 
 
@@ -217,8 +251,7 @@ impl MapViewImpl {
         if let Some(ref mut render) = self.renderer {
             render.render(params).unwrap();
         }
-
-        self.gui.render(target)
+        //self.gui.render(target)
     }
 }
 
@@ -243,9 +276,6 @@ impl Handler<storage::ResourceResponse> for MapViewImpl {
 
     fn handle(&mut self, msg: storage::ResourceResponse, _ctx: &mut Context<Self>) {
         match msg.request {
-            storage::Request::Tile(req) => {
-                //self.tile_loader.tile_arrived(req, msg.result)
-            }
             storage::Request::SourceJson(req) => {}
             storage::Request::StyleJson(req) => {
                 let parsed: Result<style::Style> = msg.result
@@ -255,6 +285,9 @@ impl Handler<storage::ResourceResponse> for MapViewImpl {
                     });
                 self.set_style(parsed.unwrap());
             }
+             _ => {
+                 panic!("Shouldnt happen");
+             }
         }
     }
 }

@@ -1,7 +1,8 @@
 use ::prelude::*;
 
-use ::imgui;
-use imgui::*;
+use ::imgui::{
+    self,*
+};
 
 use ::imgui_glium_renderer::Renderer;
 
@@ -18,12 +19,17 @@ use common::glium::{
     *,
 };
 
+pub mod prof;
+
 #[derive(Default)]
 pub struct InputData {
     wheel: f32,
 }
 
-pub struct State {}
+#[derive(Default)]
+pub struct State {
+    profiler: prof::ProfilerState,
+}
 
 pub struct Gui {
     imgui: ImGui,
@@ -54,10 +60,15 @@ impl Gui {
             display: Box::new((*display).clone()),
             renderer,
             last_frame: PreciseTime::now(),
-            state: State {},
+            state: State {
+                profiler: prof::ProfilerState::new(),
+                ..Default::default()
+            },
+
             input_data: Default::default(),
         })
     }
+
     pub fn render(&mut self, surface: &mut glium::Frame) {
         let now = PreciseTime::now();
         let delta = self.last_frame.to(now);
@@ -69,64 +80,43 @@ impl Gui {
         render(&ui, &mut self.state);
         self.renderer.render(surface, ui).expect("Rendering failed");
     }
+
     pub fn resized(&mut self, size: LogicalSize) {}
 }
 
 use super::{MapViewImpl, input::*};
 
 impl InputHandler for Gui {
-    fn mouse_moved(&mut self, pos: PixelPoint) {
+    fn has_captured(&mut self) -> bool {
+        return self.imgui.input_state().want_capture_mouse();
+    }
+
+    fn mouse_moved(&mut self, pos: PixelPoint) -> bool {
         self.imgui.set_mouse_pos(pos.x as _, pos.y as _);
-        trace!("Moved: {:?}", self.imgui.mouse_pos());
+        self.has_captured()
     }
 
     fn mouse_button(&mut self, pressed: bool) -> bool {
         self.imgui.set_mouse_down(&[pressed, false, false, false, false, ]);
-        return true;
-        //return self.imgui
+        self.has_captured()
     }
 
-    fn mouse_scroll(&mut self, scroll: f64) {
+    fn mouse_scroll(&mut self, scroll: f64) -> bool {
         self.input_data.wheel += scroll as f32;
         self.imgui.set_mouse_wheel(self.input_data.wheel);
         self.input_data.wheel = 0.0;
+        self.has_captured()
     }
 }
 
-/*
-fn hello_world<'a>(ui: &Ui<'a>) -> bool {
-    ui.window(im_str!("Hello world"))
-        .size((300.0, 100.0), ImGuiCond::FirstUseEver)
-        .build(|| {
-            ui.text(im_str!("Hello world!"));
-            ui.text(im_str!("こんにちは世界！"));
-            ui.text(im_str!("This...is...imgui-rs!"));
-            ui.separator();
-            let mouse_pos = ui.imgui().mouse_pos();
-            ui.text(im_str!(
-                "Mouse Position: ({:.1},{:.1})",
-                mouse_pos.0,
-                mouse_pos.1
-            ));
-        });
-
-    true
-}
-*/
-
 fn render<'a>(ui: &Ui<'a>, state: &'a mut State) {
+    let win_size = ui.imgui().display_size();
     ui.window(im_str!("Profiler"))
-        //.position((400., 400.), ImGuiCond::FirstUseEver)
-        .size((400., 400.), ImGuiCond::FirstUseEver)
+        .position((0., 0.), ImGuiCond::Always)
+        .size((win_size.0, 300.), ImGuiCond::Always)
         .movable(true)
         .resizable(true)
         .build(|| {
-            ui.text(im_str!("Hello world!"));
-            let mouse_pos = ui.imgui().mouse_pos();
-            ui.text(im_str!(
-                "Mouse Position: ({:.1},{:.1})",
-                mouse_pos.0,
-                mouse_pos.1
-            ));
+            state.profiler.render(ui)
         })
 }

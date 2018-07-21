@@ -1,5 +1,6 @@
 #![allow(unused_variables, unused_imports)]
 #![feature(nll)]
+#![feature(unboxed_closures)]
 
 pub extern crate rmaps;
 pub extern crate common;
@@ -31,19 +32,17 @@ fn main() {
 
     let mut events_loop = glutin::EventsLoop::new();
     let window = glutin::WindowBuilder::new()
-        .with_title("Maps test")
+        .with_title("Mapsaa taest")
 
         .with_dimensions(LogicalSize::new(600., 600.));
 
     let context = glutin::ContextBuilder::new()
-        .with_gl(glutin::GlRequest::Specific(glutin::Api::OpenGl, (4,0)))
+        .with_gl(glutin::GlRequest::Specific(glutin::Api::OpenGl, (3,0)))
         //.with_gl(glutin::GlRequest::Specific(glutin::Api::OpenGlEs, (3, 0)))
         .with_gl_profile(glutin::GlProfile::Core)
         .with_pixel_format(8, 8)
         .with_stencil_buffer(8)
-        .with_vsync(false);
-
-    ::rmaps::init();
+        .with_vsync(true);
 
     let display = glium::Display::new(window, context, &events_loop).unwrap();
 

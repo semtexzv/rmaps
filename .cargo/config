@@ -9,3 +9,5 @@ linker = "/home/semtexzv/android-sdk/ndk-bundle/standalone/arm/bin/arm-linux-and
 [target.i686-linux-android]
 ar = "/home/semtexzv/android-sdk/ndk-bundle/standalone/x86/bin/i686-linux-android-ar"
 linker = "/home/semtexzv/android-sdk/ndk-bundle/standalone/x86/bin/i686-linux-android-clang"
+
+[target.x86_64-unknown-linux-gnu]

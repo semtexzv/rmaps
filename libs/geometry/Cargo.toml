@@ -1,0 +1,9 @@
+[package]
+name = "geometry"
+version = "0.1.0"
+authors = ["Michal Hornický <semtexzv@gmail.com>"]
+
+[dependencies]
+
+serde= { version = "*", features = ["rc"] }
+serde_derive="*"

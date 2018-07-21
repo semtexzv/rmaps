@@ -215,10 +215,10 @@ impl PropertiesVisitor for PropertyLayoutBuilder {
             panic!("Style not supported, `{}` can't be a feature property", name);
         }
 
-        debug!("Visited : {} ", name);
-        debug!("\t Zoom    : allowed {} , used : {}", can_zoom, style_prop.is_zoom());
-        debug!("\t Feature : allowed {} , used : {}", can_feature, style_prop.is_feature());
-        debug!("\t Attribute type : {:?}", self.last_attr_type);
+        //debug!("Visited : {} ", name);
+        //debug!("\t Zoom    : allowed {} , used : {}", can_zoom, style_prop.is_zoom());
+        //debug!("\t Feature : allowed {} , used : {}", can_feature, style_prop.is_feature());
+        //debug!("\t Attribute type : {:?}", self.last_attr_type);
 
         if let Some(attr) = self.last_attr_type {
             if style_prop.is_feature() {
@@ -230,10 +230,7 @@ impl PropertiesVisitor for PropertyLayoutBuilder {
     }
 }
 
-use ::common::glium::uniforms::UniformBuffer;
-use ::common::glium::texture::buffer_texture::*;
 
-use glium::{implement_uniform_block, implement_buffer_content};
 pub const FEATURE_UBO_VECS : usize = 1024;
 
 pub struct FeatureDataUbo {

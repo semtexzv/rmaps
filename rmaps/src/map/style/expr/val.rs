@@ -4,17 +4,17 @@ use super::*;
 pub type Array = Vec<Value>;
 pub type Object = BTreeMap<String, Value>;
 
-impl From<::common::geometry::Value> for Value {
-    fn from(v: ::common::geometry::Value) -> Self {
+impl From<geometry::Value> for Value {
+    fn from(v: geometry::Value) -> Self {
         match v {
-            ::common::geometry::Value::Null => Value::Null,
-            ::common::geometry::Value::Bool(b) => Value::Bool(b),
-            ::common::geometry::Value::Int(a) => Value::Num(a as _),
-            ::common::geometry::Value::UInt(a) => Value::Num(a as _),
-            ::common::geometry::Value::Float(a) => Value::Num(a as _),
-            ::common::geometry::Value::String(s) => Value::String(s),
-            ::common::geometry::Value::List(a) => Value::List(a.into_iter().map(|v| v.into()).collect()),
-            ::common::geometry::Value::Object(o) => Value::Object(o.into_iter().map(|(k, v)| (k, v.into())).collect()),
+            geometry::Value::Null => Value::Null,
+            geometry::Value::Bool(b) => Value::Bool(b),
+            geometry::Value::Int(a) => Value::Num(a as _),
+            geometry::Value::UInt(a) => Value::Num(a as _),
+            geometry::Value::Float(a) => Value::Num(a as _),
+            geometry::Value::String(s) => Value::String(s),
+            geometry::Value::List(a) => Value::List(a.into_iter().map(|v| v.into()).collect()),
+            geometry::Value::Object(o) => Value::Object(o.into_iter().map(|(k, v)| (k, v.into())).collect()),
         }
     }
 }

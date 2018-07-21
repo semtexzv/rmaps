@@ -1,4 +1,6 @@
 use prelude::*;
+pub use map::util::profiler;
+
 
 use map::{
     style,
@@ -180,18 +182,20 @@ impl<L: BucketLayer> Layer for BucketLayerHolder<L> {
     }
 
     fn render(&mut self, params: &mut render::RenderParams) -> Result<()> {
-        self.layer.begin_pass(params, RenderPass::Opaque)?;
+        profiler::frame("Bucket", || {
+            self.layer.begin_pass(params, RenderPass::Opaque)?;
 
 
-        for t in self.tiles.iter() {
-            if let Some(mut v) = self.buckets.get_mut(&t.wrap()) {
-                v.bucket.upload(params.display)?;
-                self.layer.render_bucket(params, *t, &mut v.bucket)?;
+            for t in self.tiles.iter() {
+                if let Some(mut v) = self.buckets.get_mut(&t.wrap()) {
+                    v.bucket.upload(params.display)?;
+                    self.layer.render_bucket(params, *t, &mut v.bucket)?;
+                }
             }
-        }
 
-        self.layer.end_pass(params, RenderPass::Opaque)?;
-        Ok(())
+            self.layer.end_pass(params, RenderPass::Opaque)?;
+            Ok(())
+        })
     }
 }
 

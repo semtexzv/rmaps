@@ -258,7 +258,7 @@ impl layers::BucketLayer for FillLayer {
 impl FillLayer {
     pub fn parse(f: &glium::backend::Facade, layer: style::FillLayer) -> Self {
         let (uni, feat) = ::map::render::property::PropertyLayoutBuilder::build::<FillFeatureProperties>(&layer);
-        trace!("Fill layer layout:\n  uniforms: {:?},\n  features: {:?}", uni, feat);
+        //trace!("Fill layer layout:\n  uniforms: {:?},\n  features: {:?}", uni, feat);
         let shader_program = layer_program!(f,"fill",&uni,&feat);
 
         FillLayer {

@@ -1,11 +1,19 @@
 pub use prelude::*;
 
 pub use ::glium::{
-    program,
-    uniform,
     Surface,
     backend::Facade,
+    uniforms::UniformBuffer,
 };
+// Reexport macros
+pub use glium::{
+    implement_buffer_content,
+    implement_uniform_block,
+    implement_vertex,
+    program,
+    uniform
+};
+
 pub use glium_derive::Vertex;
 
 pub use cgmath::{
@@ -16,7 +24,6 @@ pub use cgmath::{
 
 
 pub use rand;
-pub use itertools::{self};
 
 pub use serde::{
     self,
@@ -35,29 +42,25 @@ pub use scoped_tls::*;
 pub use bytes;
 
 pub use actix;
-
 pub use actix_web;
-//pub use reqwest;
 
 pub use futures;
 pub use tokio;
 pub use tokio_timer;
 
-
-pub use palette;
 pub use url;
 pub use uuid::prelude::*;
 pub use rusqlite;
 
-pub use enumflags::*;
-pub use enumflags_derive::*;
-
 pub use failure::format_err;
 
 pub use ::util::*;
-pub use ::geometry;
 pub use color::*;
 
 pub use coord::*;
 pub use mercator::Mercator;
+
+use actix::prelude::*;
+pub type Addr<A> = ::actix::Addr<Syn,A>;
+pub type Recipient<A> = ::actix::Recipient<Syn,A>;
 

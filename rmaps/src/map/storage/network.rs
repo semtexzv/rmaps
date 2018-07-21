@@ -39,74 +39,77 @@ impl Handler<super::ResourceRequest> for NetworkFileSource {
     fn handle(&mut self, msg: ResourceRequest, _ctx: &mut Context<Self>) {
         println!("Getting: {:?}", msg.request.url());
 
-        fn get(url: &str, msg: ResourceRequest, allowed_redirect_count: usize) -> Box<dyn Future<Item=(), Error=()>> {
-            let request = Box::new(client::get(url)
+        fn get(url: &str, msg: ResourceRequest, allowed_redirect_count: usize) -> Box<dyn Future<Item=(), Error=ResourceError>> {
+            let request: Box<dyn Future<Item=_, Error=ResourceError>> = Box::new(client::get(url)
                 .timeout(::std::time::Duration::from_secs(15))
-
                 .finish().unwrap()
-                .send());
+                .send()
+                .map_err(|e| ResourceError::Other(e.into())));
 
-
-            let next_action: Box<dyn Future<Item=(), Error=()>> = Box::new(request
-                .map_err(|e| ())
-                .and_then(move |response: ClientResponse| -> Box<dyn Future<Item=(), Error=()>> {
-                    if response.status().is_redirection() {
-                        if let Some(location) = response.headers().get("Location") {
-                            if allowed_redirect_count > 0 {
-                                return box get(location.to_str().unwrap(), msg, allowed_redirect_count - 1).then(|_| Ok(()));
-                            }
-                            panic!("Too many redirects")
+            let parse_response = move |response: ClientResponse| -> Box<dyn Future<Item=(), Error=ResourceError>> {
+                if response.status().is_redirection() {
+                    if let Some(location) = response.headers().get("Location") {
+                        if allowed_redirect_count > 0 {
+                            return box get(location.to_str().unwrap(), msg, allowed_redirect_count - 1);
                         }
+                        panic!("Too many redirects")
                     }
+                }
 
-                    if response.status().is_success() {
-                        return box response.body()
-                            .limit(1024 * 1024 * 32)
-                            .then(move |body| {
-                                match body {
-                                    Ok(data) => {
-                                        let cb = super::ResourceResponse {
-                                            result: Ok(super::Resource {
-                                                req: msg.request.clone(),
-                                                data: data.to_vec(),
-                                            }),
-                                            request: msg.request,
-                                        };
+                if response.status().is_success() {
+                    return box response.body()
+                        .limit(1024 * 1024 * 32)
+                        .then(move |body| {
+                            match body {
+                                Ok(data) => {
+                                    let cb = super::ResourceResponse {
+                                        result: Ok(super::Resource {
+                                            req: msg.request.clone(),
+                                            data: data.to_vec(),
+                                        }),
+                                        request: msg.request,
+                                    };
 
-                                        spawn(msg.callback.send(cb))
-                                    }
-                                    Err(e) => {
-                                        let cb = super::ResourceResponse {
-                                            result: Err(ResourceError::Other(e.into())),
-                                            request: msg.request,
-                                        };
-                                        spawn(msg.callback.send(cb));
-                                    }
-                                };
+                                    spawn(msg.callback.send(cb));
+                                }
+                                Err(e) => {
+                                    let cb = super::ResourceResponse {
+                                        result: Err(ResourceError::Other(e.into())),
+                                        request: msg.request,
+                                    };
+                                    spawn(msg.callback.send(cb));
+                                }
+                            };
 
-                                Ok(())
-                            });
-                    } else if response.status().is_client_error() {
-                        let cb = super::ResourceResponse {
-                            result: Err(ResourceError::NotFound),
-                            request: msg.request,
-                        };
-                        spawn(msg.callback.send(cb));
-                        return box ok(());
-                    }
-
-                    error!("Failed to retrieve : {:?}", response);
+                            Ok(())
+                        });
+                } else if response.status().is_client_error() {
+                    let cb = super::ResourceResponse {
+                        result: Err(ResourceError::NotFound),
+                        request: msg.request,
+                    };
+                    spawn(msg.callback.send(cb));
                     return box ok(());
-                }));
+                }
+
+                error!("Failed to retrieve : {:?}", response);
+                return box ok(());
+            };
+
+            let next_action: Box<dyn Future<Item=_, Error=ResourceError>> = box request
+                .map_err(|e| ResourceError::Other(e.into()))
+                .and_then(parse_response);
 
 
             return next_action;
         }
 
         let fut = get(&msg.request.url(), msg, 3);
-        ::actix::Arbiter::spawn(fut);
-        //spawn(fut.map_);
-
+        spawn(fut.map_err(|e| {
+            format_err!("Aasddsdasadsa : {:?}", e)
+        }));
+//        Arbiter::handle().spawn(fut);
+        //::actix::Arbiter::spawn(fut);
     }
 }
 
@@ -114,7 +117,7 @@ impl NetworkFileSource {
     pub fn new() -> Self {
         return NetworkFileSource {};
     }
-    pub fn spawn() -> Addr< Self> {
+    pub fn spawn() -> Addr<Self> {
         start_in_thread(|| NetworkFileSource::new())
     }
 }

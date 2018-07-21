@@ -3,9 +3,14 @@ name = "rmaps"
 version = "0.1.0"
 authors = ["Michal Hornický <semtexzv@gmail.com>"]
 
+[profile.dev]
+codegen-units=8
+opt-level=0
+incremental=true
 
 [dependencies]
 common = { path = "../common" }
+geometry = { path = "../libs/geometry"}
 mvt = { path = "../libs/mvt" }
 rmaps_derive = { path = "../libs/rmaps_derive"}
 

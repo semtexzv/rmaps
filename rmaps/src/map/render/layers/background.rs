@@ -1,5 +1,5 @@
 use prelude::*;
-
+use map::util::profiler;
 use map::{
     style,
     render::{
@@ -47,12 +47,10 @@ impl Layer for BackgroundLayer {
         Ok(())
     }
     fn render(&mut self, params: &mut render::RenderParams) -> Result<()> {
-
         let mut c = self.properties.color.get().to_rgba();
         params.frame.clear_color(c[0], c[1], c[2], c[3] * self.properties.opacity.get());
         Ok(())
     }
-
 }
 
 impl BackgroundLayer {

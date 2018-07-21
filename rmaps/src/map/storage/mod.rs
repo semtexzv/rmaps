@@ -33,11 +33,11 @@ impl Message for ResourceResponse {
 
 pub struct ResourceRequest {
     pub request: Request,
-    pub callback: Recipient< ResourceResponse>,
+    pub callback: Recipient<ResourceResponse>,
 }
 
 impl ResourceRequest {
-    pub fn new(req: Request, callback: Recipient< ResourceResponse>) -> Self {
+    pub fn new(req: Request, callback: Recipient<ResourceResponse>) -> Self {
         ResourceRequest {
             request: req,
             callback,
@@ -54,7 +54,7 @@ pub struct DefaultFileSource {
     local: Addr<local::LocalFileSource>,
     network: Addr<network::NetworkFileSource>,
 
-    requests: BTreeMap<String, Recipient< ResourceResponse>>,
+    requests: BTreeMap<String, Recipient<ResourceResponse>>,
 }
 
 impl Actor for DefaultFileSource {
@@ -65,10 +65,10 @@ impl Handler<ResourceRequest> for DefaultFileSource {
     type Result = ();
 
     fn handle(&mut self, msg: ResourceRequest, _ctx: &mut Context<Self>) {
-
         let url = { msg.request.url().to_string() };
         println!("Req : {:?}", url);
         if let Some(res) = self.cache.get(&msg.request).unwrap() {
+            println!("Resp DB");
             spawn(msg.callback.send(ResourceResponse {
                 request: msg.request,
                 result: Ok(res),
@@ -77,15 +77,18 @@ impl Handler<ResourceRequest> for DefaultFileSource {
         }
 
 
-        let mut recipient = _ctx.address().recipient();
+        let addr: Addr<_> = _ctx.address();
+        let mut recipient: Recipient<_> = addr.recipient();
 
 
         if url.starts_with("file://") || url.starts_with("local://") {
+            println!("Req local");
             self.requests.insert(msg.request.url(), msg.callback);
-            self.local.send(ResourceRequest { request: msg.request, callback: recipient }).wait().unwrap();
+            spawn(self.local.send(ResourceRequest { request: msg.request, callback: recipient }));
         } else if url.starts_with("http://") || url.starts_with("https://") {
+            println!("Req network");
             self.requests.insert(msg.request.url(), msg.callback);
-            self.network.send(ResourceRequest { request: msg.request, callback: recipient }).wait().unwrap();
+            spawn(self.network.send(ResourceRequest { request: msg.request, callback: recipient }));
         } else {
             panic!("No data source available for {:?}", url);
         }
@@ -119,7 +122,7 @@ impl DefaultFileSource {
         }
     }
 
-    pub fn spawn() -> Addr< Self> {
+    pub fn spawn() -> Addr<Self> {
         start_in_thread::<DefaultFileSource, _>(|| DefaultFileSource::new())
     }
 }

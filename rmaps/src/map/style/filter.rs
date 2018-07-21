@@ -159,7 +159,7 @@ pub struct FilterEvaluator<'a> {
     feature: &'a ::mvt::Feature,
 }
 
-use common::geometry::Value;
+use geometry::Value;
 
 impl<'a> FilterEvaluator<'a> {
     fn new(feature: &'a ::mvt::Feature) -> Self {

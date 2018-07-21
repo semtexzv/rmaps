@@ -136,7 +136,7 @@ impl ShaderProcessor {
                 }
             };
 
-            println!("op: `{}`, typ : `{}`, name : `{}`", op, typ, name);
+            //println!("op: `{}`, typ : `{}`, name : `{}`", op, typ, name);
             res
         };
         let vert_processed = regex.replace_all(&vert, process);
@@ -144,8 +144,8 @@ impl ShaderProcessor {
 
         let frag_processed = regex.replace_all(&frag, process);
 
-        trace!("Vertex shader processed \n Orig: \n{}\n New : \n{}", vert, vert_processed);
-        trace!("Fragment shader processed \n Orig: \n{}\n New : \n{}", frag, frag_processed);
+        //trace!("Vertex shader processed \n Orig: \n{}\n New : \n{}", vert, vert_processed);
+       // trace!("Fragment shader processed \n Orig: \n{}\n New : \n{}", frag, frag_processed);
 
 
         // panic!("\nOLD: {}, \nNEW: {}", vert, vert_processed);3

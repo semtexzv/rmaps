@@ -2,11 +2,14 @@
 name = "common"
 version = "0.1.0"
 authors = ["Michal Hornický <semtexzv@gmail.com>"]
+[lib]
+#crate-type = ["dylib"]
+
 
 [dependencies]
 glium = { git  = "https://github.com/semtexzv/glium", branch= "tmp-working"  }
 glium_derive = { git  = "https://github.com/semtexzv/glium_derive" }
-
+arraydeque = "0.4.2"
 num = "*"
 rayon = "*"
 
@@ -21,12 +24,10 @@ bytes = "*"
 
 cgmath = "*"
 failure = "*"
-itertools="*"
 
 rusqlite= { version =  "*", features =  ["bundled"] }
 
 scoped-tls = { version = "*", features = ["nightly"] }
-
 serde= { version = "*", features = ["rc"] }
 serde_derive="*"
 serde_json="*"
@@ -36,22 +37,16 @@ futures = "0.1"
 tokio = "0.1"
 tokio-timer ="*"
 
-#actix =  { path = "../libs/actix"}
-actix = { git = "https://github.com/actix/actix/" , rev= "96d45d143403d7cb86bafb05933b026982165a24"}
-actix-web = { git = "https://github.com/actix/actix-web/", default-features=false,  features= ["tls", "flate2-c"] }
+geometry = { path = "../libs/geometry" }
+actix = { path = "../libs/actix" }
+actix-web =  { path ="../libs/actix-web" , features = ["tls"]}
+
 geo =  { version = "0.9.1", default_features = false }
 
-palette = "0.4"
 url = "1.7.0"
 uuid = { version = "*" , features = ["v4"]}
-enumflags = "*"
-enumflags_derive = "*"
 
 derive_more = "*"
 css-color-parser = "0.1.2"
 
 
-
-[replace]
-"glium:0.22.0" = { git  = "https://github.com/semtexzv/glium", branch = "tmp-working"  }
-"actix:0.7.0" = { git = "https://github.com/actix/actix/" , rev= "96d45d143403d7cb86bafb05933b026982165a24"}
