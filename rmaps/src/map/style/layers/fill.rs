@@ -43,7 +43,7 @@ pub struct FillPaint {
 
     #[serde(rename = "fill-outline-color")]
     #[serde(default = "default_outline_color")]
-    pub  outline_color: StyleProp<Option<Color>>,
+    pub  outline_color: Option<StyleProp<Color>>,
 
     #[serde(rename = "fill-translate")]
     #[serde(default = "default_translate")]
@@ -55,7 +55,7 @@ pub struct FillPaint {
 
     #[serde(rename = "fill-pattern")]
     #[serde(default = "Default::default")]
-    pub pattern: StyleProp<Option<String>>,
+    pub pattern: Option<StyleProp<String>>,
 }
 
 pub fn default_antialiass() -> StyleProp<bool> {
@@ -70,12 +70,12 @@ pub fn default_opacity() -> StyleProp<f32> {
     StyleProp::Value(1.0)
 }
 
-pub fn default_outline_color() -> StyleProp<Option<Color>> {
+pub fn default_outline_color() -> Option<StyleProp<Color>> {
     None.into()
 }
 
 pub fn default_translate() -> StyleProp<[f32; 2]> {
-   [0.,0.].into()
+    [0., 0.].into()
 }
 
 impl Default for FillPaint {
@@ -86,8 +86,8 @@ impl Default for FillPaint {
             opacity: default_opacity(),
             outline_color: default_outline_color(),
             translate: default_translate(),
-            translate_anchor: None.into(),
-            pattern: None.into(),
+            translate_anchor: None::<String>.into(),
+            pattern: None,
 
         }
     }

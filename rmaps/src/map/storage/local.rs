@@ -25,6 +25,7 @@ impl Handler<super::ResourceRequest> for LocalFileSource {
         f.read_to_end(&mut data).unwrap();
         let resp = Resource {
             req:req.clone(),
+            cache_until: 0,
             data,
         };
         let cb = super::ResourceResponse {

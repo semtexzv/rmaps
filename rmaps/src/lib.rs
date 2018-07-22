@@ -5,6 +5,7 @@
 #![feature(pattern_parentheses)]
 #![feature(associated_type_defaults)]
 #![feature(box_syntax)]
+#![feature(generic_associated_types)]
 
 #![feature(try_from)]
 #![feature(trace_macros)]

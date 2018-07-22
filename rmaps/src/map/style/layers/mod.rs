@@ -78,13 +78,30 @@ pub trait StyleLayerExt: StyleLayer + Sized {
     type RenderLayer: ::map::render::layers::LayerExt<StyleLayer=Self>;
 }
 
-use super::expr::DescribeType;
+use super::expr::{
+    DescribeType,
+    TypedExpr,
+    Type,
+    Value,
+};
 
 #[derive(Debug, Clone, Deserialize)]
 #[serde(untagged)]
 pub enum StyleProp<T: DescribeType + Debug> {
     Value(T),
-    Expr(super::expr::TypedExpr<T>),
+    Expr(TypedExpr<T>),
+}
+
+impl<T: DescribeType + Debug> From<Option<StyleProp<T>>> for StyleProp<Option<T>>
+    where Option<T>: DescribeType
+{
+    fn from(v: Option<StyleProp<T>>) -> Self {
+        match v {
+            Some(StyleProp::Value(v)) => StyleProp::Value(Some(v)),
+            None => StyleProp::Value(None),
+            Some(StyleProp::Expr(TypedExpr(e,_))) => StyleProp::Expr(TypedExpr::new(e)),
+        }
+    }
 }
 
 impl<T: DescribeType + Debug> StyleProp<T> {

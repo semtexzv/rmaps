@@ -65,6 +65,7 @@ impl Handler<super::ResourceRequest> for NetworkFileSource {
                                     let cb = super::ResourceResponse {
                                         result: Ok(super::Resource {
                                             req: msg.request.clone(),
+                                            cache_until : u64::max_value(),
                                             data: data.to_vec(),
                                         }),
                                         request: msg.request,

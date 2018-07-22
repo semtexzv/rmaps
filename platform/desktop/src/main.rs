@@ -32,12 +32,12 @@ fn main() {
 
     let mut events_loop = glutin::EventsLoop::new();
     let window = glutin::WindowBuilder::new()
-        .with_title("Mapsaa taest")
+        .with_title("Maps test")
 
         .with_dimensions(LogicalSize::new(600., 600.));
 
     let context = glutin::ContextBuilder::new()
-        .with_gl(glutin::GlRequest::Specific(glutin::Api::OpenGl, (3,0)))
+        .with_gl(glutin::GlRequest::Specific(glutin::Api::OpenGl, (4,0)))
         //.with_gl(glutin::GlRequest::Specific(glutin::Api::OpenGlEs, (3, 0)))
         .with_gl_profile(glutin::GlProfile::Core)
         .with_pixel_format(8, 8)
@@ -48,7 +48,7 @@ fn main() {
 
 
     let mut map = rmaps::map::MapView::new(&display.clone());//.unwrap();
-    map.set_style_url("file://style.json");
+    map.set_style_url("file://std-mabpox.json");
     let mut running = true;
 
     //let mut down_pos = None;

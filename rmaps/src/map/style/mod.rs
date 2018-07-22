@@ -3,7 +3,7 @@ use prelude::*;
 use common::json;
 
 pub mod expr;
-
+pub mod sprite;
 mod filter;
 
 mod layers;
@@ -21,12 +21,6 @@ pub struct TileJson {
     tile_size: Option<i32>,
 }
 
-#[derive(Debug, Deserialize, Clone)]
-pub struct SourceData {
-    #[serde(flatten)]
-    tilejson: TileJson,
-    url: Option<String>,
-}
 
 #[derive(Deserialize, Debug, Clone)]
 pub struct Style {
@@ -42,25 +36,28 @@ pub struct Style {
 
 }
 
-
-#[derive(Deserialize, Debug, Clone)]
-#[serde(tag = "type")]
-pub enum StyleSource {
-    #[serde(rename = "vector")]
-    Vector(SourceData),
+#[derive(Debug, Clone, Deserialize)]
+pub enum SourceType {
+    #[serde(rename = "background")]
+    Background,
     #[serde(rename = "raster")]
-    Raster(SourceData),
-    #[serde(rename = "image")]
-    Image(SourceData),
+    Raster,
+    #[serde(rename = "vector")]
+    Vector,
+}
+
+#[derive(Debug, Deserialize, Clone)]
+pub struct StyleSource {
+    #[serde(flatten)]
+    pub tilejson: TileJson,
+    #[serde(rename = "type")]
+    pub typ: SourceType,
+    pub url: Option<String>,
 }
 
 impl StyleSource {
     pub fn tile_urls(&self) -> Vec<String> {
-        match &self {
-            &StyleSource::Vector(ref v) => v,
-            &StyleSource::Raster(ref v) => v,
-            &StyleSource::Image(ref v) => v,
-        }.tilejson.tiles.as_ref().map(|x|x.clone()).unwrap_or(vec![])
+        return self.tilejson.tiles.as_ref().map(|x| x.clone()).unwrap_or(vec![]);
     }
 }
 
@@ -78,7 +75,7 @@ pub enum BaseStyleLayer {
     #[serde(rename = "raster")]
     Raster(RasterLayer),
     #[serde(rename = "fill-extrusion")]
-    FillExtrusion(json::Value)
+    FillExtrusion(json::Value),
 }
 
 

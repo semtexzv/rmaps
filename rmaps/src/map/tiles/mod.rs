@@ -60,13 +60,15 @@ impl TileLoader {
         self.count_requests += 1;
 
         let key = (Cow::Owned(name.to_string()), coords);
-        let template = (&source.tile_urls()[0]).to_string();
-        let req = storage::resource::Request::tile(name.to_string(), template, coords);
-        spawn(
-            self.source.send(storage::ResourceRequest::new(req, self.addr().recipient()))
-        );
+        if !source.deref().tile_urls().is_empty() {
+            let template = (&source.tile_urls()[0]).to_string();
+            let req = storage::resource::Request::tile(name.to_string(), template, coords);
+            spawn(
+                self.source.send(storage::ResourceRequest::new(req, self.addr().recipient()))
+            );
 
-        self.active.insert(key, source.clone());
+            self.active.insert(key, source.clone());
+        }
     }
 
     pub fn tile_arrived(&mut self, data: &storage::TileRequestData, result: storage::ResourceResult) {

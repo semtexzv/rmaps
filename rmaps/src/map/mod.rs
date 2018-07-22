@@ -162,6 +162,9 @@ pub struct MapViewImpl {
 }
 
 impl MapViewImpl {
+    pub fn addr(&self) -> Addr<Self> {
+        self.addr.as_ref().map(|x| x.clone()).unwrap()
+    }
     pub fn new(f: &Display, tx: Sender<*mut Self>) -> Self {
         let src_add = storage::DefaultFileSource::spawn();
         let tile_loader = tiles::TileLoader::spawn(src_add.clone());
@@ -191,8 +194,24 @@ impl MapViewImpl {
     pub fn set_style(&mut self, style: style::Style) {
         let style = Rc::new(style);
         self.renderer = Some(render::Renderer::new(&self.facade, style.clone()));
+        if let Some(ref sprite) = style.as_ref().sprite {
+            let image = storage::Request::SpriteImage(format!("{}", sprite));
+            let json = storage::Request::SpriteJson(format!("{}", sprite));
+
+            let cb = self.addr().recipient();
+            spawn(self.source.send(storage::ResourceRequest::new(image, cb.clone())));
+            spawn(self.source.send(storage::ResourceRequest::new(json, cb)))
+        }
+        for (n, v) in style.sources.iter() {
+            if let Some(ref url) = v.deref().url {
+                let cb = self.addr().recipient();
+                let rq = storage::Request::SourceJson(n.to_string(), url.to_string());
+                spawn(self.source.send(storage::ResourceRequest::new(rq, cb)));
+            }
+        }
         self.style = Some(style);
     }
+
 
     pub fn set_style_url(&mut self, url: &str) {
         println!("Style uRL");
@@ -239,6 +258,7 @@ impl MapViewImpl {
 
 
     pub fn render(&mut self, target: &mut glium::Frame) {
+        profiler::begin("Render");
         let params = self::render::RendererParams {
             display: self.facade.deref(),
             frame: target,
@@ -251,7 +271,8 @@ impl MapViewImpl {
         if let Some(ref mut render) = self.renderer {
             render.render(params).unwrap();
         }
-        //self.gui.render(target)
+        profiler::end();
+        //  self.gui.render(target)
     }
 }
 
@@ -276,7 +297,30 @@ impl Handler<storage::ResourceResponse> for MapViewImpl {
 
     fn handle(&mut self, msg: storage::ResourceResponse, _ctx: &mut Context<Self>) {
         match msg.request {
-            storage::Request::SourceJson(req) => {}
+            storage::Request::SourceJson(name, url) => {
+                let parsed: Result<style::TileJson> = msg.result
+                    .map_err(|e| e.into())
+                    .and_then(|x| {
+                        json::from_slice(&x.data[..]).map_err(|e| e.into())
+                    });
+                // TODO, somehow propagate this info to appropriate style source
+            }
+            storage::Request::SpriteJson(req) => {
+                if let Some(ref mut r) = self.renderer {
+                    let parsed: Result<style::sprite::SpriteAtlas> = msg.result
+                        .map_err(|e| e.into())
+                        .and_then(|x| {
+                            json::from_slice(&x.data[..]).map_err(|e| e.into())
+                        });
+
+                    r.sprite_json_ready(parsed.unwrap());
+                }
+            }
+            storage::Request::SpriteImage(req) => {
+                if let Some(ref mut r) = self.renderer {
+                    r.sprite_png_ready(msg.result.unwrap().data);
+                }
+            }
             storage::Request::StyleJson(req) => {
                 let parsed: Result<style::Style> = msg.result
                     .map_err(|e| e.into())
@@ -285,9 +329,9 @@ impl Handler<storage::ResourceResponse> for MapViewImpl {
                     });
                 self.set_style(parsed.unwrap());
             }
-             _ => {
-                 panic!("Shouldnt happen");
-             }
+            _ => {
+                panic!("Shouldnt happen");
+            }
         }
     }
 }

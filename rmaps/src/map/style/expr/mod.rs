@@ -102,7 +102,6 @@ use ::std::fmt;
 
 impl<'de> Deserialize<'de> for Expr {
     fn deserialize<D>(deserializer: D) -> StdResult<Self, D::Error> where D: Deserializer<'de> {
-
         struct ExprVisitor;
 
         impl<'de> Visitor<'de> for ExprVisitor {
@@ -161,7 +160,6 @@ impl<'de> Deserialize<'de> for Expr {
 
                             "at" | "get" | "has" | "length" => deser(seq, |a| lookup::Lookup::deserialize(a)),
                             "zoom" => Ok(Box::new(zoom::Zoom {}) as Box<dyn Expression>),
-
 
                             "interpolate" => deser(seq, |a| interp::Interpolate::deserialize(a)),
                             "step" => deser(seq, |a| interp::Step::deserialize(a)),
@@ -275,9 +273,15 @@ describe_type!(bool, Type::Boolean);
 /// Utility structs that passes expected type into `Deserialize` implementation of `BaseExpr`, through
 /// scoped thread local variable
 #[derive(Debug, Clone)]
-pub struct TypedExpr<T: DescribeType>(pub Expr, ::std::marker::PhantomData<T>);
+pub struct TypedExpr<T: DescribeType>(pub Expr, pub PhantomData<T>);
 
-impl <T : DescribeType> TypedExpr<T> {
+impl<T: DescribeType> TypedExpr<T> {
+    pub fn new(e: Expr) -> Self {
+        TypedExpr(e, PhantomData)
+    }
+}
+
+impl<T: DescribeType> TypedExpr<T> {
     #[inline]
     pub fn is_zoom(&self) -> bool {
         self.0.is_zoom()

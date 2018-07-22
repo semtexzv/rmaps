@@ -100,11 +100,10 @@ impl Handler<ResourceResponse> for DefaultFileSource {
 
     fn handle(&mut self, msg: ResourceResponse, _ctx: &mut Context<Self>) {
         if let Some(cb) = self.requests.remove(&msg.request.url()) {
-            {
-                if let Ok(ref resource) = msg.result {
-                    self.cache.put(resource).unwrap();
-                }
+            if let Ok(ref resource) = msg.result {
+                self.cache.put(resource).unwrap();
             }
+
             cb.send(msg).wait().unwrap();
         }
     }

@@ -2,7 +2,7 @@ use ::prelude::*;
 use ::common::rusqlite::{Connection, Statement};
 
 use super::{
-    resource::{Request, Resource, TileRequestData, StyleRequestData, SourceRequestData}
+    resource::{Request, Resource, TileRequestData,}
 };
 
 pub struct OfflineCache {
@@ -34,13 +34,14 @@ impl OfflineCache {
 
     pub fn get(&self, req: &Request) -> Result<Option<Resource>> {
         let url = req.url();
-        self.db.execute("UPDATE resources SET accessed = ?1 WHERE url = ?2", &[&0, &url])?;
+        self.db.execute(r#"UPDATE resources SET accessed = ?1 WHERE url = ?2 and expires > strftime('%s', 'now')"#, &[&0, &url])?;
         let mut get_stmt = self.db.prepare("SELECT data FROM resources where url = ?1")?;
         let data = get_stmt.query_map(&[&url], |row| row.get::<_, Vec<u8>>(0))?.map(|x| x.unwrap()).next();
 
         return Ok(if let Some(data) = data {
             Some(Resource {
                 data: data,
+                cache_until : u64::max_value(),
                 req: req.clone(),
             })
         } else {
@@ -53,7 +54,7 @@ impl OfflineCache {
             &url,
             &1,
             &res.data,
-            &0,
+            &(res.cache_until as i64),
             &0
         ])?;
 

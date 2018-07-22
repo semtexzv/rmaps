@@ -1,6 +1,7 @@
 use prelude::*;
 
 
+pub mod images;
 pub mod layers;
 
 pub mod property;
@@ -16,6 +17,8 @@ use map::tiles::{
 use std::hash;
 
 use map::util::profiler;
+
+use self::images::ImageAtlas;
 
 pub struct RendererParams<'a> {
     pub display: &'a Display,
@@ -39,7 +42,7 @@ pub struct RenderParams<'a> {
     pub display: &'a Display,
     pub frame: &'a mut glium::Frame,
     pub camera: &'a Camera,
-
+    pub atlas: &'a ImageAtlas,
     pub frame_start: PreciseTime,
 }
 
@@ -74,6 +77,7 @@ pub struct Renderer {
     pub display: Box<Display>,
     pub style: Rc<style::Style>,
     pub layers: Vec<LayerData>,
+    pub image_atlas: images::ImageAtlas,
 }
 
 
@@ -87,9 +91,16 @@ impl Renderer {
                     evaluated: None,
                 }
             }).collect(),
+            image_atlas: images::ImageAtlas::new(&display).unwrap(),
             style,
 
         }
+    }
+    pub fn sprite_json_ready(&mut self, data: ::map::style::sprite::SpriteAtlas) {
+        error!("Sprite atlas");
+    }
+    pub fn sprite_png_ready(&mut self, data: Vec<u8>) {
+        error!("Sprite PNG")
     }
     pub fn tile_ready(&mut self, tile: Rc<data::TileData>) {
         for l in self.layers.iter_mut() {
@@ -172,6 +183,7 @@ impl Renderer {
                     display: &params.display,
                     frame: &mut params.frame,
                     camera: &params.camera,
+                    atlas: &self.image_atlas,
                     frame_start: params.frame_start,
 
                 }).unwrap();

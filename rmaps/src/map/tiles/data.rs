@@ -10,8 +10,7 @@ pub struct RasterTileData {
 
 #[derive(Debug, Clone)]
 pub struct VectorTileData {
-    pub layers : Vec<::mvt::Layer>
-
+    pub layers: Vec<::mvt::Layer>
 }
 
 #[derive(Debug, Clone)]
@@ -39,7 +38,7 @@ pub struct DecodeTile {
     pub res: ::map::storage::Resource,
     pub source_name: String,
     pub source: Arc<::map::style::StyleSource>,
-    pub cb: Recipient< TileReady>,
+    pub cb: Recipient<TileReady>,
 }
 
 #[derive(Debug, Clone)]
@@ -60,8 +59,11 @@ impl Handler<DecodeTile> for TileDataWorker {
     type Result = ();
 
     fn handle(&mut self, msg: DecodeTile, ctx: &mut Context<Self>) {
-        let data = match msg.source.deref() {
-            ::map::style::StyleSource::Raster(_) => {
+        use map::style::SourceType;
+
+        let src = msg.source.deref();
+        let data = match src.typ {
+            SourceType::Raster => {
                 let data = &msg.res.data;
                 let format = ::image::guess_format(data).unwrap();
                 let decoded = ::image::load_from_memory_with_format(data, format).unwrap().to_rgba();
@@ -77,7 +79,7 @@ impl Handler<DecodeTile> for TileDataWorker {
                     source: msg.source_name,
                 }
             }
-            ::map::style::StyleSource::Vector(_) => {
+            SourceType::Vector => {
                 use mvt::prost::Message;
 
                 let data = &msg.res.data;
@@ -88,7 +90,7 @@ impl Handler<DecodeTile> for TileDataWorker {
                 TileData {
                     coord: msg.res.req.tile_data().unwrap().coords,
                     data: DecodedTileData::Vector(VectorTileData {
-                        layers : tile.layers,
+                        layers: tile.layers,
                     }),
                     source: msg.source_name,
                 }
@@ -109,7 +111,7 @@ impl TileDataWorker {
     pub fn new() -> Self {
         return TileDataWorker();
     }
-    pub fn spawn() -> Addr< TileDataWorker> {
+    pub fn spawn() -> Addr<TileDataWorker> {
         start_in_thread(|| {
             Self::new()
         })

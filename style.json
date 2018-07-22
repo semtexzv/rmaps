@@ -58,45 +58,7 @@
       "paint": {
         "fill-opacity": 1,
         "fill-translate-anchor": "map",
-        "fill-color": [
-          "interpolate",
-          [
-            "linear"
-          ],
-          [
-            "zoom"
-          ],
-          0,
-          [
-            "rgb",
-            1,
-            [
-              "get",
-              "abc"
-            ],
-            [
-              "get",
-              "abc"
-            ]
-          ],
-          3,
-          [
-            "rgba",
-           1,
-            [
-              "get",
-              "abc"
-            ],
-            [
-              "get",
-              "abc"
-            ],
-            [
-              "get",
-              "abc"
-            ]
-          ]
-        ]
+        "fill-pattern": "AAEDSDS"
       }
     }
   ],

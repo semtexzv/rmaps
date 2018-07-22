@@ -163,6 +163,7 @@ impl<L: BucketLayer> Layer for BucketLayerHolder<L> {
     /// TODO, better system for re-evaluating and uploading  modified data,
     /// Only re-evaluate on zoom change of integer coordinates ?
     fn evaluate(&mut self, params: &render::EvaluationParams) -> Result<()> {
+        self.layer.eval_layer(params)?;
         let zoom = params.zoom;
         for t in self.tiles.iter() {
             if let Some(mut v) = self.buckets.get_mut(&t.wrap()) {
