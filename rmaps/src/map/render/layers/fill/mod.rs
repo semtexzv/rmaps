@@ -150,7 +150,7 @@ impl layers::BucketLayer for FillLayer {
             let buffers = bucket.pos_vbo.as_ref().unwrap();
             let indices = bucket.last_ibo.as_ref().unwrap();
 
-            // (params.frame).draw(buffers, indices, &self.shader_program, &uniforms, &draw_params)?;
+             (params.frame).draw(buffers, indices, &self.shader_program, &uniforms, &draw_params)?;
         }
 
         Ok(())

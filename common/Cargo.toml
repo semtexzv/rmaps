@@ -38,8 +38,12 @@ tokio = "0.1"
 tokio-timer ="*"
 
 geometry = { path = "../libs/geometry" }
-actix = { path = "../libs/actix" }
-actix-web =  { path ="../libs/actix-web" , features = ["tls"]}
+#actix = { path = "../libs/actix" }
+#actix-web =  { path ="../libs/actix-web" , features = ["tls"]}
+
+actix = { version = "0.7.1" }
+actix-web = { version = "0.7.1", features = ["tls"] }
+
 
 geo =  { version = "0.9.1", default_features = false }
 

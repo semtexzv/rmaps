@@ -27,9 +27,9 @@
             "zoom"
           ],
           0,
-          "#000",
+          "#0FF",
           10,
-          "#008"
+          "#F00"
         ],
         "background-opacity": [
           "interpolate",
@@ -58,7 +58,19 @@
       "paint": {
         "fill-opacity": 1,
         "fill-translate-anchor": "map",
-        "fill-pattern": "AAEDSDS"
+        "fill-color": [
+          "interpolate",
+          [
+            "linear"
+          ],
+          [
+            "zoom"
+          ],
+          0,
+          "#00F",
+          10,
+          "#FF0"
+        ]
       }
     }
   ],

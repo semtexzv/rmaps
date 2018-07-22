@@ -61,6 +61,6 @@ pub use coord::*;
 pub use mercator::Mercator;
 
 use actix::prelude::*;
-pub type Addr<A> = ::actix::Addr<Syn,A>;
-pub type Recipient<A> = ::actix::Recipient<Syn,A>;
+//pub type Addr<A> = ::actix::Addr<Syn,A>;
+//pub type Recipient<A> = ::actix::Recipient<Syn,A>;
 

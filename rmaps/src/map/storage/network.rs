@@ -44,6 +44,7 @@ impl Handler<super::ResourceRequest> for NetworkFileSource {
                 .timeout(::std::time::Duration::from_secs(15))
                 .finish().unwrap()
                 .send()
+                .timeout(::std::time::Duration::from_secs(15))
                 .map_err(|e| ResourceError::Other(e.into())));
 
             let parse_response = move |response: ClientResponse| -> Box<dyn Future<Item=(), Error=ResourceError>> {

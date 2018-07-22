@@ -4,9 +4,7 @@ pub use std::{
         self,
         Debug,
     },
-    marker::{
-        PhantomData
-    },
+    marker::PhantomData,
     result::Result as StdResult,
     str::FromStr,
     string::ToString,
@@ -166,10 +164,15 @@ impl<A, F, R> Message for Invoke<A, F, R>
 use actix::dev::*;
 
 pub fn spawn<E: Into<Error>>(fut: impl Future<Item=(), Error=E> + 'static) {
-    Arbiter::handle().spawn(fut.map_err(|e| {
+    actix::spawn(fut.map_err(|e| {
         error!("Error occured: {}", e.into());
         ()
     }));
+    /*Arbiter::handle().spawn(fut.map_err(|e| {
+        error!("Error occured: {}", e.into());
+        ()
+    }));
+    */
 }
 
 

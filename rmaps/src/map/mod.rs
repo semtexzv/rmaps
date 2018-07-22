@@ -21,7 +21,7 @@ pub struct MapView {
 }
 
 fn pulse(sys: &mut SystemRunner) {
-    sys.run_until_complete(::common::futures::future::lazy(|| {
+    sys.block_on(::common::futures::future::lazy(|| {
         ::tokio_timer::sleep(::std::time::Duration::from_millis(1))
     })).unwrap();
 }
@@ -50,7 +50,7 @@ impl MapView {
 
         let addr = self.addr;
         let res = unsafe {
-            self.sys.run_until_complete(::common::futures::future::lazy(|| {
+            self.sys.block_on(::common::futures::future::lazy(|| {
                 ok::<_, ()>(f(&mut (*addr)))
             })).unwrap()
         };
@@ -150,7 +150,7 @@ pub struct MapViewImpl {
     camera: Camera,
     renderer: Option<render::Renderer>,
 
-    source: Addr<storage::DefaultFileSource>,
+    file_source: Addr<storage::DefaultFileSource>,
     tile_loader: Addr<tiles::TileLoader>,
 
     facade: Box<glium::Display>,
@@ -179,7 +179,7 @@ impl MapViewImpl {
             camera,
             renderer: None,
 
-            source: src_add.clone(),
+            file_source: src_add.clone(),
             gui: Gui::new(f).unwrap(),
             facade: Box::new((*f).clone()),
             style: None,
@@ -199,14 +199,14 @@ impl MapViewImpl {
             let json = storage::Request::SpriteJson(format!("{}", sprite));
 
             let cb = self.addr().recipient();
-            spawn(self.source.send(storage::ResourceRequest::new(image, cb.clone())));
-            spawn(self.source.send(storage::ResourceRequest::new(json, cb)))
+            spawn(self.file_source.send(storage::ResourceRequest::new(image, cb.clone())));
+            spawn(self.file_source.send(storage::ResourceRequest::new(json, cb)))
         }
         for (n, v) in style.sources.iter() {
             if let Some(ref url) = v.deref().url {
                 let cb = self.addr().recipient();
                 let rq = storage::Request::SourceJson(n.to_string(), url.to_string());
-                spawn(self.source.send(storage::ResourceRequest::new(rq, cb)));
+                spawn(self.file_source.send(storage::ResourceRequest::new(rq, cb)));
             }
         }
         self.style = Some(style);
@@ -217,7 +217,7 @@ impl MapViewImpl {
         println!("Style uRL");
         let req = storage::resource::Request::style(url.into());
         let addr: Addr<MapViewImpl> = self.addr.clone().unwrap().into();
-        spawn(self.source.send(storage::ResourceRequest {
+        spawn(self.file_source.send(storage::ResourceRequest {
             request: req,
             callback: addr.recipient(),
         }))

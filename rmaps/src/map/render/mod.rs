@@ -3,6 +3,7 @@ use prelude::*;
 
 pub mod images;
 pub mod layers;
+pub mod source;
 
 pub mod property;
 
@@ -77,6 +78,7 @@ pub struct Renderer {
     pub display: Box<Display>,
     pub style: Rc<style::Style>,
     pub layers: Vec<LayerData>,
+    //pub sources: Vec<Addr<source::Source>>,
     pub image_atlas: images::ImageAtlas,
 }
 

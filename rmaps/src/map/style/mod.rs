@@ -38,12 +38,15 @@ pub struct Style {
 
 #[derive(Debug, Clone, Deserialize)]
 pub enum SourceType {
-    #[serde(rename = "background")]
-    Background,
     #[serde(rename = "raster")]
     Raster,
     #[serde(rename = "vector")]
     Vector,
+    #[serde(rename = "geojson")]
+    Geojson,
+    #[serde(rename = "image")]
+    Image,
+
 }
 
 #[derive(Debug, Deserialize, Clone)]
