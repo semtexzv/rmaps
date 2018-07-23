@@ -1,4 +1,5 @@
 use ::prelude::*;
+
 use map::style::{
     StyleProp,
     expr::{Expression, Expr, val::Value, DescribeType, Type, EvaluationContext},

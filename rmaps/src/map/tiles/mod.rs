@@ -11,7 +11,7 @@ use super::style;
 
 pub struct TileLoader {
     pub source: Addr< storage::DefaultFileSource>,
-    pub worker: Addr< data::TileDataWorker>,
+
     pub map: Option<Addr< super::MapViewImpl>>,
 
     pub active: BTreeMap<(Cow<'static, str>, TileCoords), Arc<style::StyleSource>>,

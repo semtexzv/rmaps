@@ -23,5 +23,5 @@ earcut = { path = "../libs/earcut" }
 #imgui = { git = "https://github.com/semtexzv/imgui-rs" }
 #imgui-glium-renderer = { git = "https://github.com/semtexzv/imgui-rs" }
 
-imgui = { path = "../../imgui-rs" }
-imgui-glium-renderer = { path = "../../imgui-rs/imgui-glium-renderer" }
+imgui =  { git = "https://github.com/semtexzv/imgui-rs", branch = "experimental" }
+imgui-glium-renderer = { git = "https://github.com/semtexzv/imgui-rs", branch = "experimental" }
