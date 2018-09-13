@@ -4,7 +4,7 @@ pub use map::util::profiler;
 
 use map::{
     style,
-    tiles::data,
+    tiles,
     render::{
         self, property,
     },
@@ -39,7 +39,7 @@ pub enum RenderPass {
 
 pub trait Layer: Debug {
     /// Called when new tile data arrives, individual layers will need to copy the Rc, if they need to keep the data around
-    fn new_tile(&mut self, display: &Display, data: &Rc<data::TileData>) -> Result<()>;
+    fn new_tile(&mut self, display: &Display, data: &Rc<tiles::TileData>) -> Result<()>;
 
     /// Called before start of rendering each frame, layer should request needed resources
     fn prepare(&mut self, params: render::PrepareParams) -> Result<()>;
@@ -100,7 +100,7 @@ pub trait BucketLayer: Debug + WithSource {
         Ok(())
     }
 
-    fn new_tile(&mut self, display: &Display, data: &Rc<data::TileData>) -> Result<Option<Self::Bucket>>;
+    fn new_tile(&mut self, display: &Display, data: &Rc<tiles::TileData>) -> Result<Option<Self::Bucket>>;
 
 
     fn eval_layer(&mut self, params: &render::EvaluationParams) -> Result<()> {
@@ -135,7 +135,7 @@ impl<L: BucketLayer> BucketLayerHolder<L> {
 }
 
 impl<L: BucketLayer> Layer for BucketLayerHolder<L> {
-    fn new_tile(&mut self, display: &Display, data: &Rc<data::TileData>) -> Result<()> {
+    fn new_tile(&mut self, display: &Display, data: &Rc<tiles::TileData>) -> Result<()> {
         let coords = data.coord;
         if let Some(bucket) = self.layer.new_tile(display, data)? {
             self.buckets.insert(coords, BucketState {

@@ -23,18 +23,19 @@ else
     exit 1
 fi
 
-
+DIR=$(pwd)
 create_ndk() {
     echo "($1)..."
-    "$MAKER" --api "$2" --arch "$1" --force --install-dir "${ANDROID_NDK_HOME}/standalone/$1"
+    mkdir -p $DIR/target/ndk/$1
+    "$MAKER" --api "$2" --arch "$1" --force --install-dir "${DIR}/target/ndk/$1"
 }
 
-#create_ndk arm64 21
-#create_ndk arm 14
-#create_ndk x86 14
+create_ndk arm64 21
+create_ndk arm 14
+create_ndk x86 14
 
 
 echo 'Updating cargo-config.toml...'
 
 mkdir -p .cargo
-sed 's|$ROOT|'"${ANDROID_NDK_HOME}"'|g' ./scripts/cargo-config.toml.template > .cargo/config
+sed 's|$ROOT|'"${DIR}/target"'|g' ./scripts/cargo-config.toml.template > .cargo/config

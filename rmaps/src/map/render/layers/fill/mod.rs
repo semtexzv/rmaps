@@ -10,7 +10,7 @@ use map::{
         },
         property::*,
     },
-    tiles::data::{
+    tiles::{
         self
     },
 };
@@ -47,7 +47,7 @@ impl layers::WithSource for FillLayer {
 impl layers::BucketLayer for FillLayer {
     type Bucket = FillBucket;
 
-    fn new_tile(&mut self, display: &Display, data: &Rc<data::TileData>) -> Result<Option<Self::Bucket>> {
+    fn new_tile(&mut self, display: &Display, data: &Rc<tiles::TileData>) -> Result<Option<Self::Bucket>> {
         if (Some(&data.source) == self.style_layer.common.source.as_ref()) {
             if let Some(ref source_layer) = self.style_layer.common.source_layer {
                 return Ok(FillBucket::new(display, data.clone(), &source_layer)?);
@@ -99,18 +99,24 @@ impl layers::BucketLayer for FillLayer {
 
 
         if let Some(pattern) = self.properties.pattern.get() {
+            if let Some((sprite, texture)) = params.atlas.get_pattern(&pattern) {
+                use self::glium::uniforms::*;
 
-            if let Some((sprite, texture)) = params.atlas.get_sprite_data(&pattern) {
-                let tl = (sprite.x as f32, sprite.y as f32);
-                let br = (tl.0 + sprite.width as f32, tl.1 + sprite.height as f32);
+                let sampler : Sampler<_> = texture.sampled();
+                sampler
+                    .magnify_filter(MagnifySamplerFilter::Nearest)
+                    .minify_filter(MinifySamplerFilter::Nearest);
+
+                let texsize = params.atlas.atlas_dims();
+                //println!("TL {:?}, BR: {:?}", tl, br);
                 let a = uniform! {
                     u_matrix : matrix,
                     feature_data_ubo :  &bucket.feature_data.data,
-                    u_image : texture,
-                    u_tex_scale : 128f32,
-                    u_pattern_tl : [sprite.x,sprite.y],
-                    u_pattern_br : [50f32,50f32],
-                    u_texsize : (300f32,300f32),
+                    u_image : sampler,
+                    u_tex_scale : 2048f32,
+                    u_pattern_tl : sprite.tl,
+                    u_pattern_br : sprite.br,
+                    u_texsize : (252f32,138f32),
 
                 };
                 let mut uniforms = MergeUniforms(
@@ -127,7 +133,7 @@ impl layers::BucketLayer for FillLayer {
 
                 (params.frame).draw(buffers, indices, self.pattern_program.as_ref().unwrap(), &uniforms, &draw_params)?;
             } else {
-                error!("Pattern icon : {} not found",pattern);
+                error!("Pattern icon : {} not found", pattern);
             }
             // render as pattern
         } else {
@@ -150,7 +156,7 @@ impl layers::BucketLayer for FillLayer {
             let buffers = bucket.pos_vbo.as_ref().unwrap();
             let indices = bucket.last_ibo.as_ref().unwrap();
 
-             (params.frame).draw(buffers, indices, &self.shader_program, &uniforms, &draw_params)?;
+            (params.frame).draw(buffers, indices, &self.shader_program, &uniforms, &draw_params)?;
         }
 
         Ok(())

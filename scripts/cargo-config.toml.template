@@ -1,11 +1,11 @@
 [target.aarch64-linux-android]
-ar = "$ROOT/standalone/arm64/bin/aarch64-linux-android-ar"
-linker = "$ROOT/standalone/arm64/bin/aarch64-linux-android-clang"
+ar = "$ROOT/ndk/arm64/bin/aarch64-linux-android-ar"
+linker = "$ROOT/ndk/arm64/bin/aarch64-linux-android-clang"
 
-[target.armv7-linux-androideabi]
-ar = "$ROOT/standalone/arm/bin/arm-linux-androideabi-ar"
-linker = "$ROOT/standalone/arm/bin/arm-linux-androideabi-clang"
+[target.arm-linux-androideabi]
+ar = "$ROOT/ndk/arm/bin/arm-linux-androideabi-ar"
+linker = "$ROOT/ndk/arm/bin/arm-linux-androideabi-clang"
 
 [target.i686-linux-android]
-ar = "$ROOT/standalone/x86/bin/i686-linux-android-ar"
-linker = "$ROOT/standalone/x86/bin/i686-linux-android-clang"
+ar = "$ROOT/ndk/x86/bin/i686-linux-android-ar"
+linker = "$ROOT/ndk/x86/bin/i686-linux-android-clang"

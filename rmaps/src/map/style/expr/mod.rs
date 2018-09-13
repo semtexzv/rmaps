@@ -19,24 +19,14 @@ macro_rules! delegate_to_inner {
     (@pat $var:path ; $pat:pat) => {
         $var($pat)
     };
-    ($self:expr; [$($variants:path),* ]; $pat:pat => $expr:expr $(; $default:expr )?) => {
+    ($self:expr; [$($variants:path),* ]; $pat:pat => $expr:expr $(; $default:expr )*) => {
         match $self {
             $(delegate_to_inner!{@pat $variants; $pat} => $expr,)*
-            $(_ => $default,)?
+            $(_ => $default,)*
         }
     };
 }
 
-macro_rules! delegate_from_inner {
-    ($($tt:tt)*) => { unimplemented!() };
-    /*($src:expr; $prefix:path [$($variants:path),* ]; $pat:pat => $expr:expr $(; $default:expr)? ) => {
-        $(if let $pat = $src {
-            return $prefix ($variants($expr));
-        })*
-
-        $(return $default)?;
-    };*/
-}
 
 #[macro_use]
 pub mod parse;

@@ -9,7 +9,7 @@ use map::{
         },
         property::*,
     },
-    tiles::data::{
+    tiles::{
         self
     },
 };
@@ -32,7 +32,7 @@ pub struct BackgroundLayer {
 }
 
 impl Layer for BackgroundLayer {
-    fn new_tile(&mut self, display: &Display, data: &Rc<data::TileData>) -> Result<()> {
+    fn new_tile(&mut self, display: &Display, data: &Rc<tiles::TileData>) -> Result<()> {
         Ok(())
     }
 

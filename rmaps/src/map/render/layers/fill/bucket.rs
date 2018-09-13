@@ -4,7 +4,7 @@ use map::render::layers::{
 };
 use map::render::property::*;
 
-use map::tiles::data;
+use map::tiles;
 
 use super::props::*;
 
@@ -37,14 +37,43 @@ pub struct FillBucket {
 
 
 impl FillBucket {
-    pub fn new(d: &Display, data: Rc<data::TileData>, source_layer: &str) -> Result<Option<Self>> {
+    pub fn new(d: &Display, data: Rc<tiles::TileData>, source_layer: &str) -> Result<Option<Self>> {
         let mut features: BTreeMap<u64, FeatureBucketData> = BTreeMap::new();
 
         let mut vertices: Vec<Vertex> = vec![];
         let mut indices: Vec<u16> = vec![];
 
-        if let data::DecodedTileData::Vector(ref vec) = data.data {
-            if let Some(layer) = vec.layers.iter().find(|x| &x.name == source_layer) {
+        if let tiles::DecodedTileData::Vector(ref vec) = data.data {
+            if let Some(layer) = vec.layers.iter().find(|x| &x.layer.name == source_layer) {
+                for f in layer.layer.features.iter() {
+                    // TODO, perform filtering here
+                    if f.typ == ::mvt::GeomType::Polygon {
+                        if let Some(g) = layer.pre_tesselated.get(&f.id) {
+                            let vertices_begin = vertices.len();
+                            let indices_begin = indices.len();
+
+                            for v in g.vertices.iter() {
+                                vertices.push(Vertex {
+                                    pos: [v[0] as f32, v[1] as f32],
+                                    feature: features.len() as u16,
+                                })
+                            }
+
+                            for i in g.indices.iter() {
+                                indices.push(vertices_begin as u16 + *i as u16);
+                            }
+
+                            features.insert(f.id, FeatureBucketData {
+                                feature: f.clone(),
+                                props: Default::default(),
+                                start: vertices_begin,
+                                end: vertices.len(),
+                            });
+                        }
+                    }
+                }
+
+                /*
                 let mult = EXTENT as f32 / layer.extent as f32;
 
                 for f in layer.features.iter() {
@@ -91,6 +120,7 @@ impl FillBucket {
                         }
                     }
                 }
+                    */
                 //info!("VERTICES : {:?}", vertices);
 
                 return Ok(

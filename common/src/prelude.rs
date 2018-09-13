@@ -116,21 +116,27 @@ pub type BoxFuture<T, E> = Box<Future<Item=T, Error=E>>;
 
 pub const EXTENT: f32 = 8192.0;
 
+use std::sync::Mutex;
+
+
+pub struct ForceSend<T>(pub T);
+unsafe impl<T> Send for ForceSend<T> {}
+unsafe impl<T> Sync for ForceSend<T> {}
 
 pub struct Invoke<A, F, R>
     where A: Actor,
-          F: FnOnce(&mut A) -> R,
+          F: FnOnce(&mut A, &mut A::Context) -> R,
           R: 'static
 
 {
     pub f: F,
-    _a: ::std::marker::PhantomData<A>,
+    _a: ::std::marker::PhantomData<ForceSend<A>>,
     _r: ::std::marker::PhantomData<R>,
 }
 
 impl<A, F, R> Invoke<A, F, R>
     where A: Actor,
-          F: FnOnce(&mut A) -> R,
+          F: FnOnce(&mut A, &mut A::Context) -> R,
           R: 'static
 
 {
@@ -145,7 +151,7 @@ impl<A, F, R> Invoke<A, F, R>
 
 impl<A, F, R> From<F> for Invoke<A, F, R>
     where A: Actor,
-          F: FnOnce(&mut A) -> R,
+          F: FnOnce(&mut A, &mut A::Context) -> R,
           R: 'static
 {
     fn from(f: F) -> Self {
@@ -155,7 +161,7 @@ impl<A, F, R> From<F> for Invoke<A, F, R>
 
 impl<A, F, R> Message for Invoke<A, F, R>
     where A: Actor,
-          F: FnOnce(&mut A) -> R,
+          F: FnOnce(&mut A, &mut A::Context) -> R,
           R: 'static
 {
     type Result = Result<R>;
@@ -180,13 +186,13 @@ pub fn spawn<E: Into<Error>>(fut: impl Future<Item=(), Error=E> + 'static) {
 macro_rules! impl_invoke_handler {
     ($ty:ty) => {
         impl<F, R> Handler<Invoke<$ty, F, R>> for $ty
-        where F: FnOnce(&mut $ty) -> R,
+        where F: FnOnce(&mut $ty, &mut <$ty as Actor>::Context) -> R,
               R: 'static
         {
             type Result = Result<R>;
 
             fn handle(&mut self, msg: Invoke<$ty, F, R>, _ctx: &mut Context<Self>) -> Result<R> {
-                Ok((msg.f)(self))
+                Ok((msg.f)(self,_ctx))
             }
         }
 

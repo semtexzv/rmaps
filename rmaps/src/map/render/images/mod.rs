@@ -13,6 +13,12 @@ pub struct ImageAtlas {
     display: Box<Display>,
 }
 
+#[derive(Debug, Clone)]
+pub struct ImagePosition {
+    pub tl: [f32; 2],
+    pub br: [f32; 2],
+}
+
 impl ImageAtlas {
     pub fn new(display: &Display) -> Result<Self> {
         Ok(ImageAtlas {
@@ -36,10 +42,21 @@ impl ImageAtlas {
         self.sprite_texture = Some(texture);
     }
 
-    pub fn get_sprite_data(&self, name: &str) -> Option<(&Sprite, &Texture2d)> {
+    pub fn atlas_dims(&self) -> [f32; 2] {
+        if let Some(ref t) = self.sprite_texture {
+            return [t.width() as f32, t.height() as f32];
+        }
+        return [0., 0.];
+    }
+    pub fn get_pattern(&self, name: &str) -> Option<(ImagePosition, &Texture2d)> {
         if let (Some(ref s), Some(ref t)) = (&self.sprite_atlas, &self.sprite_texture) {
+            let dims = self.atlas_dims();
+
             return s.get(name).map(|v|
-                (v, t)
+                (ImagePosition {
+                    tl: [v.x as f32, dims[1] -  (v.y + v.height) as f32],
+                    br: [(v.x + v.width) as f32, dims[1] - v.y as f32],
+                }, t)
             );
         }
 

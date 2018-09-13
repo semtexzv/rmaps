@@ -6,7 +6,7 @@ ARCH=${1? "Missing architecture"}
 OP=${2? "Missing cargo operation"}
 REST="${@:3}"
 
-PKG_CONFIG_ALLOW_CROSS=1
+export PKG_CONFIG_ALLOW_CROSS=1
 
 if [ ! -d "${ANDROID_SDK_ROOT-}" ]; then
     ANDROID_SDK_ROOT=/usr/local/share/android-sdk
@@ -36,8 +36,12 @@ fi
 
 
 
+export OPENSSL_DIR="/home/semtexzv/openssl/built"
+export OPENSSL_LIB_DIR="${OPENSSL_DIR}/lib"
+export OPENSSL_INCLUDE_DIR="${OPENSSL_DIR}/include"
 
-PATH="${ANDROID_NDK_HOME}/standalone/$ARCH/bin:$PATH"
-TARGET_CC="$TRIPLE-clang"
-TARGET_CXX="$TRIPLE-clang"
+export PATH="$(pwd)/target/ndk/$ARCH/bin:$PATH"
+export TARGET_CC="$TRIPLE-clang"
+export TARGET_CXX="$TRIPLE-clang++"
+export TARGET_CFLAGS="-Wno-macro-redefined"
 cargo $OP --manifest-path ./platform/android/Cargo.toml --target "$TRIPLE"

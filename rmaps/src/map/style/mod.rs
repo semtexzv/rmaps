@@ -13,7 +13,7 @@ pub use self::layers::*;
 #[derive(Debug, Deserialize, Clone)]
 pub struct TileJson {
     scheme: Option<String>,
-    tiles: Option<Vec<String>>,
+    pub tiles: Option<Vec<String>>,
     minzoom: Option<f32>,
     maxzoom: Option<f32>,
     bounds: Option<[f32; 4]>,
@@ -29,7 +29,7 @@ pub struct Style {
     //metadata: json::Value,
     pub center: Option<[f64; 2]>,
     pub zoom: Option<f32>,
-    pub sources: BTreeMap<String, Arc<StyleSource>>,
+    pub sources: BTreeMap<String, StyleSource>,
     pub sprite: Option<String>,
     pub glyphs: Option<String>,
     pub layers: Vec<BaseStyleLayer>,

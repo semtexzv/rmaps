@@ -42,7 +42,7 @@ geometry = { path = "../libs/geometry" }
 #actix-web =  { path ="../libs/actix-web" , features = ["tls"]}
 
 actix = { version = "0.7.1" }
-actix-web = { version = "0.7.1", features = ["tls"] }
+actix-web = { version = "0.7.1", default-features = false, default_features = false } #, features = ["tls"] }
 
 
 geo =  { version = "0.9.1", default_features = false }

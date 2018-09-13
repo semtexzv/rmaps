@@ -3,6 +3,9 @@ pub use common::failure;
 pub use rmaps_derive::*;
 
 
+use common::actix::prelude::*;
+use common::actix::{ResponseFuture, ResponseActFuture};
+
 pub use geometry;
 
 pub use imgui;
@@ -53,6 +56,7 @@ impl<'u, A: Uniforms + 'u, B: Uniforms + 'u> Uniforms for MergeUniforms<'u, A, B
         self.1.visit_values(f);
     }
 }
+
 
 /*
 impl<A, M, I: 'static, E: 'static> actix::dev::MessageResponse<A, M> for Box<Future<Item=I,Error=E>>

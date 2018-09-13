@@ -1,0 +1,6 @@
+[package]
+name = "jni"
+version = "0.1.0"
+authors = ["Michal Hornický <semtexzv@gmail.com>"]
+
+[dependencies]

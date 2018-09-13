@@ -11,13 +11,14 @@ pub mod shaders;
 
 
 use map::style;
-use map::tiles::{
-    TileLoader,
-    data,
-};
+
 use std::hash;
 
-use map::util::profiler;
+use map::{
+    tiles,
+    util::profiler,
+
+};
 
 use self::images::ImageAtlas;
 
@@ -26,7 +27,7 @@ pub struct RendererParams<'a> {
     pub frame: &'a mut glium::Frame,
     pub camera: &'a Camera,
 
-    pub loader: Addr<TileLoader>,
+    pub ctx: &'a mut Context<super::MapViewImpl>,
 
     pub frame_start: PreciseTime,
 
@@ -78,13 +79,13 @@ pub struct Renderer {
     pub display: Box<Display>,
     pub style: Rc<style::Style>,
     pub layers: Vec<LayerData>,
-    //pub sources: Vec<Addr<source::Source>>,
+    pub sources: BTreeMap<String, Addr<source::BaseSource>>,
     pub image_atlas: images::ImageAtlas,
 }
 
 
 impl Renderer {
-    pub fn new(display: &Display, style: Rc<style::Style>) -> Self {
+    pub fn new(display: &Display, style: Rc<style::Style>, file_source: Addr<::map::storage::DefaultFileSource>) -> Self {
         Renderer {
             display: Box::new(display.clone()),
             layers: layers::parse_style_layers(&display, &style).into_iter().map(|l| {
@@ -93,6 +94,7 @@ impl Renderer {
                     evaluated: None,
                 }
             }).collect(),
+            sources: source::parse_sources(&style, file_source),
             image_atlas: images::ImageAtlas::new(&display).unwrap(),
             style,
 
@@ -100,11 +102,13 @@ impl Renderer {
     }
     pub fn sprite_json_ready(&mut self, data: ::map::style::sprite::SpriteAtlas) {
         error!("Sprite atlas");
+        self.image_atlas.set_sprite_atlas(data);
     }
     pub fn sprite_png_ready(&mut self, data: Vec<u8>) {
-        error!("Sprite PNG")
+        error!("Sprite PNG");
+        self.image_atlas.set_sprite_texture(data);
     }
-    pub fn tile_ready(&mut self, tile: Rc<data::TileData>) {
+    pub fn tile_ready(&mut self, tile: Rc<tiles::TileData>) {
         for l in self.layers.iter_mut() {
             l.layer.new_tile(&self.display, &tile).unwrap();
         }
@@ -116,7 +120,6 @@ impl Renderer {
 
         let eval_params = EvaluationParams::new(params.camera.zoom);
         profiler::end();
-        profiler::begin("prepare");
 
 
         let requests: Vec<Vec<(String, TileCoords)>> = self.layers
@@ -151,46 +154,69 @@ impl Renderer {
             }
         }).collect();
 
-        profiler::end();
+        for (name, coord, source) in requests.into_iter() {
+            let source = self.sources.get(&name).expect("Source missing");
+            use common::actix::fut::*;
 
-        profiler::frame("request", || {
-            let fut = params.loader.send(Invoke::new(move |loader: &mut TileLoader| {
-                for (name, coord, source) in requests.into_iter() {
-                    loader.request_tile(&name, &source, coord);
-                }
-            }))
-                .map(|_| ());
+            let req = self::source::TileRequest {
+                coords: coord,
+            };
+            let req = wrap_future(source.send(req));
+            use self::source::TileError;
 
-            //info!("Spawning future");
-            spawn(fut);
-        });
+            let fut = req.from_err::<Error>()
+                .and_then(|res, this: &mut super::MapViewImpl, ctx| {
+                    match res {
+                        Ok(data) => {
+                            this.new_tile(data, ctx);
+                        }
+                        Err(TileError::Error(e)) => {
+                            debug!("Tile error occured : {:?}", e);
+                        }
+                        _ => {
 
-        profiler::frame("eval", || {
-            self.layers.deref_mut().iter_mut().for_each(|l| {
-                let (should_eval, really) = match l.evaluated {
-                    None => (true, true),
-                    Some(ref e) if e.zoom != eval_params.zoom => (true, false),
-                    _ => (false, false),
-                };
+                        }
+                    }
+                    ok(())
+                });
 
-                if should_eval {
-                    l.layer.evaluate(&eval_params).unwrap();
-                }
-            });
-        });
+            params.ctx.spawn(fut.drop_err());
+        }
 
-        profiler::frame("render", || {
-            for l in self.layers.iter_mut() {
-                l.layer.render(&mut RenderParams {
-                    display: &params.display,
-                    frame: &mut params.frame,
-                    camera: &params.camera,
-                    atlas: &self.image_atlas,
-                    frame_start: params.frame_start,
+        /*
+        let fut = params.loader.send(Invoke::new(move |loader: &mut TileLoader, _| {
+            for (name, coord, source) in requests.into_iter() {
+                loader.request_tile(&name, &source, coord);
+            }
+        }))
+            .map(|_| ());
+            */
 
-                }).unwrap();
+        //info!("Spawning future");
+        //spawn(fut);
+
+        self.layers.deref_mut().iter_mut().for_each(|l| {
+            let (should_eval, really) = match l.evaluated {
+                None => (true, true),
+                Some(ref e) if e.zoom != eval_params.zoom => (true, false),
+                _ => (false, false),
+            };
+
+            if should_eval {
+                l.layer.evaluate(&eval_params).unwrap();
             }
         });
+
+        for l in self.layers.iter_mut() {
+            l.layer.render(&mut RenderParams {
+                display: &params.display,
+                frame: &mut params.frame,
+                camera: &params.camera,
+                atlas: &self.image_atlas,
+                frame_start: params.frame_start,
+
+            }).unwrap();
+        }
 
         Ok(())
     }

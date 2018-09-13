@@ -19,6 +19,10 @@ pub enum Request {
     SpriteImage(String),
 }
 
+impl Message for Request {
+    type Result = StdResult<Resource,super::ResourceError>;
+}
+
 impl Request {
     pub fn url(&self) -> String {
         use super::url::*;

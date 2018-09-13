@@ -23,7 +23,14 @@ use common::actix_web::{
     HttpResponse,
 };
 
-use super::*;
+
+use super::{Request, Resource, ResourceError};
+
+use common::actix::prelude::{ResponseActFuture, ResponseFuture, ActorFuture};
+use common::actix::fut::{
+    IntoActorFuture,
+    WrapFuture,
+};
 
 pub struct NetworkFileSource {}
 
@@ -33,13 +40,13 @@ impl Actor for NetworkFileSource {
 
 use common::futures::future::*;
 
-impl Handler<super::ResourceRequest> for NetworkFileSource {
-    type Result = ();
+impl Handler<Request> for NetworkFileSource {
+    type Result = ResponseActFuture<Self, Resource, ResourceError>;
 
-    fn handle(&mut self, msg: ResourceRequest, _ctx: &mut Context<Self>) {
-        println!("Getting: {:?}", msg.request.url());
+    fn handle(&mut self, msg: Request, _ctx: &mut Context<Self>) -> Self::Result {
+        println!("NetworkFileSource : requesting {:?}", msg.url());
 
-        fn get(url: &str, msg: ResourceRequest, allowed_redirect_count: usize) -> Box<dyn Future<Item=(), Error=ResourceError>> {
+        fn get(url: &str, msg: Request, allowed_redirect_count: usize) -> Box<dyn Future<Item=Resource, Error=ResourceError>> {
             let request: Box<dyn Future<Item=_, Error=ResourceError>> = Box::new(client::get(url)
                 .timeout(::std::time::Duration::from_secs(15))
                 .finish().unwrap()
@@ -47,11 +54,11 @@ impl Handler<super::ResourceRequest> for NetworkFileSource {
                 .timeout(::std::time::Duration::from_secs(15))
                 .map_err(|e| ResourceError::Other(e.into())));
 
-            let parse_response = move |response: ClientResponse| -> Box<dyn Future<Item=(), Error=ResourceError>> {
+            let parse_response = move |response: ClientResponse| -> Box<dyn Future<Item=Resource, Error=ResourceError>> {
                 if response.status().is_redirection() {
                     if let Some(location) = response.headers().get("Location") {
                         if allowed_redirect_count > 0 {
-                            return box get(location.to_str().unwrap(), msg, allowed_redirect_count - 1);
+                            return get(location.to_str().unwrap(), msg, allowed_redirect_count - 1);
                         }
                         panic!("Too many redirects")
                     }
@@ -63,39 +70,22 @@ impl Handler<super::ResourceRequest> for NetworkFileSource {
                         .then(move |body| {
                             match body {
                                 Ok(data) => {
-                                    let cb = super::ResourceResponse {
-                                        result: Ok(super::Resource {
-                                            req: msg.request.clone(),
-                                            cache_until : u64::max_value(),
-                                            data: data.to_vec(),
-                                        }),
-                                        request: msg.request,
-                                    };
-
-                                    spawn(msg.callback.send(cb));
+                                    return Ok(super::Resource {
+                                        req: msg.clone(),
+                                        cache_until: u64::max_value(),
+                                        data: data.to_vec(),
+                                    });
                                 }
                                 Err(e) => {
-                                    let cb = super::ResourceResponse {
-                                        result: Err(ResourceError::Other(e.into())),
-                                        request: msg.request,
-                                    };
-                                    spawn(msg.callback.send(cb));
-                                }
+                                    return Err(ResourceError::Other(e.into()));
+                                },
                             };
-
-                            Ok(())
                         });
                 } else if response.status().is_client_error() {
-                    let cb = super::ResourceResponse {
-                        result: Err(ResourceError::NotFound),
-                        request: msg.request,
-                    };
-                    spawn(msg.callback.send(cb));
-                    return box ok(());
+                    return box err(ResourceError::NotFound);
                 }
 
-                error!("Failed to retrieve : {:?}", response);
-                return box ok(());
+                return box err(ResourceError::NotFound);
             };
 
             let next_action: Box<dyn Future<Item=_, Error=ResourceError>> = box request
@@ -106,12 +96,8 @@ impl Handler<super::ResourceRequest> for NetworkFileSource {
             return next_action;
         }
 
-        let fut = get(&msg.request.url(), msg, 3);
-        spawn(fut.map_err(|e| {
-            format_err!("Aasddsdasadsa : {:?}", e)
-        }));
-//        Arbiter::handle().spawn(fut);
-        //::actix::Arbiter::spawn(fut);
+        let fut = get(&msg.url(), msg, 3);
+        return box WrapFuture::into_actor(fut,self);
     }
 }
 

@@ -5,13 +5,11 @@
 #![feature(pattern_parentheses)]
 #![feature(associated_type_defaults)]
 #![feature(box_syntax)]
-#![feature(generic_associated_types)]
 
 #![feature(try_from)]
 #![feature(trace_macros)]
 #![feature(macro_at_most_once_rep)]
 #![feature(nll)]
-#![feature(attr_literals)]
 
 #![allow(unused_imports, dead_code, unused_mut, unused_variables, unused_macros, unreachable_code, unreachable_patterns, unused_parens)]
 #[macro_use]

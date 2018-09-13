@@ -26,6 +26,7 @@ fn pulse(sys: &mut SystemRunner) {
     })).unwrap();
 }
 
+
 impl MapView {
     pub fn new(f: &Display) -> Self {
         let mut sys = System::new("Map");
@@ -44,18 +45,23 @@ impl MapView {
         };
     }
 
-
-    pub fn do_run<R>(&mut self, f: impl FnOnce(&mut MapViewImpl) -> R) -> R {
+    pub fn do_run<R: Send + 'static, F: FnOnce(&mut MapViewImpl, &mut Context<MapViewImpl>) -> R + 'static>(&mut self, f: F) -> R {
         use ::common::futures::future::*;
+        use std::sync::Arc;
+        use std::cell::RefCell;
 
-        let addr = self.addr;
-        let res = unsafe {
-            self.sys.block_on(::common::futures::future::lazy(|| {
-                ok::<_, ()>(f(&mut (*addr)))
-            })).unwrap()
-        };
+        unsafe {
+            let addr = self.addr;
+            let add = (*self.addr).addr();
+            let invoke: ForceSend<F> = ForceSend(f);
 
-        res
+            let res = self.sys.block_on(::common::futures::future::lazy(|| {
+                add.send(Invoke::new(move |m, c| {
+                    (invoke.0)(m, c)
+                }))
+            })).unwrap().unwrap();
+            res
+        }
     }
 
     pub fn pulse(&mut self) {
@@ -63,40 +69,41 @@ impl MapView {
     }
 
     pub fn render(&mut self, mut surface: glium::Frame) {
-        self.do_run(|map: &mut MapViewImpl| {
-            map.render(&mut surface);
+        self.do_run(move |map: &mut MapViewImpl, ctx| {
+            map.render(&mut surface, ctx);
+            surface.finish().unwrap();
         });
-        surface.finish().unwrap();
         self.pulse();
         //info!("Render")
     }
 
     pub fn set_style_url(&mut self, url: &str) {
-        self.do_run(|map: &mut MapViewImpl| {
-            map.set_style_url(url);
+        let u = url.to_string();
+        self.do_run(move |map: &mut MapViewImpl, ctx| {
+            map.set_style_url(&u, ctx);
         });
     }
 
     pub fn window_resized(&mut self, dims: PixelSize) {
-        self.do_run(|map: &mut MapViewImpl| {
+        self.do_run(move |map: &mut MapViewImpl, _| {
             map.window_resized(dims)
         });
     }
 
     pub fn mouse_moved(&mut self, pixel: PixelPoint) {
-        self.do_run(|map: &mut MapViewImpl| {
+        self.do_run(move |map: &mut MapViewImpl, _| {
             map.handle_mouse_moved(pixel)
         });
     }
 
     pub fn mouse_button(&mut self, down: bool) {
-        self.do_run(|map: &mut MapViewImpl| {
+        self.do_run(move |map: &mut MapViewImpl, _| {
             map.handle_mouse_button(down)
         });
     }
 
     pub fn mouse_scroll(&mut self, scroll: f64) {
-        self.do_run(|map: &mut MapViewImpl| {
+        self.do_run(move |map: &mut MapViewImpl, _| {
             map.handle_mouse_scroll(scroll)
         });
     }
@@ -144,22 +151,32 @@ impl<'a> InputHandler for MapViewImpl {
 
 pub struct MapViewImpl {
     tx: Sender<*mut MapViewImpl>,
-
     addr: Option<Addr<MapViewImpl>>,
-
     camera: Camera,
     renderer: Option<render::Renderer>,
-
     file_source: Addr<storage::DefaultFileSource>,
-    tile_loader: Addr<tiles::TileLoader>,
 
     facade: Box<glium::Display>,
     style: Option<Rc<style::Style>>,
-
     gui: Gui,
     input: InputStatus,
 
 }
+
+use common::actix_web::actix::fut::*;
+
+
+impl Actor for MapViewImpl {
+    type Context = Context<Self>;
+
+    fn started(&mut self, ctx: &mut Self::Context) {
+        let ptr = self as *mut _;
+        self.tx.send(ptr).unwrap();
+
+        self.addr = Some(ctx.address());
+    }
+}
+
 
 impl MapViewImpl {
     pub fn addr(&self) -> Addr<Self> {
@@ -167,7 +184,6 @@ impl MapViewImpl {
     }
     pub fn new(f: &Display, tx: Sender<*mut Self>) -> Self {
         let src_add = storage::DefaultFileSource::spawn();
-        let tile_loader = tiles::TileLoader::spawn(src_add.clone());
 
         let mut camera: Camera = Default::default();
         camera.pos = Mercator::latlng_to_world(LatLng::new(49, 16));
@@ -175,15 +191,12 @@ impl MapViewImpl {
         let m = MapViewImpl {
             tx,
             addr: None,
-
             camera,
             renderer: None,
-
             file_source: src_add.clone(),
             gui: Gui::new(f).unwrap(),
             facade: Box::new((*f).clone()),
             style: None,
-            tile_loader: tile_loader,
             input: Default::default(),
         };
 
@@ -191,36 +204,65 @@ impl MapViewImpl {
         return m;
     }
 
-    pub fn set_style(&mut self, style: style::Style) {
+    pub fn set_style(&mut self, style: style::Style, ctx: &mut Context<MapViewImpl>) {
+        trace!("MapViewImpl: Setting style ..");
         let style = Rc::new(style);
-        self.renderer = Some(render::Renderer::new(&self.facade, style.clone()));
+        self.renderer = Some(render::Renderer::new(&self.facade, style.clone(), self.file_source.clone()));
         if let Some(ref sprite) = style.as_ref().sprite {
             let image = storage::Request::SpriteImage(format!("{}", sprite));
             let json = storage::Request::SpriteJson(format!("{}", sprite));
 
-            let cb = self.addr().recipient();
-            spawn(self.file_source.send(storage::ResourceRequest::new(image, cb.clone())));
-            spawn(self.file_source.send(storage::ResourceRequest::new(json, cb)))
-        }
-        for (n, v) in style.sources.iter() {
-            if let Some(ref url) = v.deref().url {
-                let cb = self.addr().recipient();
-                let rq = storage::Request::SourceJson(n.to_string(), url.to_string());
-                spawn(self.file_source.send(storage::ResourceRequest::new(rq, cb)));
-            }
+
+            let img =
+                wrap_future(self.file_source.send(image))
+                    .from_err::<Error>()
+                    .map(|res, this: &mut MapViewImpl, ctx| {
+                        trace!("MapViewImpl: Retrieved sprite image ..");
+                        this.renderer.as_mut().unwrap().sprite_png_ready(res.unwrap().data);
+                    });
+
+            let js =
+                wrap_future(self.file_source.send(json))
+                    .from_err::<Error>()
+                    .map(|res, this: &mut MapViewImpl, ctx| {
+                        trace!("MapViewImpl: Retrieved sprite json ..");
+
+                        let parsed: Result<style::sprite::SpriteAtlas> = res
+                            .map_err(|e| e.into())
+                            .and_then(|x| {
+                                json::from_slice(&x.data[..]).map_err(|e| e.into())
+                            });
+
+                        this.renderer.as_mut().unwrap().sprite_json_ready(parsed.unwrap());
+                    });
+
+            ctx.spawn(img.drop_err());
+            ctx.spawn(js.drop_err());
         }
         self.style = Some(style);
     }
 
 
-    pub fn set_style_url(&mut self, url: &str) {
-        println!("Style uRL");
+    pub fn set_style_url(&mut self, url: &str, ctx: &mut Context<MapViewImpl>) {
+        trace!("Setting style URL");
         let req = storage::resource::Request::style(url.into());
-        let addr: Addr<MapViewImpl> = self.addr.clone().unwrap().into();
-        spawn(self.file_source.send(storage::ResourceRequest {
-            request: req,
-            callback: addr.recipient(),
-        }))
+
+        let send_fut = wrap_future(self.file_source.send(req));
+        let data_fut = send_fut.from_err::<Error>();
+        let work_fut = data_fut
+            .map(|res, this: &mut Self, ctx| {
+                match res {
+                    Ok(resource) => {
+                        let parsed = json::from_slice(&resource.data).unwrap();
+                        this.set_style(parsed, ctx);
+                    }
+                    Err(e) => {
+                        panic!("Could not retrieve style data : {:?}", e);
+                    }
+                }
+            });
+
+        ctx.spawn(work_fut.drop_err());
     }
 
     pub fn window_resized(&mut self, dims: PixelSize) {
@@ -257,14 +299,13 @@ impl MapViewImpl {
     }
 
 
-    pub fn render(&mut self, target: &mut glium::Frame) {
+    pub fn render(&mut self, target: &mut glium::Frame, ctx: &mut Context<Self>) {
         profiler::begin("Render");
         let params = self::render::RendererParams {
             display: self.facade.deref(),
             frame: target,
             camera: &self.camera,
-            loader: self.tile_loader.clone(),
-
+            ctx: ctx,
             frame_start: PreciseTime::now(),
         };
 
@@ -272,77 +313,11 @@ impl MapViewImpl {
             render.render(params).unwrap();
         }
         profiler::end();
-        //  self.gui.render(target)
     }
-}
 
-
-impl Actor for MapViewImpl {
-    type Context = Context<Self>;
-
-    fn started(&mut self, ctx: &mut Self::Context) {
-        let ptr = self as *mut _;
-        self.tx.send(ptr).unwrap();
-
-        self.addr = Some(ctx.address());
-        let add = ctx.address();
-        self.tile_loader.do_send(Invoke::new(|x: &mut tiles::TileLoader| x.map = Some(add)));
-    }
-}
-
-use self::tiles::data;
-
-impl Handler<storage::ResourceResponse> for MapViewImpl {
-    type Result = ();
-
-    fn handle(&mut self, msg: storage::ResourceResponse, _ctx: &mut Context<Self>) {
-        match msg.request {
-            storage::Request::SourceJson(name, url) => {
-                let parsed: Result<style::TileJson> = msg.result
-                    .map_err(|e| e.into())
-                    .and_then(|x| {
-                        json::from_slice(&x.data[..]).map_err(|e| e.into())
-                    });
-                // TODO, somehow propagate this info to appropriate style source
-            }
-            storage::Request::SpriteJson(req) => {
-                if let Some(ref mut r) = self.renderer {
-                    let parsed: Result<style::sprite::SpriteAtlas> = msg.result
-                        .map_err(|e| e.into())
-                        .and_then(|x| {
-                            json::from_slice(&x.data[..]).map_err(|e| e.into())
-                        });
-
-                    r.sprite_json_ready(parsed.unwrap());
-                }
-            }
-            storage::Request::SpriteImage(req) => {
-                if let Some(ref mut r) = self.renderer {
-                    r.sprite_png_ready(msg.result.unwrap().data);
-                }
-            }
-            storage::Request::StyleJson(req) => {
-                let parsed: Result<style::Style> = msg.result
-                    .map_err(|e| e.into())
-                    .and_then(|x| {
-                        json::from_slice(&x.data[..]).map_err(|e| e.into())
-                    });
-                self.set_style(parsed.unwrap());
-            }
-            _ => {
-                panic!("Shouldnt happen");
-            }
-        }
-    }
-}
-
-impl Handler<tiles::data::TileReady> for MapViewImpl {
-    type Result = ();
-
-    fn handle(&mut self, msg: tiles::data::TileReady, ctx: &mut Context<Self>) {
-        let data = Rc::new(msg.data);
+    pub fn new_tile(&mut self, tile: tiles::TileData, ctx: &mut Context<MapViewImpl>) {
         if let Some(ref mut r) = self.renderer {
-            r.tile_ready(data);
+            r.tile_ready(Rc::new(tile));
         }
     }
 }
