@@ -45,11 +45,13 @@ impl Handler<Request> for DefaultFileSource {
         let url = msg.url().to_string();
         trace!("DefaultFileSource: Requesting {:?}", url);
 
-        if let Ok(Some(res)) = self.cache.get(&msg) {
-            trace!("DefaultFileSource: Returning from cache");
+        /*
+         if let Ok(Some(res)) = self.cache.get(&msg) {
+             trace!("DefaultFileSource: Returning from cache");
 
-            return box ok(res);
-        }
+             return box ok(res);
+         }
+         */
 
         use common::actix::fut::FutureWrap;
         let sent: FutureWrap<Box<Future<Item=_, Error=_>>, Self> = if url.starts_with("file://") || url.starts_with("local://") {
@@ -84,7 +86,6 @@ impl Handler<Request> for DefaultFileSource {
 impl DefaultFileSource {
     pub fn new() -> Self {
         DefaultFileSource {
-            // TODO: Better location selection
             cache: offline_cache::OfflineCache::new("./tile-data/cache.db").unwrap(),
             local: local::LocalFileSource::spawn(),
             network: network::NetworkFileSource::spawn(),

@@ -1,5 +1,3 @@
-#version 100
-
 uniform highp mat4 u_matrix;
 
 in vec2 pos;

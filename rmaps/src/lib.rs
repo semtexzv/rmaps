@@ -21,7 +21,9 @@ pub extern crate geometry;
 pub extern crate image;
 
 pub extern crate tess2;
-pub extern crate earcut;
+#[macro_use]
+pub extern crate lazy_static;
+
 
 extern crate serde;
 

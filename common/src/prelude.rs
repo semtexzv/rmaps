@@ -12,6 +12,10 @@ pub use std::{
     borrow::Cow,
     rc::Rc,
     sync::Arc,
+    cell::{
+        self,
+        RefCell,
+    },
     mem,
 };
 pub use glium::{
@@ -110,6 +114,7 @@ pub use actix::{
 pub use geo;
 pub use failure::{Error, Fail, bail};
 
+
 pub type Result<T> = StdResult<T, Error>;
 
 pub type BoxFuture<T, E> = Box<Future<Item=T, Error=E>>;
@@ -120,7 +125,9 @@ use std::sync::Mutex;
 
 
 pub struct ForceSend<T>(pub T);
+
 unsafe impl<T> Send for ForceSend<T> {}
+
 unsafe impl<T> Sync for ForceSend<T> {}
 
 pub struct Invoke<A, F, R>

@@ -5,7 +5,7 @@ use map::{
     render::{
         self,
         layers::{
-            self, Layer,
+            self, Layer, LayerNew,
         },
         property::*,
     },
@@ -54,10 +54,12 @@ impl Layer for BackgroundLayer {
     }
 }
 
-impl BackgroundLayer {
-    pub fn parse(layer: style::BackgroundLayer) -> Self {
+impl LayerNew for BackgroundLayer {
+    type StyleLayer = style::BackgroundLayer;
+
+    fn new(facade: &Display, style_layer: &<Self as LayerNew>::StyleLayer) -> Self {
         return BackgroundLayer {
-            style_layer: layer,
+            style_layer: style_layer.clone(),
             properties: Default::default(),
         };
     }

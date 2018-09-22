@@ -7,14 +7,6 @@ authors = ["Michal Hornický <semtexzv@gmail.com>"]
 
 geometry = {path= "../geometry"}
 
-quick-protobuf = "0.6.0"
+quick-protobuf = { path = "../quick-protobuf"}
 
-prost="*"
-
-prost-derive = "*"
-
-prost-types = "*"
 bytes = "*"
-
-[build-dependencies]
-prost-build="*"

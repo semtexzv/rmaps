@@ -11,14 +11,6 @@ out vec2 v_pos;
 
 #pragma property : define float opacity
 
-/*
-vec2 get_pattern_pos(const vec2 pixel_coord_upper, const vec2 pixel_coord_lower,
-    const vec2 pattern_size, const float tile_units_to_pixels, const vec2 pos) {
-
-    vec2 offset = mod(mod(mod(pixel_coord_upper, pattern_size) * 256.0, pattern_size) * 256.0 + pixel_coord_lower, pattern_size);
-    return (tile_units_to_pixels * pos + offset) / pattern_size;
-}
-*/
 
 void main() {
     PASS_FEATURE_IDX;

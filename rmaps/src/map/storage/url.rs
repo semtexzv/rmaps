@@ -33,7 +33,12 @@ Tilejson urls:
 */
 
 pub fn normalize_style(url: &str) -> String {
-    "".into()
+    let style_re = Regex::new(r#"mapbox://(styles/)(?P<spec>.*)"#).unwrap();
+    return style_re.replace(url, |caps: &Captures| {
+        let spec = caps.name("spec").map(|x| x.as_str()).unwrap_or("");
+
+        format!("{base}/styles/v1/{spec}?access_token={token}", base = BASE, spec = spec, token = ACCESS_TOKEN)
+    }).to_string();
 }
 pub fn normalize_source(url: &str) -> String {
     let source_re = Regex::new(r#"mapbox://(?P<spec>mapbox.*)"#).unwrap();

@@ -32,8 +32,8 @@ use self::bucket::*;
 #[derive(Debug)]
 pub struct FillLayer {
     style_layer: style::FillLayer,
-    pub shader_program: glium::Program,
-    pub pattern_program: Option<glium::Program>,
+    pub shader_program: Rc<glium::Program>,
+    pub pattern_program: Option<Rc<glium::Program>>,
     pub properties: FillLayerProperties,
     pub layout: (UniformPropertyLayout, FeaturePropertyLayout),
 }
@@ -44,13 +44,35 @@ impl layers::WithSource for FillLayer {
     }
 }
 
+impl layers::LayerNew for FillLayer{
+    type StyleLayer = style::FillLayer;
+
+    fn new(facade: &Display, style_layer: &<Self as layers::LayerNew>::StyleLayer) -> Self {
+        let (uni, feat) = ::map::render::property::PropertyLayoutBuilder::build::<FillFeatureProperties>(style_layer);
+
+        let pattern_program = style_layer.paint.pattern.as_ref().map(|_| {
+            layer_program!(facade,"fill-pattern", &uni, &feat).unwrap()
+        });
+
+        let shader_program = layer_program!(facade,"fill", &uni, &feat);
+
+        FillLayer {
+            layout: (uni, feat),
+            style_layer: style_layer.clone(),
+            properties: Default::default(),
+            shader_program: shader_program.unwrap(),
+            pattern_program,
+        }
+    }
+}
+
 impl layers::BucketLayer for FillLayer {
     type Bucket = FillBucket;
 
     fn new_tile(&mut self, display: &Display, data: &Rc<tiles::TileData>) -> Result<Option<Self::Bucket>> {
         if (Some(&data.source) == self.style_layer.common.source.as_ref()) {
             if let Some(ref source_layer) = self.style_layer.common.source_layer {
-                return Ok(FillBucket::new(display, data.clone(), &source_layer)?);
+                return Ok(FillBucket::new(display, data.clone(), &self.style_layer.common)?);
             }
         }
 
@@ -61,7 +83,7 @@ impl layers::BucketLayer for FillLayer {
         let evaluator = PropertiesEvaluator::only_zoom(params.zoom);
         self.properties.eval(&self.style_layer, &evaluator)?;
 
-        // println!("Props : {:?}", self.properties);
+        //println!("Props : {:?}", self.properties);
         Ok(())
     }
 
@@ -102,27 +124,28 @@ impl layers::BucketLayer for FillLayer {
             if let Some((sprite, texture)) = params.atlas.get_pattern(&pattern) {
                 use self::glium::uniforms::*;
 
-                let sampler : Sampler<_> = texture.sampled();
+                let sampler: Sampler<_> = texture.sampled();
                 sampler
                     .magnify_filter(MagnifySamplerFilter::Nearest)
                     .minify_filter(MinifySamplerFilter::Nearest);
 
                 let texsize = params.atlas.atlas_dims();
-                //println!("TL {:?}, BR: {:?}", tl, br);
+
                 let a = uniform! {
                     u_matrix : matrix,
                     feature_data_ubo :  &bucket.feature_data.data,
                     u_image : sampler,
-                    u_tex_scale : 2048f32,
+                    u_tex_scale : 1024f32,
                     u_pattern_tl : sprite.tl,
                     u_pattern_br : sprite.br,
-                    u_texsize : (252f32,138f32),
+                    u_texsize : texsize,
 
                 };
                 let mut uniforms = MergeUniforms(
                     &bucket.uniforms,
                     &a,
                 );
+
                 let draw_params = glium::DrawParameters {
                     blend: glium::Blend::alpha_blending(),
                     ..Default::default()
@@ -160,27 +183,5 @@ impl layers::BucketLayer for FillLayer {
         }
 
         Ok(())
-    }
-}
-
-impl FillLayer {
-    pub fn parse(f: &glium::backend::Facade, layer: style::FillLayer) -> Self {
-        let (uni, feat) = ::map::render::property::PropertyLayoutBuilder::build::<FillFeatureProperties>(&layer);
-        //println!("Style : {:?}", layer);
-
-        let pattern_program = layer.paint.pattern.as_ref().map(|_| {
-            layer_program!(f,"fill-pattern", &uni, &feat).unwrap()
-        });
-
-        //trace!("Fill layer layout:\n  uniforms: {:?},\n  features: {:?}", uni, feat);
-        let shader_program = layer_program!(f,"fill", &uni, &feat);
-
-        FillLayer {
-            layout: (uni, feat),
-            style_layer: layer,
-            properties: Default::default(),
-            shader_program: shader_program.unwrap(),
-            pattern_program,
-        }
     }
 }

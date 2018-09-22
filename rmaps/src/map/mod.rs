@@ -28,6 +28,7 @@ fn pulse(sys: &mut SystemRunner) {
 
 
 impl MapView {
+    /// Initialization
     pub fn new(f: &Display) -> Self {
         let mut sys = System::new("Map");
         let (tx, rx) = channel();
@@ -35,9 +36,7 @@ impl MapView {
         let addr: Addr<MapViewImpl> = _impl.start();
         pulse(&mut sys);
         pulse(&mut sys);
-        println!("Receiving");
         let ptr = rx.recv().unwrap();
-        println!("Received");
 
         return MapView {
             sys,
@@ -74,7 +73,6 @@ impl MapView {
             surface.finish().unwrap();
         });
         self.pulse();
-        //info!("Render")
     }
 
     pub fn set_style_url(&mut self, url: &str) {
@@ -217,7 +215,7 @@ impl MapViewImpl {
                 wrap_future(self.file_source.send(image))
                     .from_err::<Error>()
                     .map(|res, this: &mut MapViewImpl, ctx| {
-                        trace!("MapViewImpl: Retrieved sprite image ..");
+                        trace!("MapViewImpl: Retrieved sprite image .. : {:?}", res);
                         this.renderer.as_mut().unwrap().sprite_png_ready(res.unwrap().data);
                     });
 
@@ -225,7 +223,7 @@ impl MapViewImpl {
                 wrap_future(self.file_source.send(json))
                     .from_err::<Error>()
                     .map(|res, this: &mut MapViewImpl, ctx| {
-                        trace!("MapViewImpl: Retrieved sprite json ..");
+                        trace!("MapViewImpl: Retrieved sprite json .. : {:?}", res);
 
                         let parsed: Result<style::sprite::SpriteAtlas> = res
                             .map_err(|e| e.into())
@@ -233,6 +231,7 @@ impl MapViewImpl {
                                 json::from_slice(&x.data[..]).map_err(|e| e.into())
                             });
 
+                        trace!("MapViewImpl: Parsed sprite JSON : {:?}", parsed);
                         this.renderer.as_mut().unwrap().sprite_json_ready(parsed.unwrap());
                     });
 
@@ -266,7 +265,6 @@ impl MapViewImpl {
     }
 
     pub fn window_resized(&mut self, dims: PixelSize) {
-        trace!("Resized: {:?}", dims);
         self.camera.set_size(dims);
     }
 

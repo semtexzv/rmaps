@@ -14,14 +14,16 @@ macro_rules! layer_program {
     ($facade:expr, $name:expr, $uniforms:expr, $features:expr) => { {
             let vert_src = include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/../shaders/",$name,".vert.glsl"));
             let frag_src = include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/../shaders/",$name,".frag.glsl"));
-            ::map::render::shaders::ShaderProcessor::get_shader($facade, vert_src,frag_src,$uniforms,$features)
+            ::map::render::shaders::ShaderProcessor::get_shader($facade,$name, vert_src,frag_src,$uniforms,$features)
         }
     };
 }
 
 pub mod background;
 pub mod raster;
+
 pub mod fill;
+pub mod line;
 
 #[repr(C)]
 #[derive(Debug, Clone, Copy, Vertex)]
@@ -68,13 +70,10 @@ pub trait Layer: Debug {
     }
 }
 
-pub trait LayerExt: Layer {
+pub trait LayerNew {
     type StyleLayer: style::StyleLayer;
-    // TODO: This will probably hold runtime specialization of source
-    type Source: Debug = ();
 
     fn new(facade: &Display, style_layer: &Self::StyleLayer) -> Self;
-    fn source_name(&self) -> Option<&str>;
 }
 
 pub trait WithSource {
@@ -86,7 +85,9 @@ pub trait Bucket: Debug {
     fn needs_explicit_eval(&self) -> bool {
         false
     }
-    fn upload(&mut self, display: &Display) -> Result<()>;
+    fn upload(&mut self, display: &Display) -> Result<()> {
+        Ok(())
+    }
 }
 
 pub trait BucketLayer: Debug + WithSource {
@@ -100,7 +101,7 @@ pub trait BucketLayer: Debug + WithSource {
         Ok(())
     }
 
-    fn new_tile(&mut self, display: &Display, data: &Rc<tiles::TileData>) -> Result<Option<Self::Bucket>>;
+    fn new_tile(&mut self, display: &Display, tile: &Rc<tiles::TileData>) -> Result<Option<Self::Bucket>>;
 
 
     fn eval_layer(&mut self, params: &render::EvaluationParams) -> Result<()> {
@@ -183,20 +184,18 @@ impl<L: BucketLayer> Layer for BucketLayerHolder<L> {
     }
 
     fn render(&mut self, params: &mut render::RenderParams) -> Result<()> {
-        profiler::frame("Bucket", || {
-            self.layer.begin_pass(params, RenderPass::Opaque)?;
+        self.layer.begin_pass(params, RenderPass::Opaque)?;
 
 
-            for t in self.tiles.iter() {
-                if let Some(mut v) = self.buckets.get_mut(&t.wrap()) {
-                    v.bucket.upload(params.display)?;
-                    self.layer.render_bucket(params, *t, &mut v.bucket)?;
-                }
+        for t in self.tiles.iter() {
+            if let Some(mut v) = self.buckets.get_mut(&t.wrap()) {
+                v.bucket.upload(params.display)?;
+                self.layer.render_bucket(params, *t, &mut v.bucket)?;
             }
+        }
 
-            self.layer.end_pass(params, RenderPass::Opaque)?;
-            Ok(())
-        })
+        self.layer.end_pass(params, RenderPass::Opaque)?;
+        Ok(())
     }
 }
 
@@ -234,13 +233,16 @@ pub fn parse_style_layers(facade: &Display, style: &style::Style) -> Vec<Box<dyn
     for l in style.layers.iter() {
         match l {
             style::BaseStyleLayer::Background(l) => {
-                res.push(Box::new(background::BackgroundLayer::parse(l.clone())))
+                res.push(box background::BackgroundLayer::new(facade, l))
             }
             style::BaseStyleLayer::Fill(l) => {
-                res.push(Box::new(BucketLayerHolder::new(fill::FillLayer::parse(facade, l.clone()))))
+                res.push(box BucketLayerHolder::new(fill::FillLayer::new(facade, l)))
+            }
+            style::BaseStyleLayer::Line(l) => {
+                //res.push(box BucketLayerHolder::new(line::LineLayer::new(facade, l)))
             }
             style::BaseStyleLayer::Raster(l) => {
-                res.push(Box::new(raster::RasterLayer::parse(facade, l.clone())))
+                res.push(box BucketLayerHolder::new(raster::RasterLayer::new(facade, l)))
             }
             _ => {}
         }

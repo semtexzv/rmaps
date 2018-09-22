@@ -21,7 +21,6 @@ pub mod layout;
 pub use self::eval::PropertiesEvaluator;
 pub use self::layout::PropertyLayoutBuilder;
 
-use std::convert::{TryFrom, Into};
 
 /// Types that can be Property values
 pub trait PropValue: TryFrom<Value, Error=Type> + Into<Value> + Debug + Clone + Default + DescribeType + 'static {}
@@ -45,7 +44,6 @@ pub trait Evaluable {
 pub trait Visitable<T: PropValue> {
     fn visit<V: PropertiesVisitor>(&self, visitor: &mut V);
 }
-
 
 #[repr(C)]
 #[derive(Debug, Clone, Default)]

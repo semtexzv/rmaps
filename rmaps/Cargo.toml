@@ -18,7 +18,7 @@ serde= { version = "*", features = ["rc"] }
 image = "*"
 
 tess2 =  { path = "../libs/tess2" }
-earcut = { path = "../libs/earcut" }
+lazy_static = "1.1.0"
 
 #imgui = { git = "https://github.com/semtexzv/imgui-rs" }
 #imgui-glium-renderer = { git = "https://github.com/semtexzv/imgui-rs" }

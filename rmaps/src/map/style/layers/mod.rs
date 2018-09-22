@@ -75,7 +75,11 @@ pub trait StyleLayer {
 }
 
 pub trait StyleLayerExt: StyleLayer + Sized {
-    type RenderLayer: ::map::render::layers::LayerExt<StyleLayer=Self>;
+    type RenderLayer: ::map::render::layers::LayerNew<StyleLayer=Self>;
+    fn create(&self, disp: &Display) -> Self::RenderLayer {
+        use map::render::layers::LayerNew;
+        Self::RenderLayer::new(disp, self)
+    }
 }
 
 use super::expr::{
@@ -99,7 +103,7 @@ impl<T: DescribeType + Debug> From<Option<StyleProp<T>>> for StyleProp<Option<T>
         match v {
             Some(StyleProp::Value(v)) => StyleProp::Value(Some(v)),
             None => StyleProp::Value(None),
-            Some(StyleProp::Expr(TypedExpr(e,_))) => StyleProp::Expr(TypedExpr::new(e)),
+            Some(StyleProp::Expr(TypedExpr(e, _))) => StyleProp::Expr(TypedExpr::new(e)),
         }
     }
 }

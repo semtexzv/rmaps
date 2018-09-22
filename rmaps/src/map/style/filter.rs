@@ -1,13 +1,36 @@
 use prelude::*;
 
-#[derive(Debug, Deserialize, Clone)]
-#[serde(untagged)]
+
+#[derive(Debug, Clone, PartialEq, PartialOrd)]
 pub enum PropKey {
-    #[serde(rename = "$type")]
     Type,
-    #[serde(rename = "$id")]
     Id,
     Key(String),
+}
+
+impl<'de> Deserialize<'de> for PropKey {
+    fn deserialize<D>(deserializer: D) -> StdResult<Self, D::Error>
+        where
+            D: Deserializer<'de> {
+        struct Vis;
+
+        impl<'de> de::Visitor<'de> for Vis {
+            type Value = PropKey;
+
+            fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+                formatter.write_str("Property key")
+            }
+
+            fn visit_str<E: ::std::error::Error>(self, v: &str) -> StdResult<Self::Value, E> {
+                return Ok(match v {
+                    "$type" => PropKey::Type,
+                    "$id" => PropKey::Id,
+                    a @ _ => PropKey::Key(a.to_string())
+                });
+            }
+        }
+        Ok(deserializer.deserialize_str(Vis)?)
+    }
 }
 
 
@@ -162,23 +185,25 @@ pub struct FilterEvaluator<'a> {
 use geometry::Value;
 
 impl<'a> FilterEvaluator<'a> {
-    fn new(feature: &'a ::mvt::Feature) -> Self {
+    pub fn new(feature: &'a ::mvt::Feature) -> Self {
         FilterEvaluator {
             feature,
         }
     }
-    fn satisfies_opt(feature: &::mvt::Feature, filter: &Option<Filter>) -> bool {
+    pub fn satisfies_opt(feature: &::mvt::Feature, filter: &Option<Filter>) -> bool {
         return if let Some(filter) = filter {
-            FilterEvaluator::new(feature).evaluate(filter)
+            let res = FilterEvaluator::new(feature).evaluate(filter);
+            res
         } else { true };
     }
-    fn satisfies(feature: &::mvt::Feature, filter: &Filter) -> bool {
+    pub fn satisfies(feature: &::mvt::Feature, filter: &Filter) -> bool {
         FilterEvaluator::new(feature).evaluate(filter)
     }
 
     fn id(&self) -> u64 {
         return self.feature.id;
     }
+
     fn typ(&self) -> String {
         self.feature.typ.to_string()
     }
@@ -194,7 +219,7 @@ impl<'a> FilterEvaluator<'a> {
             Filter::Raw(v) => *v,
             Filter::Has(PropKey::Id) => true,
             Filter::Has(PropKey::Type) => true,
-            Filter::Has(PropKey::Key(ref key)) => self.feature.tags.key_idxs.contains_key(key),
+            Filter::Has(PropKey::Key(ref key)) => self.feature.has(key),
             Filter::NotHas(k) => !self.evaluate(&Filter::Has(k.clone())),
             Filter::In(k, vals) => vals.iter().any(|v| Some(v) == self.get(k).as_ref()),
             Filter::NotIn(k, vals) => !vals.iter().any(|v| Some(v) == self.get(k).as_ref()),

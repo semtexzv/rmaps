@@ -48,13 +48,10 @@ fn main() {
 
 
     let mut map = rmaps::map::MapView::new(&display.clone());//.unwrap();
-    map.set_style_url("file://std-mabpox.json");
+    //map.set_style_url("file://simple.json");
+    map.set_style_url("mapbox://styles/semtexzv/cjjjv418k6m0b2rok0oiejd4i");
     let mut running = true;
 
-    //let mut down_pos = None;
-    //let mut last_pos = None;
-    //let mut pos = Default::default();
-    //let mut size = LogicalSize::new(0., 0.);
 
 
     while running {

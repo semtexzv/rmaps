@@ -4,7 +4,7 @@ use common::json;
 
 pub mod expr;
 pub mod sprite;
-mod filter;
+pub mod filter;
 
 mod layers;
 
@@ -80,11 +80,3 @@ pub enum BaseStyleLayer {
     #[serde(rename = "fill-extrusion")]
     FillExtrusion(json::Value),
 }
-
-
-/*
-#[test]
-fn test_style_parse() {
-    println!("{:#?}", json::from_str::<Style>(include_str!("bright.json")).unwrap());
-}
-*/

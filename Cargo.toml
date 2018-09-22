@@ -4,6 +4,7 @@ members = ["common" , "rmaps", "platform/*", "libs/*"]
 [profile.dev]
 codegen-units = 4
 lto=false
+panic = "abort"
 
 [profile.release]
 debug-assertions =true

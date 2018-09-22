@@ -20,7 +20,7 @@ pub enum Request {
 }
 
 impl Message for Request {
-    type Result = StdResult<Resource,super::ResourceError>;
+    type Result = StdResult<Resource, super::ResourceError>;
 }
 
 impl Request {
@@ -34,7 +34,7 @@ impl Request {
                     url.to_string()
                 }
             }
-            Request::SourceJson(_,ref url) => {
+            Request::SourceJson(_, ref url) => {
                 if is_mapbox_url(url) {
                     normalize_source(url)
                 } else {
@@ -66,8 +66,8 @@ impl Request {
     pub fn style(url: String) -> Request {
         Request::StyleJson(url)
     }
-    pub fn source(name : String, url: String) -> Request {
-        Request::SourceJson(name ,url)
+    pub fn source(name: String, url: String) -> Request {
+        Request::SourceJson(name, url)
     }
 
     pub fn tile(src_id: String, url_template: String, coords: TileCoords) -> Request {
@@ -112,7 +112,7 @@ impl Request {
 
     pub fn source_data(&self) -> Option<&str> {
         return match self {
-            Request::SourceJson(_,ref s) => Some(s),
+            Request::SourceJson(_, ref s) => Some(s),
             _ => None,
         };
     }
@@ -137,5 +137,13 @@ impl Resource {
     pub fn cacheable(&self) -> bool {
         let url = self.req.url();
         return !url.starts_with("file://") && !url.starts_with("local://");
+    }
+
+    pub fn data(&self) -> &[u8] {
+        return &self.data[..];
+    }
+
+    pub fn data_str(&self) -> &str {
+        return unsafe { ::std::str::from_utf8_unchecked(&self.data[..]) };
     }
 }

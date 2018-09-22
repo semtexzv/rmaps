@@ -5,7 +5,7 @@ use ::common::glium::vertex::{AttributeType, Attribute};
 
 /// Layout of single property, can be bound to uniform value
 /// or sent in BufferTexture, and looked up based on feature ID
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialOrd, Ord, PartialEq, Eq, Hash)]
 pub struct PropertyItemLayout {
     pub name: String,
     pub format: AttributeType,
@@ -16,7 +16,7 @@ pub struct PropertyItemLayout {
 
 /// Struct that holds information needed to bind per-feature property data into UBO or TBO, this data will be used by shader compilation
 /// to find out, which attributes need uniforms generated, and which need special retrieval function generated
-#[derive(Debug, Default)]
+#[derive(Debug, Clone, Default, PartialOrd, Ord, PartialEq, Eq, Hash)]
 pub struct FeaturePropertyLayout {
     pub items: Vec<PropertyItemLayout>,
 }
@@ -46,7 +46,7 @@ impl FeaturePropertyLayout {
 
 /// Struct that holds information needed to bind Per-Layer data into shader uniforms, these are static or zoom-dependent
 /// properties
-#[derive(Debug, Default)]
+#[derive(Debug, Clone, Default, PartialOrd, Ord, PartialEq, Eq, Hash)]
 pub struct UniformPropertyLayout {
     pub items: Vec<PropertyItemLayout>,
 }
@@ -67,89 +67,129 @@ impl UniformPropertyLayout {
 
 pub struct ShaderProcessor;
 
+#[derive(Debug, Clone, PartialOrd, Ord, PartialEq, Eq, Hash)]
+struct ShaderConfigKey {
+    name: &'static str,
+    uni_layout: UniformPropertyLayout,
+    feature_layout: FeaturePropertyLayout,
+
+}
+
+use ::std::{
+    collections::{
+        BTreeMap,
+        btree_map::{
+            Entry,
+            OccupiedEntry,
+            VacantEntry,
+        },
+    },
+    sync::Mutex,
+};
+
+thread_local! {
+    static SHADER_CACHE : RefCell<BTreeMap<ShaderConfigKey, Rc<glium::program::Program>>> = RefCell::new(BTreeMap::new());
+}
+
 
 use common::regex::{Match, Matches, CaptureMatches, CaptureNames, Captures};
 
 impl ShaderProcessor {
+
     pub fn uniform_name(prop_name: &str) -> String {
         format!("u_{}", prop_name)
     }
 
 
-    pub fn get_shader(displ: &glium::backend::Facade, vert: &str, frag: &str, uniforms: &UniformPropertyLayout, features: &FeaturePropertyLayout) -> Result<glium::program::Program> {
-        let regex = Regex::new(r"(?xm)
+    pub fn get_shader(displ: &glium::backend::Facade, name: &'static str, vert: &str, frag: &str, uniforms: &UniformPropertyLayout, features: &FeaturePropertyLayout) -> Result<Rc<glium::program::Program>> {
+        SHADER_CACHE.with(|cache| {
+            let mut cache = cache.borrow_mut();
 
-        \#pragma \s+ property \s* : \s* (?P<op>\w+) \s* (?P<type>\w+) \s+ (?P<name>\w+);?
-
-        ").unwrap();
-
-        let custom = format!("#define PER_FEATURE_SIZE float({size})", size = features.size_per_feature());
-
-        let common_defines = include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/../shaders/_prelude.common.glsl"));
-
-        let vert_prelude = include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/../shaders/_prelude.vert.glsl"));
-        let frag_prelude = include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/../shaders/_prelude.frag.glsl"));
-
-        let vert = format!("{}\n{}\n{}\n{}\n", vert_prelude, custom, common_defines, vert);
-        let frag = format!("{}\n{}\n{}\n{}\n", frag_prelude, custom, common_defines, frag);
+            let entry = cache.entry(ShaderConfigKey {
+                name,
+                uni_layout: uniforms.clone(),
+                feature_layout: features.clone(),
+            });
 
 
-        let process = |caps: &Captures| {
-            let op = caps.name("op").unwrap().as_str();
-            let typ = caps.name("type").unwrap().as_str();
-            let name = caps.name("name").unwrap().as_str();
+            if let Entry::Occupied(o) = entry {
+                trace!("Loading {} shader from cache", name);
+                return Ok((*o.get()).clone());
+            } else {
+                trace!("Processing {} shader", name);
 
-            let is_uniform = uniforms.is_uniform(name);
-            let is_feature = features.is_feature(name);
+            }
 
-            // Number of vec4
-            let feature_size_vec4 =
-                assert!(is_uniform ^ is_feature, "Property can't be both uniform and feature at the same time");
-            let uniform_name = ShaderProcessor::uniform_name(name);
+            let regex = Regex::new(r"(?xm)
 
-            let res = match (op, typ, name, is_feature) {
-                ("define", typ, name, false) => {
-                    format!("uniform {} {};", typ, uniform_name)
-                }
-                ("define", typ, name, true) => {
-                    let item = features.item(name);
-                    format!(r#"
+            \#pragma \s+ property \s* : \s* (?P<op>\w+) \s* (?P<type>\w+) \s+ (?P<name>\w+);?
+
+            ").unwrap();
+
+            let custom = format!("#define PER_FEATURE_SIZE float({size})", size = features.size_per_feature());
+
+            let common_defines = include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/../shaders/_prelude.common.glsl"));
+
+            let vert_prelude = include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/../shaders/_prelude.vert.glsl"));
+            let frag_prelude = include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/../shaders/_prelude.frag.glsl"));
+
+            let vert = format!("{}\n{}\n{}\n{}\n", vert_prelude, custom, common_defines, vert);
+            let frag = format!("{}\n{}\n{}\n{}\n", frag_prelude, custom, common_defines, frag);
+
+
+            let process = |caps: &Captures| {
+                let op = caps.name("op").unwrap().as_str();
+                let typ = caps.name("type").unwrap().as_str();
+                let name = caps.name("name").unwrap().as_str();
+
+                let is_uniform = uniforms.is_uniform(name);
+                let is_feature = features.is_feature(name);
+
+                // Number of vec4
+                let feature_size_vec4 =
+                    assert!(is_uniform ^ is_feature, "Property can't be both uniform and feature at the same time");
+                let uniform_name = ShaderProcessor::uniform_name(name);
+
+                let res = match (op, typ, name, is_feature) {
+                    ("define", typ, name, false) => {
+                        format!("uniform {} {};", typ, uniform_name)
+                    }
+                    ("define", typ, name, true) => {
+                        let item = features.item(name);
+                        format!(r#"
                     {typ} get_{name} (float feature) {{
                        return feature_get_{typ}(feature,float({offset}));
                     }}"#, typ = typ, name = name, offset = item.offset)
-                }
+                    }
 
-                // Uniform
-                ("init", typ, name, false) => {
-                    format!("{typ} {name} = {u_name};", typ = typ, name = name, u_name = uniform_name)
-                }
-                // Feature
-                ("init", typ, name, true) => {
-                    format!("{typ} {name} = get_{name}(feature);", typ = typ, name = name)
-                }
+                    // Uniform
+                    ("init", typ, name, false) => {
+                        format!("{typ} {name} = {u_name};", typ = typ, name = name, u_name = uniform_name)
+                    }
+                    // Feature
+                    ("init", typ, name, true) => {
+                        format!("{typ} {name} = get_{name}(feature);", typ = typ, name = name)
+                    }
 
-                (op, _, _, _) => {
-                    panic!("Invalid shader pragma operation : `{}`", op);
-                }
-                _ => {
-                    "".into()
-                }
+                    (op, _, _, _) => {
+                        panic!("Invalid shader pragma operation : `{}`", op);
+                    }
+                    _ => {
+                        "".into()
+                    }
+                };
+
+                //println!("op: `{}`, typ : `{}`, name : `{}`", op, typ, name);
+                res
             };
-
-            //println!("op: `{}`, typ : `{}`, name : `{}`", op, typ, name);
-            res
-        };
-        let vert_processed = regex.replace_all(&vert, process);
+            let vert_processed = regex.replace_all(&vert, process);
 
 
-        let frag_processed = regex.replace_all(&frag, process);
+            let frag_processed = regex.replace_all(&frag, process);
 
-        //trace!("Vertex shader processed \n Orig: \n{}\n New : \n{}", vert, vert_processed);
-       // trace!("Fragment shader processed \n Orig: \n{}\n New : \n{}", frag, frag_processed);
+            let res = Rc::new(glium::Program::from_source(displ, &vert_processed, &frag_processed, None)?);
 
-
-        // panic!("\nOLD: {}, \nNEW: {}", vert, vert_processed);3
-
-        Ok(glium::Program::from_source(displ, &vert_processed, &frag_processed, None)?)
+            Ok(entry.or_insert(res).clone())
+        })
     }
 }

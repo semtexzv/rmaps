@@ -1,6 +1,7 @@
 extern crate serde;
 #[macro_use]
 extern crate serde_derive;
+
 use std::collections::BTreeMap;
 
 pub type Array = Vec<Value>;
@@ -21,6 +22,11 @@ pub enum Value {
     Object(Object),
 }
 
+impl Default for Value {
+    fn default() -> Self {
+        Value::Null
+    }
+}
 
 impl ::std::cmp::PartialEq<u64> for Value {
     fn eq(&self, other: &u64) -> bool {

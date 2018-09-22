@@ -16,7 +16,15 @@ impl Expression for FeatureExpr {
         true
     }
     fn eval(&self, ctx: &EvaluationContext) -> ExprResult {
-        unimplemented!()
+        match self {
+            FeatureExpr::Id => {
+                let n = ctx.feature_data.unwrap().id as _;
+                Ok(Value::Num(n))
+            }
+            _ => {
+                unimplemented!()
+            }
+        }
         // delegate_to_inner! {self;  [FeatureExpr::GeomType, FeatureExpr::Id, FeatureExpr::Properties]; (v) => v.eval(ctx)}
     }
 }

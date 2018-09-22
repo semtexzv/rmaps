@@ -58,19 +58,7 @@
       "paint": {
         "fill-opacity": 1,
         "fill-translate-anchor": "map",
-        "fill-color": [
-          "interpolate",
-          [
-            "linear"
-          ],
-          [
-            "zoom"
-          ],
-          0,
-          "#00F",
-          10,
-          "#FF0"
-        ]
+        "fill-color": ["rgb", ["*", ["id"], 25 ], 0, 1 ]
       }
     }
   ],

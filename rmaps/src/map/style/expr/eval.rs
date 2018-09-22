@@ -9,12 +9,6 @@ pub struct EvaluationContext<'a> {
     pub bindings: RefCell<BTreeMap<String, Expr>>,
 }
 
-impl<'a> EvaluationContext<'a> {
-    fn get(&self, name: &str) -> Option<&Value> {
-        panic!("None")
-    }
-}
-
 #[derive(Debug)]
 pub enum EvalError {
     InvalidType {

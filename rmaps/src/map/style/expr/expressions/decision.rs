@@ -113,7 +113,44 @@ pub struct Match {
 impl<'de> Deserialize<'de> for Match {
     fn deserialize<D>(deserializer: D) -> StdResult<Self, D::Error> where
         D: Deserializer<'de> {
-        unimplemented!()
+        struct Vis;
+
+        impl<'de> Visitor<'de> for Vis {
+            type Value = Match;
+            fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+                formatter.write_str("Match expression")
+            }
+
+            fn visit_seq<A>(self, mut seq: A) -> StdResult<Self::Value, A::Error> where A: SeqAccess<'de>, {
+                let input = seq.next_element()?.ok_or_else(|| de::Error::invalid_length(1, &self))?;
+
+                let mut arms = vec![];
+
+                let mut def = 'l: loop {
+                    match (seq.next_element()?, TYPE.set(&Type::Color, || { seq.next_element() })?) {
+                        (Some(label),Some(expr)) => {
+                            arms.push(MatchArm{
+                                label : json::from_value(label).unwrap(),
+                                expr
+                            });
+                        }
+                        (Some(default),None) => {
+                            break 'l json::from_value(default).unwrap();
+                        }
+                        _ => {
+
+                        }
+                    }
+                };
+
+                Ok(Match{
+                    input,
+                    arms,
+                    default : def,
+                })
+            }
+        }
+        Ok(deserializer.deserialize_seq(Vis)?)
     }
 }
 /*

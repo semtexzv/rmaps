@@ -1,4 +1,4 @@
-
+#![feature(specialization)]
 #![feature(nll)]
 
 #![allow(unused_variables, unused_mut, dead_code, non_snake_case, unused_parens, unused_imports)]

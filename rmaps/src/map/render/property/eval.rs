@@ -52,6 +52,9 @@ impl<'a> PropertiesEvaluator<'a> {
                 } else if e.is_feature() && !feature_allowed {
                     bail!("Feature expression not allowed for expression : {:?}", e)
                 }
+                if e.is_feature() && ctx.feature_data.is_none() {
+                    return Ok(true);
+                }
                 let res = prop.eval(&e.0, &ctx);
                 return Ok(res);
             }

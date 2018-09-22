@@ -1,8 +1,10 @@
 use prelude::*;
+use map::render;
 
 use super::{
     LayerCommon,
     StyleLayer,
+    StyleLayerExt,
     BaseLayout,
     Visibility,
     StyleProp,
@@ -30,6 +32,7 @@ impl StyleLayer for BackgroundLayer {
         &self.layout
     }
 }
+
 
 #[derive(Deserialize, Debug, Clone)]
 pub struct BackgroundPaint {

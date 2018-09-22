@@ -101,11 +101,9 @@ impl Renderer {
         }
     }
     pub fn sprite_json_ready(&mut self, data: ::map::style::sprite::SpriteAtlas) {
-        error!("Sprite atlas");
         self.image_atlas.set_sprite_atlas(data);
     }
     pub fn sprite_png_ready(&mut self, data: Vec<u8>) {
-        error!("Sprite PNG");
         self.image_atlas.set_sprite_texture(data);
     }
     pub fn tile_ready(&mut self, tile: Rc<tiles::TileData>) {
@@ -182,18 +180,6 @@ impl Renderer {
 
             params.ctx.spawn(fut.drop_err());
         }
-
-        /*
-        let fut = params.loader.send(Invoke::new(move |loader: &mut TileLoader, _| {
-            for (name, coord, source) in requests.into_iter() {
-                loader.request_tile(&name, &source, coord);
-            }
-        }))
-            .map(|_| ());
-            */
-
-        //info!("Spawning future");
-        //spawn(fut);
 
         self.layers.deref_mut().iter_mut().for_each(|l| {
             let (should_eval, really) = match l.evaluated {

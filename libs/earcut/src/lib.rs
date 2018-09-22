@@ -2,8 +2,6 @@
 
 mod ffi;
 
-use ffi::*;
-
 
 pub fn earcut(feature: &Vec<Vec<[::ffi::COORD_TYPE; 2]>>) -> Vec<::ffi::INDEX_TYPE> {
     use std::mem;

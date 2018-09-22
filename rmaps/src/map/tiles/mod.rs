@@ -13,13 +13,13 @@ pub struct RasterTileData {
 #[derive(Debug, Clone)]
 pub struct FeatureGeometry {
     pub vertices: Vec<[f32; 2]>,
-    pub indices: Vec<i16>,
+    pub indices: Vec<u16>,
 }
 
 #[derive(Debug, Clone)]
 pub struct VectorTileLayer {
     pub layer: ::mvt::Layer,
-    pub pre_tesselated: BTreeMap<u64, FeatureGeometry>,
+    pub pre_tesselated: BTreeMap<usize, FeatureGeometry>,
 }
 
 #[derive(Debug, Clone)]
@@ -31,6 +31,22 @@ pub struct VectorTileData {
 pub enum DecodedTileData {
     Vector(VectorTileData),
     Raster(RasterTileData),
+}
+
+impl DecodedTileData {
+    pub fn unwrap_vector(&self) -> &VectorTileData {
+        if let DecodedTileData::Vector(v) = self {
+            return v;
+        }
+        panic!("Not a Vector")
+    }
+
+    pub fn unwrap_raster(&self) -> &RasterTileData {
+        if let DecodedTileData::Raster(r) = self {
+            return r;
+        }
+        panic!("Not a raster")
+    }
 }
 
 
@@ -87,28 +103,18 @@ impl Handler<DecodeTile> for TileDataWorker {
                 });
             }
             SourceType::Vector => {
-                use mvt::prost::Message;
-
                 let data = &msg.res.data;
-                let vt = match ::mvt::vector_tile::Tile::decode(data.clone()) {
-                    Ok(t) => t,
-                    Err(e) => {
-                        panic!("Decoding error : {:?} on {:?}", e, msg.res);
-                    }
-                };
+                let tile = ::mvt::decode(&data).unwrap();
 
-                let tile = ::mvt::Tile::from(vt);
-
-                let layers = tile.layers.into_iter().map(|l| {
+                let layers = tile.layers.into_iter().map(|mut l| {
                     let mut pretess = BTreeMap::new();
 
                     let mult = EXTENT as f32 / l.extent as f32;
 
-                    for f in l.features.iter() {
+                    for (idx,f) in l.features.iter_mut().enumerate() {
                         if f.typ == ::mvt::GeomType::Polygon {
-                            let geom = &f.geom;
+                            let g = &f.geometry;
 
-                            let g: Vec<Vec<[f32; 2]>> = f.geom.iter().map(|r| r.iter().map(|p| [p[0] as _, p[1] as _]).collect()).collect();
 
                             let zer = 0 as _;
                             let ext = l.extent as _;
@@ -125,7 +131,7 @@ impl Handler<DecodeTile> for TileDataWorker {
                                     vertices: res.vertices.into_iter().map(|[x, y]| [x * mult, y * mult]).collect(),
                                     indices: res.indices.into_iter().map(|x| x as _).collect(),
                                 };
-                                pretess.insert(f.id, g);
+                                pretess.insert(idx, g);
                             }
                         }
                     }
