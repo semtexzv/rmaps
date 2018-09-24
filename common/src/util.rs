@@ -61,7 +61,6 @@ impl TileCover {
             .collect();
 
 
-        //println!("Cover: {:#?}", cover);
 
         TileCover(cover)
     }

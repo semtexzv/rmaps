@@ -7,6 +7,7 @@ use super::{
     BaseLayout,
     Visibility,
     StyleProp,
+    defaults::*,
 };
 
 #[derive(Deserialize, Debug, Clone)]
@@ -30,7 +31,7 @@ impl StyleLayer for FillLayer {
 #[derive(Deserialize, Debug, Clone)]
 pub struct FillPaint {
     #[serde(rename = "fill-antialias")]
-    #[serde(default)]
+    #[serde(default = "default_antialias")]
     pub antialias: StyleProp<bool>,
 
     #[serde(rename = "fill-opacity")]
@@ -58,30 +59,10 @@ pub struct FillPaint {
     pub pattern: Option<StyleProp<String>>,
 }
 
-pub fn default_antialiass() -> StyleProp<bool> {
-    true.into()
-}
-
-pub fn default_color() -> StyleProp<Color> {
-    StyleProp::Value(Color::default())
-}
-
-pub fn default_opacity() -> StyleProp<f32> {
-    StyleProp::Value(1.0)
-}
-
-pub fn default_outline_color() -> Option<StyleProp<Color>> {
-    None.into()
-}
-
-pub fn default_translate() -> StyleProp<[f32; 2]> {
-    [0., 0.].into()
-}
-
 impl Default for FillPaint {
     fn default() -> Self {
         FillPaint {
-            antialias: default_antialiass(),
+            antialias: default_antialias(),
             color: default_color(),
             opacity: default_opacity(),
             outline_color: default_outline_color(),

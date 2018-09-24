@@ -14,6 +14,31 @@ pub use self::raster::*;
 pub use self::symbol::*;
 
 use super::filter::Filter;
+pub mod defaults {
+    use super::*;
+    pub fn default_antialias() -> StyleProp<bool> {
+        true.into()
+    }
+
+    pub fn default_color() -> StyleProp<Color> {
+        StyleProp::Value(Color::default())
+    }
+
+    pub fn default_opacity() -> StyleProp<f32> {
+        StyleProp::Value(1.0)
+    }
+
+    pub fn default_outline_color() -> Option<StyleProp<Color>> {
+        None.into()
+    }
+
+    pub fn default_translate() -> StyleProp<[f32; 2]> {
+        [0., 0.].into()
+    }
+
+    pub fn default_line_width() -> StyleProp<f32> { 1.0.into() }
+    pub fn default_gap_width() -> StyleProp<f32> { 0.0.into() }
+}
 
 
 #[derive(Deserialize, Debug, Clone)]

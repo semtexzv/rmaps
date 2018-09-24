@@ -23,35 +23,36 @@ pub use self::layout::PropertyLayoutBuilder;
 
 
 /// Types that can be Property values
-pub trait PropValue: TryFrom<Value, Error=Type> + Into<Value> + Debug + Clone + Default + DescribeType + 'static {}
+pub trait Propertable: TryFrom<Value, Error=Type> + Into<Value> + Debug + Clone + Default + DescribeType + 'static {}
 
-impl<T: TryFrom<Value, Error=Type> + Into<Value> + Debug + Clone + Default + DescribeType + 'static> PropValue for T {}
+impl<T: TryFrom<Value, Error=Type> + Into<Value> + Debug + Clone + Default + DescribeType + 'static> Propertable for T {}
 
 
-pub trait DataDrivenValue: PropValue + Attribute + AsUniformValue {}
+pub trait DataDrivenPropertable: Propertable + Attribute + AsUniformValue {}
 
-impl<T: PropValue + Attribute + AsUniformValue> DataDrivenValue for T {}
+impl<T: Propertable + Attribute + AsUniformValue> DataDrivenPropertable for T {}
 
 
 pub trait Evaluable {
-    type Value: PropValue;
+    type Value: Propertable;
+
     fn eval(&mut self, expr: &Expr, context: &EvaluationContext) -> bool;
     fn get(&self) -> Self::Value;
     fn set(&mut self, v: Self::Value);
 }
 
 
-pub trait Visitable<T: PropValue> {
+pub trait Visitable<T: Propertable> {
     fn visit<V: PropertiesVisitor>(&self, visitor: &mut V);
 }
 
 #[repr(C)]
 #[derive(Debug, Clone, Default)]
-pub struct PaintProperty<T: PropValue> {
+pub struct PaintProperty<T: Propertable> {
     val: T,
 }
 
-impl<T: PropValue> Evaluable for PaintProperty<T> {
+impl<T: Propertable> Evaluable for PaintProperty<T> {
     type Value = T;
 
     fn eval(&mut self, expr: &Expr, context: &EvaluationContext) -> bool {
@@ -69,7 +70,7 @@ impl<T: PropValue> Evaluable for PaintProperty<T> {
     }
 }
 
-impl<T: PropValue> Visitable<T> for PaintProperty<T> {
+impl<T: Propertable> Visitable<T> for PaintProperty<T> {
     #[inline]
     fn visit<V: PropertiesVisitor>(&self, visitor: &mut V) {
         visitor.visit_base(self)
@@ -79,9 +80,9 @@ impl<T: PropValue> Visitable<T> for PaintProperty<T> {
 
 #[repr(C)]
 #[derive(Debug, Clone, Default)]
-pub struct DataDrivenProperty<T: DataDrivenValue> (PaintProperty<T>);
+pub struct DataDrivenProperty<T: DataDrivenPropertable> (PaintProperty<T>);
 
-impl<T: DataDrivenValue> Evaluable for DataDrivenProperty<T> {
+impl<T: DataDrivenPropertable> Evaluable for DataDrivenProperty<T> {
     type Value = T;
 
     fn eval(&mut self, expr: &Expr, context: &EvaluationContext) -> bool {
@@ -97,7 +98,8 @@ impl<T: DataDrivenValue> Evaluable for DataDrivenProperty<T> {
     }
 }
 
-impl<T: DataDrivenValue> Visitable<T> for DataDrivenProperty<T> {
+
+impl<T: DataDrivenPropertable> Visitable<T> for DataDrivenProperty<T> {
     #[inline]
     fn visit<V: PropertiesVisitor>(&self, visitor: &mut V) {
         visitor.visit_gpu(&self);
@@ -117,10 +119,10 @@ pub trait Properties: Default {
 
 
 pub trait PropertiesVisitor {
-    fn visit_base<T: PropValue>(&mut self, v: &PaintProperty<T>);
-    fn visit_gpu<T: DataDrivenValue>(&mut self, v: &DataDrivenProperty<T>);
+    fn visit_base<T: Propertable>(&mut self, v: &PaintProperty<T>);
+    fn visit_gpu<T: DataDrivenPropertable>(&mut self, v: &DataDrivenProperty<T>);
 
-    fn visit<T: PropValue, V: Visitable<T>>(&mut self, name: &str, style_prop: &StyleProp<T>, value_prop: &V, can_zoom: bool, can_feature: bool);
+    fn visit<T: Propertable, V: Visitable<T>>(&mut self, name: &str, style_prop: &StyleProp<T>, value_prop: &V, can_zoom: bool, can_feature: bool);
 }
 
 
@@ -233,7 +235,6 @@ impl fmt::Debug for UniformPropertyData {
 }
 
 
-
 pub struct UniformPropertyBinder<'a> {
     layout: &'a UniformPropertyLayout,
     data: &'a mut UniformPropertyData,
@@ -266,17 +267,17 @@ fn fixup<T: AsUniformValue>(t: T) -> UniformValue<'static> {
 
 impl<'a> PropertiesVisitor for UniformPropertyBinder<'a> {
     #[inline]
-    fn visit_base<T: PropValue>(&mut self, v: &PaintProperty<T>) {}
+    fn visit_base<T: Propertable>(&mut self, v: &PaintProperty<T>) {}
 
     #[inline]
-    fn visit_gpu<T: PropValue + Attribute + AsUniformValue>(&mut self, v: &DataDrivenProperty<T>) {
+    fn visit_gpu<T: Propertable + Attribute + AsUniformValue>(&mut self, v: &DataDrivenProperty<T>) {
         let x = v.get().clone();
         let u = fixup(x);
         self.last_val = Some(u);//.unwrap();
     }
 
     #[inline]
-    fn visit<T: PropValue, V: Visitable<T>>(&mut self, name: &str, style_prop: &StyleProp<T>, value_prop: &V, can_zoom: bool, can_feature: bool) {
+    fn visit<T: Propertable, V: Visitable<T>>(&mut self, name: &str, style_prop: &StyleProp<T>, value_prop: &V, can_zoom: bool, can_feature: bool) {
         value_prop.visit(self);
 
         if let Some(val) = self.last_val.take() {
@@ -308,7 +309,7 @@ impl<'a> FeaturePropertyBinder<'a> {
     }
 
     #[inline]
-    pub fn with<R,F: FnOnce(&mut FeaturePropertyBinder) -> R>(layout: &FeaturePropertyLayout, data: &mut FeaturePropertyData, fun: F) -> R {
+    pub fn with<R, F: FnOnce(&mut FeaturePropertyBinder) -> R>(layout: &FeaturePropertyLayout, data: &mut FeaturePropertyData, fun: F) -> R {
         let (pos, r) = {
             let mut binder = Self::new(layout, data);
 
@@ -325,10 +326,10 @@ impl<'a> FeaturePropertyBinder<'a> {
 
 impl<'a> PropertiesVisitor for FeaturePropertyBinder<'a> {
     #[inline]
-    fn visit_base<T: PropValue>(&mut self, v: &PaintProperty<T>) {}
+    fn visit_base<T: Propertable>(&mut self, v: &PaintProperty<T>) {}
 
     #[inline]
-    fn visit_gpu<T: PropValue + Attribute + AsUniformValue>(&mut self, v: &DataDrivenProperty<T>) {
+    fn visit_gpu<T: Propertable + Attribute + AsUniformValue>(&mut self, v: &DataDrivenProperty<T>) {
         if self.push {
             FeaturePropertyData::push_into(&mut self.map, v.get(), self.pos);
             self.pos += 1;
@@ -337,7 +338,7 @@ impl<'a> PropertiesVisitor for FeaturePropertyBinder<'a> {
     }
 
     #[inline]
-    fn visit<T: PropValue, V: Visitable<T>>(&mut self, name: &str, style_prop: &StyleProp<T>, value_prop: &V, can_zoom: bool, can_feature: bool) {
+    fn visit<T: Propertable, V: Visitable<T>>(&mut self, name: &str, style_prop: &StyleProp<T>, value_prop: &V, can_zoom: bool, can_feature: bool) {
         if self.layout.is_feature(name) {
             self.push = true;
         }

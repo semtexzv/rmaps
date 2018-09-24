@@ -33,11 +33,11 @@ impl TileCoords {
     }
 
     pub fn id(&self) -> u8 {
-        let x = (self.x & 0xFF) as u8;
-        let y = (self.y & 0xFF) as u8;
-        let z = (self.z & 0xFF) as u8;
+        let x = ((self.x + 1) & 0xFF) as u8;
+        let y = ((self.y + 1) & 0xFF) as u8;
+        let z = ((self.z + 1) & 0xFF) as u8;
 
-        return z & 0b11 << 6 | x & 0b111 << 3 | y & 0b111;
+        return (z & 0b11) << 6 | (x & 0b111) << 3 | (y & 0b111);
     }
 
 
@@ -126,12 +126,9 @@ impl UnwrappedTileCoords {
         }
     }
 
-    pub fn id(&self) -> u8 {
-        let x = (self.x & 0xFF) as u8;
-        let y = (self.y & 0xFF) as u8;
-        let z = (self.z & 0xFF) as u8;
 
-        return z & 0b11 << 6 | x & 0b111 << 3 | y & 0b111;
+    pub fn id(&self) -> u8 {
+        self.wrap().id()
     }
 
 

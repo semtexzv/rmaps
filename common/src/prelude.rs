@@ -11,7 +11,7 @@ pub use std::{
     ops::{Deref, DerefMut},
     borrow::Cow,
     rc::Rc,
-    sync::Arc,
+    sync::{Arc, Mutex},
     cell::{
         self,
         RefCell,
@@ -37,7 +37,6 @@ pub use cgmath::{SquareMatrix, Matrix4, Vector4};
 
 
 pub use std::time::Instant;
-
 pub use time::Duration;
 
 #[derive(Debug, PartialOrd, Ord, PartialEq, Hash, Eq, Copy, Clone)]
@@ -113,15 +112,29 @@ pub use actix::{
 
 pub use geo;
 pub use failure::{Error, Fail, bail};
+/*
+#[derive(Debug, Fail)]
+pub enum ResourceError {
+    #[fail(display = "Not found")]
+    NotFound,
+    #[fail(display = "Rate limited")]
+    RateLimited,
+}
 
+#[derive(Debug, Fail)]
+pub enum Error {
+    #[fail(display = "Resource error : {}", 0)]
+    Resource(ResourceError),
+    #[fail(display = "Other error : {}", 0)]
+    Other(::failure::Error),
+}
+*/
 
 pub type Result<T> = StdResult<T, Error>;
 
 pub type BoxFuture<T, E> = Box<Future<Item=T, Error=E>>;
 
 pub const EXTENT: f32 = 8192.0;
-
-use std::sync::Mutex;
 
 
 pub struct ForceSend<T>(pub T);
@@ -181,11 +194,6 @@ pub fn spawn<E: Into<Error>>(fut: impl Future<Item=(), Error=E> + 'static) {
         error!("Error occured: {}", e.into());
         ()
     }));
-    /*Arbiter::handle().spawn(fut.map_err(|e| {
-        error!("Error occured: {}", e.into());
-        ()
-    }));
-    */
 }
 
 

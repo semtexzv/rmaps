@@ -111,27 +111,40 @@ impl Handler<DecodeTile> for TileDataWorker {
 
                     let mult = EXTENT as f32 / l.extent as f32;
 
-                    for (idx,f) in l.features.iter_mut().enumerate() {
-                        if f.typ == ::mvt::GeomType::Polygon {
-                            let g = &f.geometry;
+                    for (idx, f) in l.features.iter_mut().enumerate() {
+                        match f.typ {
+                            ::mvt::GeomType::Polygon => {
+                                let g = &f.geometry;
 
 
-                            let zer = 0 as _;
-                            let ext = l.extent as _;
-                            let sq = vec![vec![
-                                [zer, zer],
-                                [ext, zer],
-                                [ext, ext],
-                                [zer, ext],
-                            ]];
+                                let zer = 0 as _;
+                                let ext = l.extent as _;
+                                let sq = vec![vec![
+                                    [zer, zer],
+                                    [ext, zer],
+                                    [ext, ext],
+                                    [zer, ext],
+                                ]];
 
 
-                            if let Ok(res) = ::tess2::intersect(&g, &sq) {
-                                let mut g: FeatureGeometry = FeatureGeometry {
-                                    vertices: res.vertices.into_iter().map(|[x, y]| [x * mult, y * mult]).collect(),
-                                    indices: res.indices.into_iter().map(|x| x as _).collect(),
-                                };
-                                pretess.insert(idx, g);
+                                if let Ok(res) = ::tess2::intersect(&g, &sq) {
+                                    let mut g: FeatureGeometry = FeatureGeometry {
+                                        vertices: res.vertices.into_iter().map(|[x, y]| [x * mult, y * mult]).collect(),
+                                        indices: res.indices.into_iter().map(|x| x as _).collect(),
+                                    };
+                                    pretess.insert(idx, g);
+                                }
+                            }
+                            ::mvt::GeomType::LineString => {
+                                for l in f.geometry.iter_mut() {
+                                    for v in l.iter_mut() {
+                                        v[0] = v[0] * mult;
+                                        v[1] = v[1] * mult;
+                                    }
+                                }
+                            }
+                            _ => {
+
                             }
                         }
                     }

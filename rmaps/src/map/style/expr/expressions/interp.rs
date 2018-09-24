@@ -36,9 +36,8 @@ use std::ops::{
     Add, Mul, Sub,
 };
 
-#[inline]
-fn lerp<T: Clone + Add<Output=T> + Sub<Output=T> + Mul<f64, Output=T>, >(a: T, b: T, factor: f64) -> T {
-    a.clone() + (b - a) * factor
+fn lerp<T : ::common::lerp::Lerp<f64>>(a: T, b: T, factor: f64) -> T {
+    a.lerp(b,factor as f64)
 }
 
 impl InterpolateType {
@@ -50,8 +49,11 @@ impl InterpolateType {
                 progress / range
             }
             InterpolateType::Exponential(base) => {
+                progress / range
+                /*
                 (f64::powf(*base, progress) - 1.) /
                     (f64::powf(*base, range) - 1.)
+                    */
             }
             InterpolateType::Cubic(x1, y1, x2, y2) => {
                 panic!("Cubic bezier interpolation not yet supported")
@@ -171,8 +173,14 @@ impl Expression for Interpolate {
 
                     Ok(match (low, high) {
                         (Value::Num(a), Value::Num(b)) => Value::Num(lerp(*a, *b, factor)),
-                        (Value::Color(a), Value::Color(b)) => Value::Color(lerp(*a, *b, factor)),
-                        (Value::String(a), Value::String(b)) => Value::Color(lerp(Color::from_str(a).unwrap(), Color::from_str(b).unwrap(), factor)),
+                        (Value::Color(a), Value::Color(b)) => {
+                            Value::Color(lerp(*a, *b, factor))
+                        }
+                        (Value::String(a), Value::String(b)) => {
+                            let a = Color::from_str(a).unwrap();
+                            let b = Color::from_str(b).unwrap();
+                            Value::Color(lerp(a, b, factor))
+                        }
                         (Value::List(a), Value::List(b)) => {
                             let mut res = vec![];
                             if a.len() != b.len() {

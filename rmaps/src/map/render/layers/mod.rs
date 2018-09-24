@@ -1,7 +1,6 @@
 use prelude::*;
 pub use map::util::profiler;
 
-
 use map::{
     style,
     tiles,
@@ -9,15 +8,6 @@ use map::{
         self, property,
     },
 };
-
-macro_rules! layer_program {
-    ($facade:expr, $name:expr, $uniforms:expr, $features:expr) => { {
-            let vert_src = include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/../shaders/",$name,".vert.glsl"));
-            let frag_src = include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/../shaders/",$name,".frag.glsl"));
-            ::map::render::shaders::ShaderProcessor::get_shader($facade,$name, vert_src,frag_src,$uniforms,$features)
-        }
-    };
-}
 
 pub mod background;
 pub mod raster;
@@ -27,10 +17,11 @@ pub mod line;
 
 #[repr(C)]
 #[derive(Debug, Clone, Copy, Vertex)]
-pub struct Vertex {
+pub struct FeatureVertex {
     #[glium(attr = "pos")]
-    pos: [f32; 2],
-    feature: u16,
+    pub pos: [f32; 2],
+    #[glium(attr = "feature")]
+    pub feature: u16,
 }
 
 pub enum RenderPass {
@@ -77,7 +68,6 @@ pub trait LayerNew {
 }
 
 pub trait WithSource {
-    type Source: Debug = ();
     fn source_name(&self) -> Option<&str>;
 }
 
@@ -111,6 +101,15 @@ pub trait BucketLayer: Debug + WithSource {
 
     fn render_bucket(&mut self, params: &mut render::RenderParams, coords: UnwrappedTileCoords, bucket: &Self::Bucket) -> Result<()>;
 }
+
+#[derive(Debug)]
+pub struct FeatureBucketData<P: property::Properties> {
+    pub feature: ::mvt::Feature,
+    pub props: P,
+    pub start: usize,
+    pub end: usize,
+}
+
 
 #[derive(Debug)]
 pub struct BucketState<B: Bucket> {
@@ -239,7 +238,7 @@ pub fn parse_style_layers(facade: &Display, style: &style::Style) -> Vec<Box<dyn
                 res.push(box BucketLayerHolder::new(fill::FillLayer::new(facade, l)))
             }
             style::BaseStyleLayer::Line(l) => {
-                //res.push(box BucketLayerHolder::new(line::LineLayer::new(facade, l)))
+                res.push(box BucketLayerHolder::new(line::LineLayer::new(facade, l)))
             }
             style::BaseStyleLayer::Raster(l) => {
                 res.push(box BucketLayerHolder::new(raster::RasterLayer::new(facade, l)))

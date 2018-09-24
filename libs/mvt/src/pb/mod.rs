@@ -100,20 +100,11 @@ pub trait FeatureVisitor {
     fn visit_geometry(&mut self, geometry: &[u32]);
 }
 
-use quick_protobuf::BytesReader;
+pub use quick_protobuf::{
+    BytesReader,
+    BufRefAccess,
+};
 
-pub struct BufRefAccess<'acc> {
-    pub r: &'acc mut BytesReader,
-    pub buf: &'acc [u8],
-}
-
-impl<'acc> BufRefAccess<'acc> {
-    fn read_nested<F: FnMut(&mut BufRefAccess) -> Result>(&mut self, mut fun: F) -> Result {
-        self.r.read_len_varint(self.buf, |r, buf| {
-            fun(&mut BufRefAccess { r, buf })
-        })
-    }
-}
 
 impl<'acc> TileAccess for BufRefAccess<'acc> {
     fn accept(&mut self, vis: &mut impl TileVisitor) -> Result {

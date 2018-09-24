@@ -22,7 +22,7 @@ chrono = "*"
 regex = "*"
 bytes = "*"
 
-cgmath = "*"
+cgmath = { version ="*", features = ["swizzle"] }
 failure = "*"
 
 rusqlite= { version =  "*", features =  ["bundled"] }
@@ -52,5 +52,5 @@ uuid = { version = "*" , features = ["v4"]}
 
 derive_more = "*"
 css-color-parser = "0.1.2"
-
-
+palette= "*"
+lerp = "*"

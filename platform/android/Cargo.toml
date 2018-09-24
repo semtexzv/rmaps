@@ -10,7 +10,6 @@ crate-type = ["dylib"]
 [dependencies]
 common = { path = "../../common" }
 rmaps = { path = "../../rmaps" }
-jni = { path = "../../libs/jni"}
 
 [target.arm-linux-androideabi.dependencies]
 android_injected_glue = "0.2.3"

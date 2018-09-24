@@ -8,6 +8,7 @@ use super::{
     StyleLayer,
     StyleLayerExt,
     StyleProp,
+    defaults::*,
 };
 
 
@@ -43,35 +44,58 @@ pub struct LineLayout {
     visibility: Option<Visibility>,
 }
 
-#[derive(Deserialize, Debug, Default, Clone)]
+#[derive(Deserialize, Debug, Clone)]
 pub struct LinePaint {
     #[serde(rename = "line-opacity")]
-    opacity: Option<StyleProp<f32>>,
+    #[serde(default = "default_opacity")]
+    pub opacity: StyleProp<f32>,
 
     #[serde(rename = "line-color")]
-    color: Option<StyleProp<Color>>,
+    #[serde(default = "default_color")]
+    pub color: StyleProp<Color>,
 
     #[serde(rename = "line-translate")]
-    translate: Option<StyleProp<[f32; 2]>>,
+    #[serde(default = "default_translate")]
+    pub translate: StyleProp<[f32; 2]>,
 
     #[serde(rename = "line-translate-anchor")]
-    translate_anchor: Option<String>,
+    pub translate_anchor: Option<String>,
 
     #[serde(rename = "line-width")]
-    width: Option<StyleProp<f32>>,
+    #[serde(default = "default_line_width")]
+    pub width: StyleProp<f32>,
+
 
     #[serde(rename = "line-gap_width")]
-    gap_width: Option<StyleProp<f32>>,
+    #[serde(default = "default_gap_width")]
+    pub gap_width: StyleProp<f32>,
 
+    /*
     #[serde(rename = "line-offset")]
-    offset: Option<StyleProp<f32>>,
+    pub offset: Option<StyleProp<f32>>,
 
     #[serde(rename = "line-blur")]
-    blur: Option<StyleProp<f32>>,
+    pub blur: Option<StyleProp<f32>>,
 
     #[serde(rename = "line-dasharray")]
-    dash_array: Option<StyleProp<Vec<f32>>>,
+    pub  dash_array: Option<StyleProp<Vec<f32>>>,
 
     #[serde(rename = "line-pattern")]
-    pattern: Option<StyleProp<String>>,
+    pub pattern: Option<StyleProp<String>>,
+    */
 }
+
+impl Default for LinePaint {
+    fn default() -> Self {
+        LinePaint {
+            opacity : default_opacity(),
+            color : default_color(),
+            translate : default_translate(),
+            translate_anchor : None,
+            width : default_line_width(),
+            gap_width : default_gap_width(),
+        }
+    }
+}
+
+

@@ -1,5 +1,15 @@
 use prelude::*;
 
+#[macro_export]
+macro_rules! layer_program {
+    ($facade:expr, $name:expr, $uniforms:expr, $features:expr) => { {
+            let vert_src = include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/../shaders/",$name,".vert.glsl"));
+            let frag_src = include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/../shaders/",$name,".frag.glsl"));
+            ::map::render::shaders::ShaderProcessor::get_shader($facade,$name, vert_src,frag_src,$uniforms,$features)
+        }
+    };
+}
+
 
 pub mod images;
 pub mod layers;
@@ -9,6 +19,8 @@ pub mod property;
 
 pub mod shaders;
 
+pub mod clip;
+
 
 use map::style;
 
@@ -17,8 +29,8 @@ use std::hash;
 use map::{
     tiles,
     util::profiler,
-
 };
+
 
 use self::images::ImageAtlas;
 
@@ -79,6 +91,7 @@ pub struct Renderer {
     pub display: Box<Display>,
     pub style: Rc<style::Style>,
     pub layers: Vec<LayerData>,
+    pub clipper: clip::Clipper,
     pub sources: BTreeMap<String, Addr<source::BaseSource>>,
     pub image_atlas: images::ImageAtlas,
 }
@@ -94,6 +107,7 @@ impl Renderer {
                     evaluated: None,
                 }
             }).collect(),
+            clipper: clip::Clipper::new(display).unwrap(),
             sources: source::parse_sources(&style, file_source),
             image_atlas: images::ImageAtlas::new(&display).unwrap(),
             style,
@@ -112,12 +126,13 @@ impl Renderer {
         }
     }
     pub fn render(&mut self, mut params: RendererParams) -> Result<()> {
-        profiler::begin("cover");
+        params.frame.clear_color(0.,0.,0.,1.);
+        params.frame.clear_stencil(0xFF);
+
         let camera = params.camera;
         let cover = TileCover::from_camera(camera);
 
         let eval_params = EvaluationParams::new(params.camera.zoom);
-        profiler::end();
 
 
         let requests: Vec<Vec<(String, TileCoords)>> = self.layers
@@ -171,9 +186,7 @@ impl Renderer {
                         Err(TileError::Error(e)) => {
                             debug!("Tile error occured : {:?}", e);
                         }
-                        _ => {
-
-                        }
+                        _ => {}
                     }
                     ok(())
                 });
@@ -193,15 +206,18 @@ impl Renderer {
             }
         });
 
-        for l in self.layers.iter_mut() {
-            l.layer.render(&mut RenderParams {
-                display: &params.display,
-                frame: &mut params.frame,
-                camera: &params.camera,
-                atlas: &self.image_atlas,
-                frame_start: params.frame_start,
+        let mut params = RenderParams {
+            display: &params.display,
+            frame: &mut params.frame,
+            camera: &params.camera,
+            atlas: &self.image_atlas,
+            frame_start: params.frame_start,
 
-            }).unwrap();
+        };
+        self.clipper.apply_mask(&cover, &mut params)?;
+
+        for l in self.layers.iter_mut() {
+            l.layer.render(&mut params).unwrap();
         }
 
         Ok(())

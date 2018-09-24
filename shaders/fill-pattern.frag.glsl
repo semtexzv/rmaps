@@ -20,5 +20,5 @@ void main() {
 
     vec2 tex_coord = mix(start, end, coord);
 
-    frag_out = texture2D(u_image,tex_coord) ;//* opacity;
+    frag_out = texture2D(u_image,tex_coord) * opacity;
 }

@@ -147,7 +147,7 @@ impl ShaderProcessor {
 
                 // Number of vec4
                 let feature_size_vec4 =
-                    assert!(is_uniform ^ is_feature, "Property can't be both uniform and feature at the same time");
+                    assert!(is_uniform ^ is_feature, "Property can't be both uniform and feature at the same time : {:?}", name);
                 let uniform_name = ShaderProcessor::uniform_name(name);
 
                 let res = match (op, typ, name, is_feature) {

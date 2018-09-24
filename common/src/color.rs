@@ -1,5 +1,6 @@
 use prelude::*;
 
+
 use css_color_parser::{
     self,
     Color as CssColor,
@@ -11,10 +12,35 @@ pub struct Color(pub [f32; 4]);
 
 impl Default for Color {
     fn default() -> Self {
-        Color([0., 0., 0., 1.])
+        Color([1., 1., 1., 1.])
     }
 }
 
+impl Into<::palette::LinSrgba<f32>> for Color {
+    fn into(self) -> ::palette::LinSrgba<f32> {
+        ::palette::LinSrgba::<f32>::new(
+            self.0[0],
+            self.0[1],
+            self.0[2],
+            self.0[3])
+    }
+}
+
+impl From<::palette::LinSrgba<f32>> for Color {
+    fn from(v: ::palette::LinSrgba<f32>) -> Self {
+        Color([v.red, v.blue, v.green, v.alpha])
+    }
+}
+
+impl ::lerp::Lerp<f64> for Color {
+    fn lerp(self, other: Self, t: f64) -> Self {
+        use palette::Mix;
+        let c : ::palette::LinSrgba<f32>  = self.into();
+        let o : ::palette::LinSrgba<f32> = other.into();
+        c.mix(&o, t as f32).into()
+    }
+}
+/*
 impl ::std::ops::Add<Color> for Color {
     type Output = Color;
 
@@ -54,6 +80,7 @@ impl ::std::ops::Mul<f64> for Color {
         ])
     }
 }
+*/
 
 unsafe impl glium::vertex::Attribute for Color {
     fn get_type() -> glium::vertex::AttributeType {

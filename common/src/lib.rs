@@ -51,6 +51,8 @@ pub extern crate geo;
 pub extern crate url;
 pub extern crate uuid;
 pub extern crate css_color_parser;
+pub extern crate palette;
+pub extern crate lerp;
 #[macro_use]
 pub extern crate derive_more;
 

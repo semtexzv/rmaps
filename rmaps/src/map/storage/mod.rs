@@ -67,8 +67,10 @@ impl Handler<Request> for DefaultFileSource {
             .and_then(|res, this: &mut Self, ctx| {
                 match res {
                     Ok(data) => {
-                        this.cache.put(&data).unwrap();
-                        trace!("DefaultFileSource: Returning after caching");
+                        if data.cacheable() {
+                            this.cache.put(&data).unwrap();
+                            trace!("DefaultFileSource: Returning after caching");
+                        }
                         return ok(data);
                     }
                     Err(e) => {

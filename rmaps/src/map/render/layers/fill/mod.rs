@@ -1,6 +1,6 @@
 use prelude::*;
 
-use super::Vertex;
+use super::FeatureVertex;
 use map::{
     style,
     render::{
@@ -44,7 +44,7 @@ impl layers::WithSource for FillLayer {
     }
 }
 
-impl layers::LayerNew for FillLayer{
+impl layers::LayerNew for FillLayer {
     type StyleLayer = style::FillLayer;
 
     fn new(facade: &Display, style_layer: &<Self as layers::LayerNew>::StyleLayer) -> Self {
@@ -117,8 +117,6 @@ impl layers::BucketLayer for FillLayer {
         let tile_matrix = Mercator::tile_to_world(coord);
         let matrix = params.camera.projection() * params.camera.view() * tile_matrix;
         let matrix: [[f32; 4]; 4] = matrix.into();
-        let u_t: [f32; 4] = Default::default();
-
 
         if let Some(pattern) = self.properties.pattern.get() {
             if let Some((sprite, texture)) = params.atlas.get_pattern(&pattern) {
@@ -146,8 +144,19 @@ impl layers::BucketLayer for FillLayer {
                     &a,
                 );
 
+                let sid = coord.id();
+
                 let draw_params = glium::DrawParameters {
                     blend: glium::Blend::alpha_blending(),
+                    stencil: glium::draw_parameters::Stencil {
+                        test_clockwise: glium::StencilTest::IfEqual { mask: 0xFFFFFFFF },
+                        test_counter_clockwise:   glium::StencilTest::IfEqual { mask: 0xFFFFFFFF },
+
+                        reference_value_clockwise : sid as _,
+                        reference_value_counter_clockwise : sid as _,
+
+                        ..Default::default()
+                    },
                     ..Default::default()
                 };
 
@@ -163,16 +172,28 @@ impl layers::BucketLayer for FillLayer {
             // Render as Color fill
 
             let a = uniform! {
-                u_matrix : matrix,
-                feature_data_ubo :  &bucket.feature_data.data,
+                u_matrix: matrix,
+                feature_data_ubo: & bucket.feature_data.data,
             };
             let mut uniforms = MergeUniforms(
                 &bucket.uniforms,
                 &a,
             );
 
+            let sid = coord.id();
+
             let draw_params = glium::DrawParameters {
                 blend: glium::Blend::alpha_blending(),
+                stencil: glium::draw_parameters::Stencil {
+                    test_clockwise: glium::StencilTest::IfEqual { mask: 0xFFFFFFFF },
+                    test_counter_clockwise:   glium::StencilTest::IfEqual { mask: 0xFFFFFFFF },
+
+                    reference_value_clockwise : sid as _,
+                    reference_value_counter_clockwise : sid as _,
+
+
+                    ..Default::default()
+                },
                 ..Default::default()
             };
 

@@ -31,7 +31,6 @@ impl Handler<Request> for LocalFileSource {
             cache_until: 0,
             data,
         };
-        trace!("LocalFileSource: Returning data");
         return Ok(resource);
     }
 }

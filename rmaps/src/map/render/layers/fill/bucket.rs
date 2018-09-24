@@ -1,34 +1,27 @@
 use ::prelude::*;
-use map::render::layers::{
-    self, Vertex,
+use map::{
+    render::{
+        layers::{
+            self, FeatureVertex, FeatureBucketData,
+        },
+        property::*,
+    },
+    tiles,
 };
-use map::render::property::*;
-
-use map::tiles;
-
 use super::props::*;
 
 #[derive(Debug)]
-pub struct FeatureBucketData {
-    pub feature: ::mvt::Feature,
-    pub props: FillFeatureProperties,
-    pub start: usize,
-    pub end: usize,
-}
-
-
-#[derive(Debug)]
 pub struct FillBucket {
-    pub features: BTreeMap<u64, FeatureBucketData>,
+    pub features: BTreeMap<u64, FeatureBucketData<FillFeatureProperties>>,
 
     pub indices: Vec<u16>,
-    pub vertices: Vec<Vertex>,
+    pub vertices: Vec<FeatureVertex>,
 
     pub properties: FillFeatureProperties,
     pub uniforms: UniformPropertyData,
     pub feature_data: FeaturePropertyData,
 
-    pub pos_vbo: Option<VertexBuffer<Vertex>>,
+    pub pos_vbo: Option<VertexBuffer<FeatureVertex>>,
     pub last_ibo: Option<IndexBuffer<u16>>,
 
     pub eval_dirty: bool,
@@ -38,9 +31,9 @@ pub struct FillBucket {
 
 impl FillBucket {
     pub fn new(d: &Display, data: Rc<tiles::TileData>, layer_common: &::map::style::LayerCommon) -> Result<Option<Self>> {
-        let mut features: BTreeMap<u64, FeatureBucketData> = BTreeMap::new();
+        let mut features: BTreeMap<u64, FeatureBucketData<FillFeatureProperties>> = BTreeMap::new();
 
-        let mut vertices: Vec<Vertex> = vec![];
+        let mut vertices: Vec<FeatureVertex> = vec![];
         let mut indices: Vec<u16> = vec![];
 
         let source_layer = layer_common.source_layer.as_ref().map(|x| x.as_str()).unwrap_or("");
@@ -58,7 +51,7 @@ impl FillBucket {
                         let indices_begin = indices.len();
 
                         for v in g.vertices.iter() {
-                            vertices.push(Vertex {
+                            vertices.push(FeatureVertex {
                                 pos: [v[0] as f32, v[1] as f32],
                                 feature: features.len() as u16,
                             })

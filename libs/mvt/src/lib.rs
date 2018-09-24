@@ -242,7 +242,8 @@ impl GeometryVisitor for PolygonGeometryVisitor {
         if self.ring.is_empty() {
             self.ring.push(self.cursor);
         }
-        self.move_to(x, y);
+        self.cursor[0] += x as f32;
+        self.cursor[1] += y as f32;
         self.ring.push(self.cursor);
     }
 
@@ -256,11 +257,15 @@ impl GeometryVisitor for PolygonGeometryVisitor {
 pub struct LineGeometryVisitor {
     cursor: [f32; 2],
     points: Vec<[f32; 2]>,
+    lines: Vec<Vec<[f32; 2]>>,
 }
 
 impl GeometryVisitor for LineGeometryVisitor {
     #[inline(always)]
     fn move_to(&mut self, x: i32, y: i32) {
+        if !self.points.is_empty() {
+            self.lines.push(std::mem::replace(&mut self.points, vec![]))
+        }
         self.cursor[0] += x as f32;
         self.cursor[1] += y as f32;
     }
@@ -270,13 +275,16 @@ impl GeometryVisitor for LineGeometryVisitor {
         if self.points.is_empty() {
             self.points.push(self.cursor);
         }
-        self.move_to(x, y);
+        self.cursor[0] += x as f32;
+        self.cursor[1] += y as f32;
         self.points.push(self.cursor);
     }
 
     #[inline(always)]
     fn close_path(&mut self) {
-        unimplemented!()
+        if !self.points.is_empty() {
+            self.lines.push(std::mem::replace(&mut self.points, vec![]))
+        }
     }
 }
 
@@ -366,7 +374,9 @@ fn parse_geometry(typ: GeomType, data: &[u32]) -> Vec<Vec<[f32; 2]>> {
         GeomType::LineString => {
             let mut vis = LineGeometryVisitor::default();
             acc.accept(&mut vis);
-            vec![vis.points]
+            vis.close_path();
+
+            vis.lines
         }
         GeomType::Polygon => {
             let mut vis = PolygonGeometryVisitor::default();

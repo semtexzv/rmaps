@@ -32,6 +32,10 @@ use common::glium::uniforms::{Uniforms, UniformValue};
 
 pub struct MergeUniforms<'u, A: Uniforms + 'u, B: Uniforms + 'u> (pub &'u A, pub &'u B);
 
+pub fn merge_uniforms<'u, A: Uniforms + 'u, B: Uniforms + 'u>(a: &'u A, b: &'u B) -> MergeUniforms<'u, A, B> {
+    MergeUniforms(a, b)
+}
+
 impl<'u, A: Uniforms + 'u, B: Uniforms + 'u> Uniforms for MergeUniforms<'u, A, B> {
     fn visit_values<'a, F: FnMut(&str, UniformValue<'a>)>(&'a self, mut f: F) {
         self.0.visit_values(&mut f);

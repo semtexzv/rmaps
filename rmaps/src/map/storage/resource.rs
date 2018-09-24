@@ -63,9 +63,11 @@ impl Request {
             }
         };
     }
+
     pub fn style(url: String) -> Request {
         Request::StyleJson(url)
     }
+
     pub fn source(name: String, url: String) -> Request {
         Request::SourceJson(name, url)
     }
