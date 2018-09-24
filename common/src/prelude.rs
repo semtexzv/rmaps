@@ -110,7 +110,6 @@ pub use actix::{
     AsyncContext,
 };
 
-pub use geo;
 pub use failure::{Error, Fail, bail};
 /*
 #[derive(Debug, Fail)]

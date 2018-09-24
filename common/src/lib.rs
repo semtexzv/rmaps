@@ -46,8 +46,6 @@ pub extern crate futures;
 pub extern crate tokio;
 pub extern crate tokio_timer;
 
-
-pub extern crate geo;
 pub extern crate url;
 pub extern crate uuid;
 pub extern crate css_color_parser;

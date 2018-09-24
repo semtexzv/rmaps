@@ -1,6 +1,6 @@
 use prelude::*;
 
-pub mod gui;
+//pub mod gui;
 pub mod input;
 pub mod render;
 
@@ -108,7 +108,6 @@ impl MapView {
 }
 
 use self::input::InputHandler;
-use self::gui::Gui;
 
 #[derive(Default)]
 pub struct InputStatus {
@@ -156,7 +155,7 @@ pub struct MapViewImpl {
 
     facade: Box<glium::Display>,
     style: Option<Rc<style::Style>>,
-    gui: Gui,
+    //gui: Gui,
     input: InputStatus,
 
 }
@@ -192,7 +191,7 @@ impl MapViewImpl {
             camera,
             renderer: None,
             file_source: src_add.clone(),
-            gui: Gui::new(f).unwrap(),
+            //gui: Gui::new(f).unwrap(),
             facade: Box::new((*f).clone()),
             style: None,
             input: Default::default(),
@@ -270,21 +269,26 @@ impl MapViewImpl {
 
 
     pub fn handle_mouse_moved(&mut self, pixel: PixelPoint) {
+        /*
         if self.gui.has_captured() {
             self.gui.mouse_moved(pixel);
         } else if self.has_captured() {
-            self.mouse_moved(pixel);
         } else {
             self.gui.mouse_moved(pixel);
             self.mouse_moved(pixel);
         }
+        */
+
+
+        self.mouse_moved(pixel);
     }
     pub fn handle_mouse_button(&mut self, down: bool) {
-        self.gui.mouse_button(down);
+        //self.gui.mouse_button(down);
         self.mouse_button(down);
     }
 
     pub fn handle_mouse_scroll(&mut self, scroll: f64) {
+        /*
         if self.gui.has_captured() {
             self.gui.mouse_scroll(scroll);
         } else if self.has_captured() {
@@ -294,6 +298,10 @@ impl MapViewImpl {
         if !self.gui.mouse_scroll(scroll) {
             self.mouse_scroll(scroll);
         }
+        */
+
+
+        self.mouse_scroll(scroll);
     }
 
 

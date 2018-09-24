@@ -67,21 +67,6 @@ impl WorldPoint {
     }
 }
 
-impl Into<geo::Coordinate<f64>> for WorldPoint {
-    fn into(self) -> geo::Coordinate<f64> {
-        geo::Coordinate {
-            x: self.x,
-            y: self.y,
-        }
-    }
-}
-
-impl Into<geo::Point<f64>> for WorldPoint {
-    fn into(self) -> geo::Point<f64> {
-        geo::Point(self.into())
-    }
-}
-
 #[repr(C)]
 #[derive(Debug, Clone, Copy, Default, PartialOrd, PartialEq, Add, Sub)]
 pub struct DevicePoint {

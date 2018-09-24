@@ -6,7 +6,6 @@ authors = ["Michal Hornický <semtexzv@gmail.com>"]
 [lib]
 proc-macro = true
 
-
 [dependencies]
-syn = "0.14"
+syn = { version = "0.15", features = ["derive"] }
 quote = "0.6"

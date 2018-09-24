@@ -1,13 +1,15 @@
 #![recursion_limit = "128"]
 extern crate proc_macro;
-#[macro_use]
+
 extern crate syn;
-#[macro_use]
+
 extern crate quote;
 
 use proc_macro::TokenStream;
-use syn::spanned::Spanned;
+
 use syn::*;
+use quote::*;
+
 
 #[derive(Debug, Clone)]
 enum SourceType {
@@ -94,7 +96,7 @@ fn get_property_data(name: &Ident, meta: &Meta) -> FieldPropertyData {
                 }
             }
             x @ _ => {
-                panic!("Unknown meta attribute: `{:?}`", x);
+                panic!("Unknown meta attribute: ");
             }
         }
     }
@@ -267,7 +269,7 @@ fn impl_layer_properties(ast: &DeriveInput) -> TokenStream {
 
     };
 
-    /// panic!("{}", res);
+
 
     return res.into();
 }

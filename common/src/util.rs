@@ -10,11 +10,6 @@ pub struct TileCover(pub BTreeSet<UnwrappedTileCoords>);
 
 impl TileCover {
     fn new_raw(tl: WorldPoint, tr: WorldPoint, br: WorldPoint, bl: WorldPoint, z: i32) -> Self {
-        use geo::prelude::*;
-        let ring: Vec<geo::Point<f64>> = vec![tl.into(), tr.into(), br.into(), bl.into(), tl.into()];
-        let poly = geo::Polygon::<f64>::new(ring.into(), vec![]);
-        let bbox: geo::Bbox<f64> = poly.bbox().unwrap();
-
 
         fn float_step<F: FnMut(f64)>(min: f64, max: f64, step: f64, mut op: F) {
             let mut v = min;
@@ -26,40 +21,29 @@ impl TileCover {
 
         let tiles: i32 = 1 << z;
 
-        let center = poly.centroid().unwrap();
-        // Expand polygon by 10%, so it will contain extreme screen coordinates
-        let exp = poly.map_coords(&|c| {
-            ((c.0 - center.x()) * 0.8 + center.x(),
-             (c.1 - center.y()) * 0.8 + center.y())
-        });
-
-
         let mut cover = BTreeSet::new();
         const SAMPLES: f64 = 32.;
 
-        float_step(bbox.xmin, bbox.xmax, (bbox.xmax - bbox.xmin) / SAMPLES, |x| {
-            float_step(bbox.ymin, bbox.ymax, (bbox.ymax - bbox.ymin) / SAMPLES, |y| {
-                let pt: geo::Point<_> = (x, y).into();
-                if exp.contains(&pt) {
-                    let tile = WorldPoint::new(x,y).tile_at_zoom(z);
-                    let xx = x * tiles as f64;
-                    let yy = y * tiles as f64;
-                    let tx = xx.floor() as i32; //if xx < 0. { xx.ceil() } else { xx.floor() }  as i32;
-                    let ty = yy.floor() as i32;
+        float_step(tl.x, br.x, (br.x - tl.x) / SAMPLES, |x| {
+            float_step(tl.y, br.y, (br.y - tl.y) / SAMPLES, |y| {
+                //let pt: geo::Point<_> = (x, y).into();
+                let tile = WorldPoint::new(x, y).tile_at_zoom(z);
+                let xx = x * tiles as f64;
+                let yy = y * tiles as f64;
+                let tx = xx.floor() as i32; //if xx < 0. { xx.ceil() } else { xx.floor() }  as i32;
+                let ty = yy.floor() as i32;
 
-                    cover.insert(UnwrappedTileCoords {
-                        x: tx,
-                        y: ty,
-                        z: z,
-                    });
-                }
+                cover.insert(UnwrappedTileCoords {
+                    x: tx,
+                    y: ty,
+                    z: z,
+                });
             });
         });
 
         let mut cover = cover.into_iter()
             .filter(|t| t.y >= 0 && t.y < tiles)
             .collect();
-
 
 
         TileCover(cover)
@@ -185,7 +169,7 @@ impl Camera {
     pub fn zoom(&self) -> f32 {
         return self.zoom;
     }
-    pub fn zoom_int(&self) ->i32 {
+    pub fn zoom_int(&self) -> i32 {
         (self.zoom.round() + 1.) as i32
     }
     pub fn set_zoom(&mut self, z: f32) {

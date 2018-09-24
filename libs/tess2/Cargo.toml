@@ -6,9 +6,9 @@ description = "Safe wrapper around libtess2."
 license = "MIT"
 
 [build-dependencies]
-bindgen = "0.26.3"
+bindgen = "0.40.0"
 
 [dependencies]
 tess2-sys = { git = "https://github.com/semtexzv/tess2-sys"}
-itertools = "0.7.4"
+itertools = "*"
 

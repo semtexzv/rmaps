@@ -18,10 +18,10 @@ serde= { version = "*", features = ["rc"] }
 image = "*"
 
 tess2 =  { path = "../libs/tess2" }
-lazy_static = "1.1.0"
+lazy_static = "*"
 
 #imgui = { git = "https://github.com/semtexzv/imgui-rs" }
 #imgui-glium-renderer = { git = "https://github.com/semtexzv/imgui-rs" }
 
-imgui =  { git = "https://github.com/semtexzv/imgui-rs", branch = "experimental" }
-imgui-glium-renderer = { git = "https://github.com/semtexzv/imgui-rs", branch = "experimental" }
+#imgui =  { git = "https://github.com/semtexzv/imgui-rs", branch = "experimental" }
+#imgui-glium-renderer = { git = "https://github.com/semtexzv/imgui-rs", branch = "experimental" }

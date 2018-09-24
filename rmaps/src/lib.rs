@@ -28,8 +28,6 @@ pub extern crate lazy_static;
 extern crate serde;
 
 
-pub extern crate imgui;
-pub extern crate imgui_glium_renderer;
 
 
 pub mod prelude;
