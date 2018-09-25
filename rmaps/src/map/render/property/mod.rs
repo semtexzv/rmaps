@@ -28,84 +28,53 @@ pub trait Propertable: TryFrom<Value, Error=Type> + Into<Value> + Debug + Clone 
 impl<T: TryFrom<Value, Error=Type> + Into<Value> + Debug + Clone + Default + DescribeType + 'static> Propertable for T {}
 
 
-pub trait DataDrivenPropertable: Propertable + Attribute + AsUniformValue {}
+pub trait GpuPropertable: Propertable + Attribute + AsUniformValue {}
 
-impl<T: Propertable + Attribute + AsUniformValue> DataDrivenPropertable for T {}
+impl<T: Propertable + Attribute + AsUniformValue> GpuPropertable for T {}
 
 
-pub trait Evaluable {
-    type Value: Propertable;
+#[repr(C)]
+#[derive(Debug, Clone)]
+pub struct Property<T: Propertable, Z: Bool = False, F: Bool = False> {
+    val: Option<T>,
+    _p: (PhantomData<Z>, PhantomData<F>),
+}
 
-    fn eval(&mut self, expr: &Expr, context: &EvaluationContext) -> bool;
-    fn get(&self) -> Self::Value;
-    fn set(&mut self, v: Self::Value);
+impl<T: Propertable, Z: Bool, F: Bool> Property<T, Z, F> {
+    fn new() -> Self {
+        Property {
+            val: None,
+            _p: (PhantomData, PhantomData),
+        }
+    }
+    fn eval(&mut self, expr: &Expr, context: &EvaluationContext) -> bool {
+        let v = expr.eval(context).unwrap();
+        self.val = Some(T::try_from(v).unwrap());
+        return true;
+    }
+
+    fn get(&self) -> Option<T> {
+        self.val.clone()
+    }
+
+    fn set(&mut self, v: T) {
+        self.val = Some(v);
+    }
+    fn reset(&mut self) {
+        self.val = None;
+    }
+}
+
+impl<T: GpuPropertable, Z: Bool, F: Bool> Visitable<T> for Property<T, Z, F> {
+    fn visit<V: PropertiesVisitor>(&self, visitor: &mut V) {
+        visitor.visit_gpu(self)
+    }
 }
 
 
 pub trait Visitable<T: Propertable> {
     fn visit<V: PropertiesVisitor>(&self, visitor: &mut V);
 }
-
-#[repr(C)]
-#[derive(Debug, Clone, Default)]
-pub struct PaintProperty<T: Propertable> {
-    val: T,
-}
-
-impl<T: Propertable> Evaluable for PaintProperty<T> {
-    type Value = T;
-
-    fn eval(&mut self, expr: &Expr, context: &EvaluationContext) -> bool {
-        let v = expr.eval(context).unwrap();
-        self.val = T::try_from(v).unwrap();
-        return true;
-    }
-
-    fn get(&self) -> Self::Value {
-        self.val.clone()
-    }
-
-    fn set(&mut self, v: Self::Value) {
-        self.val = v;
-    }
-}
-
-impl<T: Propertable> Visitable<T> for PaintProperty<T> {
-    #[inline]
-    fn visit<V: PropertiesVisitor>(&self, visitor: &mut V) {
-        visitor.visit_base(self)
-    }
-}
-
-
-#[repr(C)]
-#[derive(Debug, Clone, Default)]
-pub struct DataDrivenProperty<T: DataDrivenPropertable> (PaintProperty<T>);
-
-impl<T: DataDrivenPropertable> Evaluable for DataDrivenProperty<T> {
-    type Value = T;
-
-    fn eval(&mut self, expr: &Expr, context: &EvaluationContext) -> bool {
-        self.0.eval(expr, context)
-    }
-
-    fn get(&self) -> Self::Value {
-        self.0.get()
-    }
-
-    fn set(&mut self, v: Self::Value) {
-        self.0.set(v)
-    }
-}
-
-
-impl<T: DataDrivenPropertable> Visitable<T> for DataDrivenProperty<T> {
-    #[inline]
-    fn visit<V: PropertiesVisitor>(&self, visitor: &mut V) {
-        visitor.visit_gpu(&self);
-    }
-}
-
 
 pub trait Properties: Default {
     type SourceLayerType: ::map::style::StyleLayer;
@@ -119,8 +88,8 @@ pub trait Properties: Default {
 
 
 pub trait PropertiesVisitor {
-    fn visit_base<T: Propertable>(&mut self, v: &PaintProperty<T>);
-    fn visit_gpu<T: DataDrivenPropertable>(&mut self, v: &DataDrivenProperty<T>);
+    fn visit_base<T: Propertable, Z: Bool, F: Bool>(&mut self, v: &Property<T, Z, F>);
+    fn visit_gpu<T: GpuPropertable, Z: Bool, F: Bool>(&mut self, v: &Property<T, Z, F>);
 
     fn visit<T: Propertable, V: Visitable<T>>(&mut self, name: &str, style_prop: &StyleProp<T>, value_prop: &V, can_zoom: bool, can_feature: bool);
 }
@@ -267,10 +236,10 @@ fn fixup<T: AsUniformValue>(t: T) -> UniformValue<'static> {
 
 impl<'a> PropertiesVisitor for UniformPropertyBinder<'a> {
     #[inline]
-    fn visit_base<T: Propertable>(&mut self, v: &PaintProperty<T>) {}
+    fn visit_base<T: Propertable, Z: Bool, F: Bool>(&mut self, v: &Property<T, Z, F>) {}
 
     #[inline]
-    fn visit_gpu<T: Propertable + Attribute + AsUniformValue>(&mut self, v: &DataDrivenProperty<T>) {
+    fn visit_gpu<T: Propertable + Attribute + AsUniformValue, Z: Bool, F: Bool>(&mut self, v: &Property<T, Z, F>) {
         let x = v.get().clone();
         let u = fixup(x);
         self.last_val = Some(u);//.unwrap();
@@ -326,10 +295,10 @@ impl<'a> FeaturePropertyBinder<'a> {
 
 impl<'a> PropertiesVisitor for FeaturePropertyBinder<'a> {
     #[inline]
-    fn visit_base<T: Propertable>(&mut self, v: &PaintProperty<T>) {}
+    fn visit_base<T: Propertable, Z: Bool, F: Bool>(&mut self, v: &Property<T, Z, F>) {}
 
     #[inline]
-    fn visit_gpu<T: Propertable + Attribute + AsUniformValue>(&mut self, v: &DataDrivenProperty<T>) {
+    fn visit_gpu<T: GpuPropertable, Z: Bool, F: Bool>(&mut self, v: &Property<T, Z, F>) {
         if self.push {
             FeaturePropertyData::push_into(&mut self.map, v.get(), self.pos);
             self.pos += 1;

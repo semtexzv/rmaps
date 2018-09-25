@@ -35,7 +35,7 @@ impl<'a> PropertiesEvaluator<'a> {
         self.feature = Some(feature);
         self
     }
-    pub fn evaluate<T: Propertable, E: Evaluable<Value=T>>(&self, prop: &mut E, expr: &::map::style::StyleProp<T>, zoom_allowed: bool, feature_allowed: bool) -> Result<bool> {
+    pub fn evaluate<T: Propertable>(&self, prop: &mut Property<T>, expr: &::map::style::StyleProp<T>, zoom_allowed: bool, feature_allowed: bool) -> Result<bool> {
         match expr {
             ::map::style::StyleProp::Value(v) => {
                 prop.set((v.clone()));

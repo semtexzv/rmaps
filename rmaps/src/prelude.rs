@@ -2,6 +2,13 @@ pub use ::common::export::*;
 pub use common::failure;
 
 
+pub use tll::{
+    boolean::{
+        Bool, True, False,
+    },
+};
+
+
 pub use std::convert::{TryFrom, From, Into};
 pub use rmaps_derive::*;
 

@@ -20,9 +20,9 @@ fn get_pattern(style: &::map::style::FillLayer) -> StyleProp<Option<String>> {
 #[properties(FillLayer)]
 pub struct FillLayerProperties {
     #[property(paint = "antialias", nofeature)]
-    pub antialias: PaintProperty<bool>,
+    pub antialias: Property<bool>,
     #[property(custom = "get_pattern", nofeature)]
-    pub pattern: PaintProperty<Option<String>>,
+    pub pattern: Property<Option<String>>,
 
 }
 
@@ -31,9 +31,9 @@ pub struct FillLayerProperties {
 #[properties(FillLayer)]
 pub struct FillFeatureProperties {
     #[property(paint = "opacity")]
-    opacity: DataDrivenProperty<f32>,
+    opacity: Property<f32>,
     #[property(paint = "color")]
-    color: DataDrivenProperty<Color>,
+    color: Property<Color>,
     #[property(custom = "get_outline_color")]
-    outline_color: DataDrivenProperty<Color>,
+    outline_color: Property<Color>,
 }

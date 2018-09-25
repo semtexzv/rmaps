@@ -18,11 +18,11 @@ use map::{
 #[properties(BackgroundLayer)]
 pub struct BackgroundLayerProperties {
     #[property(paint = "color", nofeature)]
-    color: PaintProperty<Color>,
+    color: Property<Color, True, False>,
     #[property(paint = "opacity")]
-    opacity: PaintProperty<f32>,
+    opacity: Property<f32, True, False>,
     #[property(paint = "pattern", nofeature, nozoom)]
-    pattern: PaintProperty<Option<String>>,
+    pattern: Property<Option<String>>,
 }
 
 #[derive(Debug)]

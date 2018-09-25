@@ -24,7 +24,7 @@ pub extern crate tess2;
 #[macro_use]
 pub extern crate lazy_static;
 
-
+pub extern crate type_level_logic as tll;
 extern crate serde;
 
 

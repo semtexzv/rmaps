@@ -30,12 +30,12 @@ pub struct LineLayerProperties {
 #[properties(LineLayer)]
 pub struct LineFeatureProperties {
     #[property(paint = "opacity")]
-    opacity: DataDrivenProperty<f32>,
+    opacity: Property<f32>,
     #[property(paint = "color")]
-    color: DataDrivenProperty<Color>,
+    color: Property<Color>,
 
     #[property(paint = "width")]
-    width: DataDrivenProperty<f32>,
+    width: Property<f32>,
     #[property(paint = "gap_width")]
-    gap_width: DataDrivenProperty<f32>,
+    gap_width: Property<f32>,
 }

@@ -8,14 +8,13 @@ use map::style::{
 use map::render::shaders::{
     UniformPropertyLayout,
     FeaturePropertyLayout,
-    PropertyItemLayout
+    PropertyItemLayout,
 };
 
 use super::{
     Propertable,
-    DataDrivenPropertable,
-    PaintProperty,
-    DataDrivenProperty,
+    GpuPropertable,
+    Property,
     Properties,
     PropertiesVisitor,
     Visitable,
@@ -42,13 +41,13 @@ impl PropertyLayoutBuilder {
 
 impl PropertiesVisitor for PropertyLayoutBuilder {
     #[inline]
-    fn visit_base<T: Propertable>(&mut self, v: &PaintProperty<T>) {
+    fn visit_base<T: Propertable, Z: Bool, F: Bool>(&mut self, v: &Property<T, Z, F>) {
         self.last_attr_type = None;
         // Noop, not a property that will be used on GPU
     }
 
     #[inline]
-    fn visit_gpu<T: DataDrivenPropertable>(&mut self, v: &DataDrivenProperty<T>) {
+    fn visit_gpu<T: GpuPropertable, Z: Bool, F: Bool>(&mut self, v: &Property<T, Z, F>) {
         self.last_attr_type = Some(T::get_type());
     }
 
@@ -62,7 +61,6 @@ impl PropertiesVisitor for PropertyLayoutBuilder {
         if !can_feature && style_prop.is_feature() {
             panic!("Style not supported, `{}` can't be a feature property", name);
         }
-
 
 
         //debug!("Visited : {} ", name);
