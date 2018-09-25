@@ -246,7 +246,11 @@
                 "line-dasharray": [
                     2,
                     1
-                ]
+                ],
+
+                "line-translate" : [0,0],
+
+                "line-translate-anchor" : ["match" ,[ "has", "anchor"], true , "map", "viewport"]
             }
         },
         {

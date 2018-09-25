@@ -10,7 +10,7 @@ use map::{
 };
 
 pub mod background;
-pub mod raster;
+//pub mod raster;
 
 pub mod fill;
 pub mod line;
@@ -103,7 +103,7 @@ pub trait BucketLayer: Debug + WithSource {
 }
 
 #[derive(Debug)]
-pub struct FeatureBucketData<P: property::Properties> {
+pub struct FeatureBucketData<P: property::PaintProperties> {
     pub feature: ::mvt::Feature,
     pub props: P,
     pub start: usize,
@@ -241,7 +241,7 @@ pub fn parse_style_layers(facade: &Display, style: &style::Style) -> Vec<Box<dyn
                 res.push(box BucketLayerHolder::new(line::LineLayer::new(facade, l)))
             }
             style::BaseStyleLayer::Raster(l) => {
-                res.push(box BucketLayerHolder::new(raster::RasterLayer::new(facade, l)))
+                //res.push(box BucketLayerHolder::new(raster::RasterLayer::new(facade, l)))
             }
             _ => {}
         }

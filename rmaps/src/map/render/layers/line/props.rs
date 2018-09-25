@@ -16,7 +16,7 @@ fn get_pattern(style: &::map::style::FillLayer) -> StyleProp<Option<String>> {
     style.paint.pattern.clone().into()
 }
 
-#[derive(Debug, Clone, Default, Properties)]
+#[derive(Debug, Clone, Default, LayerProperties)]
 #[properties(LineLayer)]
 pub struct LineLayerProperties {
     /*
@@ -26,9 +26,10 @@ pub struct LineLayerProperties {
 }
 
 
-#[derive(Debug, Clone, Default, Properties)]
+#[derive(Debug, Clone, Default, PaintProperties)]
 #[properties(LineLayer)]
 pub struct LineFeatureProperties {
+
     #[property(paint = "opacity")]
     opacity: Property<f32>,
     #[property(paint = "color")]

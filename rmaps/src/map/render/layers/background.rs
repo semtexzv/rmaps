@@ -14,16 +14,20 @@ use map::{
     },
 };
 
-#[derive(Debug, Clone, Default, Properties)]
+#[derive(Debug, Clone, Default, LayerProperties)]
 #[properties(BackgroundLayer)]
 pub struct BackgroundLayerProperties {
-    #[property(paint = "color", nofeature)]
+    #[property(paint = "color")]
     color: Property<Color, True, False>,
     #[property(paint = "opacity")]
     opacity: Property<f32, True, False>,
-    #[property(paint = "pattern", nofeature, nozoom)]
-    pattern: Property<Option<String>>,
+    #[property(paint = "pattern")]
+    pattern: Property<Option<String>, False, False>,
 }
+
+use map::style::StyleProp;
+
+
 
 #[derive(Debug)]
 pub struct BackgroundLayer {
@@ -42,8 +46,8 @@ impl Layer for BackgroundLayer {
 
 
     fn evaluate(&mut self, params: &render::EvaluationParams) -> Result<()> {
-        let evaluator = PropertiesEvaluator::from(params);
-        self.properties.eval(&self.style_layer, &evaluator).unwrap();
+        let mut evaluator = PropertiesEvaluator::from(params);
+        self.properties.accept_mut(&self.style_layer, &mut evaluator);
 
         Ok(())
     }

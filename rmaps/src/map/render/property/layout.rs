@@ -14,10 +14,9 @@ use map::render::shaders::{
 use super::{
     Propertable,
     GpuPropertable,
-    Property,
-    Properties,
+    LayerProperties, PaintProperties,
     PropertiesVisitor,
-    Visitable,
+    Property,
 };
 
 #[derive(Debug, Default)]
@@ -25,12 +24,11 @@ pub struct PropertyLayoutBuilder {
     uniforms: UniformPropertyLayout,
     features: FeaturePropertyLayout,
 
-    last_attr_type: Option<glium::vertex::AttributeType>,
 }
 
 
 impl PropertyLayoutBuilder {
-    pub fn build<P: Properties>(layer: &P::SourceLayerType) -> (UniformPropertyLayout, FeaturePropertyLayout) {
+    pub fn build<P: PaintProperties>(layer: &P::SourceLayerType) -> (UniformPropertyLayout, FeaturePropertyLayout) {
         let mut builder = PropertyLayoutBuilder::default();
         let tmp = P::default();
         tmp.accept(&layer, &mut builder);
@@ -40,40 +38,22 @@ impl PropertyLayoutBuilder {
 }
 
 impl PropertiesVisitor for PropertyLayoutBuilder {
-    #[inline]
-    fn visit_base<T: Propertable, Z: Bool, F: Bool>(&mut self, v: &Property<T, Z, F>) {
-        self.last_attr_type = None;
-        // Noop, not a property that will be used on GPU
-    }
+    #[inline(always)]
+    fn visit_gpu<T: GpuPropertable, Z: Bool, F: Bool>(&mut self, v: &Property<T, Z, F>, name: &str, style: &StyleProp<T>) {
+        let can_zoom = Z::VALUE;
+        let can_feature = F::VALUE;
 
-    #[inline]
-    fn visit_gpu<T: GpuPropertable, Z: Bool, F: Bool>(&mut self, v: &Property<T, Z, F>) {
-        self.last_attr_type = Some(T::get_type());
-    }
-
-    #[inline]
-    fn visit<T: Propertable, V: Visitable<T>>(&mut self, name: &str, style_prop: &StyleProp<T>, value_prop: &V, can_zoom: bool, can_feature: bool) {
-        value_prop.visit(self);
-        if !can_zoom && style_prop.is_zoom() {
+        if !can_zoom && style.is_zoom() {
             panic!("Style not supported, `{}` can't be a zoom property", name);
         }
 
-        if !can_feature && style_prop.is_feature() {
+        if !can_feature && style.is_feature() {
             panic!("Style not supported, `{}` can't be a feature property", name);
         }
-
-
-        //debug!("Visited : {} ", name);
-        //debug!("\t Zoom    : allowed {} , used : {}", can_zoom, style_prop.is_zoom());
-        //debug!("\t Feature : allowed {} , used : {}", can_feature, style_prop.is_feature());
-        //debug!("\t Attribute type : {:?}", self.last_attr_type);
-
-        if let Some(attr) = self.last_attr_type {
-            if style_prop.is_feature() {
-                self.features.push(name, attr);
-            } else {
-                self.uniforms.push(name, attr);
-            }
+        if style.is_feature() {
+            self.features.push(name, T::get_type());
+        } else {
+            self.uniforms.push(name, T::get_type());
         }
     }
 }

@@ -80,33 +80,37 @@ impl layers::BucketLayer for FillLayer {
     }
 
     fn eval_layer(&mut self, params: &render::EvaluationParams) -> Result<()> {
-        let evaluator = PropertiesEvaluator::only_zoom(params.zoom);
-        self.properties.eval(&self.style_layer, &evaluator)?;
+        let mut evaluator = PropertiesEvaluator::only_zoom(params.zoom);
+        self.properties.accept_mut(&self.style_layer, &mut evaluator);
 
-        //println!("Props : {:?}", self.properties);
         Ok(())
     }
 
 
     fn eval_bucket(&mut self, params: &render::EvaluationParams, bucket: &mut Self::Bucket) -> Result<()> {
-        let evaluator = PropertiesEvaluator::only_zoom(params.zoom);
-        bucket.properties.eval(&self.style_layer, &evaluator)?;
+        let mut evaluator = PropertiesEvaluator::only_zoom(params.zoom);
+        bucket.properties.accept_mut(&self.style_layer, &mut evaluator);
 
-        UniformPropertyBinder::bind(&self.layout.0, &bucket.properties, &self.style_layer, &mut bucket.uniforms)?;
-
-        bucket.feature_data.clear();
+        if evaluator.modified {
+            UniformPropertyBinder::rebind(&self.layout.0, &bucket.properties, &self.style_layer, &mut bucket.uniforms)?;
+        }
 
         let features = &mut bucket.features;
 
-        let _: Result<()> = FeaturePropertyBinder::with(&self.layout.1, &mut bucket.feature_data, |binder| {
-            for (id, data) in features.iter_mut() {
-                let evaluator = PropertiesEvaluator::only_zoom(params.zoom).with_feature(&data.feature);
-                data.props.eval(&self.style_layer, &evaluator)?;
+        for (id, data) in features.iter_mut() {
+            let mut evaluator = PropertiesEvaluator::new(params.zoom, &data.feature);
+            data.props.accept_mut(&self.style_layer, &mut evaluator);
+            bucket.upload_dirty |= evaluator.modified;
+        }
 
-                data.props.accept(&self.style_layer, binder);
-            }
-            Ok(())
-        });
+        if bucket.upload_dirty {
+            bucket.feature_data.clear();
+            FeaturePropertyBinder::with(&self.layout.1, &mut bucket.feature_data, |binder| {
+                for (id, data) in features.iter_mut() {
+                    data.props.accept(&self.style_layer, binder);
+                }
+            });
+        }
 
         bucket.eval_dirty = false;
         bucket.upload_dirty = true;
@@ -150,10 +154,10 @@ impl layers::BucketLayer for FillLayer {
                     blend: glium::Blend::alpha_blending(),
                     stencil: glium::draw_parameters::Stencil {
                         test_clockwise: glium::StencilTest::IfEqual { mask: 0xFFFFFFFF },
-                        test_counter_clockwise:   glium::StencilTest::IfEqual { mask: 0xFFFFFFFF },
+                        test_counter_clockwise: glium::StencilTest::IfEqual { mask: 0xFFFFFFFF },
 
-                        reference_value_clockwise : sid as _,
-                        reference_value_counter_clockwise : sid as _,
+                        reference_value_clockwise: sid as _,
+                        reference_value_counter_clockwise: sid as _,
 
                         ..Default::default()
                     },
@@ -186,11 +190,10 @@ impl layers::BucketLayer for FillLayer {
                 blend: glium::Blend::alpha_blending(),
                 stencil: glium::draw_parameters::Stencil {
                     test_clockwise: glium::StencilTest::IfEqual { mask: 0xFFFFFFFF },
-                    test_counter_clockwise:   glium::StencilTest::IfEqual { mask: 0xFFFFFFFF },
+                    test_counter_clockwise: glium::StencilTest::IfEqual { mask: 0xFFFFFFFF },
 
-                    reference_value_clockwise : sid as _,
-                    reference_value_counter_clockwise : sid as _,
-
+                    reference_value_clockwise: sid as _,
+                    reference_value_counter_clockwise: sid as _,
 
                     ..Default::default()
                 },

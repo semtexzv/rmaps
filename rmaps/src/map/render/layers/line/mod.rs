@@ -72,30 +72,28 @@ impl layers::BucketLayer for LineLayer {
     }
 
     fn eval_layer(&mut self, params: &render::EvaluationParams) -> Result<()> {
-        let evaluator = PropertiesEvaluator::only_zoom(params.zoom);
-        self.properties.eval(&self.style_layer, &evaluator)?;
+        let mut evaluator = PropertiesEvaluator::only_zoom(params.zoom);
+        self.properties.accept_mut(&self.style_layer, &mut evaluator);
         Ok(())
     }
 
 
     fn eval_bucket(&mut self, params: &render::EvaluationParams, bucket: &mut Self::Bucket) -> Result<()> {
-        let evaluator = PropertiesEvaluator::only_zoom(params.zoom);
-        bucket.properties.eval(&self.style_layer, &evaluator)?;
+        let mut evaluator = PropertiesEvaluator::only_zoom(params.zoom);
+        bucket.properties.accept_mut(&self.style_layer, &mut evaluator);
 
-        UniformPropertyBinder::bind(&self.layout.0, &bucket.properties, &self.style_layer, &mut bucket.uniforms)?;
+        UniformPropertyBinder::rebind(&self.layout.0, &bucket.properties, &self.style_layer, &mut bucket.uniforms)?;
 
         bucket.feature_data.clear();
 
         let features = &mut bucket.features;
-
-        let _: Result<()> = FeaturePropertyBinder::with(&self.layout.1, &mut bucket.feature_data, |binder| {
+        FeaturePropertyBinder::with(&self.layout.1, &mut bucket.feature_data, |binder| {
             for (id, data) in features.iter_mut() {
-                let evaluator = PropertiesEvaluator::only_zoom(params.zoom).with_feature(&data.feature);
-                data.props.eval(&self.style_layer, &evaluator)?;
+                let mut evaluator = PropertiesEvaluator::only_zoom(params.zoom).with_feature(&data.feature);
+                data.props.accept_mut(&self.style_layer, &mut evaluator);
 
                 data.props.accept(&self.style_layer, binder);
             }
-            Ok(())
         });
 
         bucket.eval_dirty = false;

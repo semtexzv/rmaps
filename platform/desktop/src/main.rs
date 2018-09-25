@@ -49,11 +49,11 @@ fn main() {
 
     let mut map = rmaps::map::MapView::new(&display.clone());//.unwrap();
     //map.set_style_url("file://simple.json");
-    //map.set_style_url("mapbox://styles/semtexzv/cjjjv418k6m0b2rok0oiejd4i");
+    map.set_style_url("mapbox://styles/semtexzv/cjjjv418k6m0b2rok0oiejd4i");
     // North star
     //map.set_style_url("mapbox://styles/semtexzv/cjm699hdycl2y2snx6os4bo9t");
     // Streets
-    map.set_style_url("mapbox://styles/semtexzv/cjmdb386z7hm22rmlunomo8w0");
+   // map.set_style_url("mapbox://styles/semtexzv/cjmdb386z7hm22rmlunomo8w0");
     let mut running = true;
 
 

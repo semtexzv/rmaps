@@ -10,7 +10,6 @@ use proc_macro::TokenStream;
 use syn::*;
 use quote::*;
 
-
 #[derive(Debug, Clone)]
 enum SourceType {
     Layout,
@@ -24,10 +23,6 @@ struct FieldPropertyData {
     name: Ident,
     /// Whether this is layout or paint property
     src_type: SourceType,
-    /// If `nozoom` attribute is specified, this is false, property can't be zoom dependent
-    can_be_zoom: bool,
-    /// If `nofeature` attribute is specified, this is false, property can't be feature data dependent
-    can_be_feature: bool,
     /// Name of field in `layout` or `paint` struct of source style layer
     src_name: Ident,
     /// Name of generated property, passed to visitors, used to match this data to shader input, by default
@@ -40,8 +35,6 @@ impl FieldPropertyData {
         FieldPropertyData {
             name: name.clone(),
             src_type: SourceType::Paint,
-            can_be_zoom: true,
-            can_be_feature: true,
             src_name: name.clone(),
             prop_name: name.clone(),
         }
@@ -64,15 +57,6 @@ fn get_property_data(name: &Ident, meta: &Meta) -> FieldPropertyData {
 
     for item in inner {
         match item {
-            NestedMeta::Meta(Meta::Word(w)) => {
-                match quote!(#w).to_string().deref() {
-                    "nozoom" => res.can_be_zoom = false,
-                    "nofeature" => res.can_be_feature = false,
-                    _ => {
-                        panic!("Unknown field attribute {}", w);
-                    }
-                }
-            }
             NestedMeta::Meta(Meta::NameValue(MetaNameValue { ref ident, lit: Lit::Str(ref l), .. })) => {
                 match quote!(#ident).to_string().deref() {
                     "layout" => {
@@ -105,14 +89,19 @@ fn get_property_data(name: &Ident, meta: &Meta) -> FieldPropertyData {
     return res;
 }
 
-#[proc_macro_derive(Properties, attributes(properties, property))]
+#[proc_macro_derive(PaintProperties, attributes(properties, property))]
 pub fn derive_layer_properties(input: TokenStream) -> TokenStream {
     let ast = syn::parse(input).unwrap();
-    impl_layer_properties(&ast)
+    impl_layer_properties(&ast, true)
 }
 
+#[proc_macro_derive(LayerProperties, attributes(properties, property))]
+pub fn derive_paint_properties(input: TokenStream) -> TokenStream {
+    let ast = syn::parse(input).unwrap();
+    impl_layer_properties(&ast, false)
+}
 
-fn impl_layer_properties(ast: &DeriveInput) -> TokenStream {
+fn impl_layer_properties(ast: &DeriveInput, is_paint: bool) -> TokenStream {
     let struct_name = &ast.ident;
     let mut style_layer_name: Ident = ast.ident.clone();
 
@@ -167,7 +156,7 @@ fn impl_layer_properties(ast: &DeriveInput) -> TokenStream {
 
             for a in attrs {
                 match &a {
-                    Meta::List(MetaList { ref ident, ref nested, .. }) if ident == "property" => {
+                    Meta::List(MetaList { ref ident, .. }) if ident == "property" => {
                         res = get_property_data(field.ident.as_ref().unwrap(), &a);
                     }
                     _ => {}
@@ -176,56 +165,10 @@ fn impl_layer_properties(ast: &DeriveInput) -> TokenStream {
             res
         }).collect();
 
-
-    let evaluations: Vec<_> = datas.iter().map(|res| {
-        let res = res.clone();
-
+    let accepts: Vec<_> = datas.iter().map(|data| {
         let FieldPropertyData {
             name,
             src_type,
-            can_be_zoom,
-            can_be_feature,
-            src_name,
-            prop_name,
-        } = res;
-
-        let property_retrieval = match src_type {
-            SourceType::Layout => {
-                quote!(&layer.get_layout().#src_name)
-            }
-            SourceType::Paint => {
-                quote!(&layer.get_paint().#src_name)
-            }
-            SourceType::Custom => {
-                quote!(#src_name(layer))
-            }
-        };
-
-        let name_str = name.to_string();
-        quote! {
-            let expr = #property_retrieval;
-            match evaluator.evaluate(&mut self.#name , &expr, #can_be_zoom, #can_be_feature)  {
-                Ok(true) => {
-                    modified = true;
-                }
-                Ok(false) => {
-
-                }
-                Err(e) => {
-                    bail!("Error when evaluating {} : {:?}", #name_str,e);
-                },
-                _ => {}
-
-            }
-        }
-    }).collect();
-
-    let visits: Vec<_> = datas.iter().map(|data| {
-        let FieldPropertyData {
-            name,
-            src_type,
-            can_be_zoom,
-            can_be_feature,
             src_name,
             prop_name,
         } = data.clone();
@@ -243,33 +186,69 @@ fn impl_layer_properties(ast: &DeriveInput) -> TokenStream {
         };
 
         let prop_name_str = prop_name.to_string();
-        quote!(visitor.visit(#prop_name_str,  &#property_retrieval, &self.#name, #can_be_zoom, #can_be_feature))
+        let method = if is_paint {
+            quote!(visit_gpu)
+        } else {
+            quote!(visit_base)
+        };
+
+        quote!(visitor.#method(& self.#name,#prop_name_str,&#property_retrieval);)
     }).collect();
 
+    let mut_accepts: Vec<_> = datas.iter().map(|data| {
+        let FieldPropertyData {
+            name,
+            src_type,
+            src_name,
+            prop_name,
+        } = data.clone();
+
+        let property_retrieval = match src_type {
+            SourceType::Layout => {
+                quote!(layer.get_layout().#src_name)
+            }
+            SourceType::Paint => {
+                quote!(layer.get_paint().#src_name)
+            }
+            SourceType::Custom => {
+                quote!(#src_name(layer))
+            }
+        };
+
+        let prop_name_str = prop_name.to_string();
+
+        let method = if is_paint {
+            quote!(visit_gpu_mut)
+        } else {
+            quote!(visit_base_mut)
+        };
+
+        quote!(visitor.#method(&mut self.#name,#prop_name_str,&#property_retrieval);)
+    }).collect();
+
+    let trait_name = if is_paint {
+        quote!(::map::render::property::PaintProperties)
+    } else {
+        quote!(::map::render::property::LayerProperties)
+    };
+
     let res = quote! {
-        impl #impl_generics ::map::render::property::Properties for #struct_name #ty_generics #where_clause {
+        impl #impl_generics #trait_name for #struct_name #ty_generics #where_clause {
             type SourceLayerType  = ::map::style::#style_layer_name;
 
-            fn accept<V: PropertiesVisitor>(&self, layer: &Self::SourceLayerType, visitor: &mut V)  {
-                use ::map::render::property::*;
-                use ::map::style::StyleLayer;
-
-                #(#visits);*
+            #[inline(always)]
+            fn accept<V: PropertiesVisitor>(&self, layer: &Self::SourceLayerType, visitor: &mut V) {
+                use map::style::StyleLayer;
+                #(#accepts);*
             }
 
-
-            fn eval(&mut self, layer: &Self::SourceLayerType, evaluator : &::map::render::property::PropertiesEvaluator) -> Result<bool> {
+            #[inline(always)]
+            fn accept_mut<V: PropertiesVisitor>(&mut self, layer: &Self::SourceLayerType, visitor: &mut V) {
                 use map::style::StyleLayer;
-
-                let mut modified = false;
-                #(#evaluations)*
-                Ok(modified)
+                #(#mut_accepts);*
             }
         }
 
     };
-
-
-
     return res.into();
 }

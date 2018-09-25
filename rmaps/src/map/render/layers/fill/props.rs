@@ -16,18 +16,18 @@ fn get_pattern(style: &::map::style::FillLayer) -> StyleProp<Option<String>> {
     style.paint.pattern.clone().into()
 }
 
-#[derive(Debug, Clone, Default, Properties)]
+#[derive(Debug, Clone, Default, LayerProperties)]
 #[properties(FillLayer)]
 pub struct FillLayerProperties {
-    #[property(paint = "antialias", nofeature)]
-    pub antialias: Property<bool>,
-    #[property(custom = "get_pattern", nofeature)]
-    pub pattern: Property<Option<String>>,
+    #[property(paint = "antialias")]
+    pub antialias: Property<bool, True, False>,
+    #[property(custom = "get_pattern")]
+    pub pattern: Property<Option<String>, False, False>,
 
 }
 
 
-#[derive(Debug, Clone, Default, Properties)]
+#[derive(Debug, Clone, Default, PaintProperties)]
 #[properties(FillLayer)]
 pub struct FillFeatureProperties {
     #[property(paint = "opacity")]

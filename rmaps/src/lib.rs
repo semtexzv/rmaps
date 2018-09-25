@@ -1,4 +1,5 @@
 //#![feature(custom_attribute)]
+#![feature(specialization)]
 #![recursion_limit="512"]
 #![feature(slice_patterns)]
 #![feature(never_type)]
@@ -24,7 +25,6 @@ pub extern crate tess2;
 #[macro_use]
 pub extern crate lazy_static;
 
-pub extern crate type_level_logic as tll;
 extern crate serde;
 
 

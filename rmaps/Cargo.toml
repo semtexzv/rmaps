@@ -17,7 +17,6 @@ rmaps_derive = { path = "../libs/rmaps_derive"}
 serde= { version = "*", features = ["rc"] }
 image = "*"
 
-type-level-logic = "0.1.0"
 
 tess2 =  { path = "../libs/tess2" }
 lazy_static = "*"

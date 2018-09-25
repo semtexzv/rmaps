@@ -23,77 +23,67 @@ pub use self::layout::PropertyLayoutBuilder;
 
 
 /// Types that can be Property values
-pub trait Propertable: TryFrom<Value, Error=Type> + Into<Value> + Debug + Clone + Default + DescribeType + 'static {}
+pub trait Propertable: TryFrom<Value, Error=Type> + Into<Value> + Debug + Clone + Default + DescribeType + PartialEq<Self> + 'static {}
 
-impl<T: TryFrom<Value, Error=Type> + Into<Value> + Debug + Clone + Default + DescribeType + 'static> Propertable for T {}
+impl<T: TryFrom<Value, Error=Type> + Into<Value> + Debug + Clone + Default + DescribeType + PartialEq<Self> + 'static> Propertable for T {}
 
 
 pub trait GpuPropertable: Propertable + Attribute + AsUniformValue {}
 
 impl<T: Propertable + Attribute + AsUniformValue> GpuPropertable for T {}
 
-
 #[repr(C)]
-#[derive(Debug, Clone)]
-pub struct Property<T: Propertable, Z: Bool = False, F: Bool = False> {
+#[derive(Debug, Clone, Default)]
+pub struct Property<T: Propertable, Z: Bool = True, F: Bool = True> {
     val: Option<T>,
-    _p: (PhantomData<Z>, PhantomData<F>),
+    _p: (PhantomData<*const Z>, PhantomData<*const F>),
 }
 
 impl<T: Propertable, Z: Bool, F: Bool> Property<T, Z, F> {
-    fn new() -> Self {
-        Property {
-            val: None,
-            _p: (PhantomData, PhantomData),
-        }
+    pub fn get(&self) -> T {
+        self.val.clone().unwrap()
     }
-    fn eval(&mut self, expr: &Expr, context: &EvaluationContext) -> bool {
-        let v = expr.eval(context).unwrap();
-        self.val = Some(T::try_from(v).unwrap());
+
+    pub fn set(&mut self, v: T) -> bool {
+        if self.val.as_ref() == Some(&v) {
+            return false;
+        }
+        self.val = Some(v);
         return true;
     }
-
-    fn get(&self) -> Option<T> {
-        self.val.clone()
-    }
-
-    fn set(&mut self, v: T) {
-        self.val = Some(v);
-    }
-    fn reset(&mut self) {
-        self.val = None;
-    }
 }
 
-impl<T: GpuPropertable, Z: Bool, F: Bool> Visitable<T> for Property<T, Z, F> {
-    fn visit<V: PropertiesVisitor>(&self, visitor: &mut V) {
-        visitor.visit_gpu(self)
-    }
-}
-
-
-pub trait Visitable<T: Propertable> {
-    fn visit<V: PropertiesVisitor>(&self, visitor: &mut V);
-}
-
-pub trait Properties: Default {
+/// Structs that implement this trait contain properties, that are used only on CPU side
+/// visited properties are not uploaded to the GPU, and most of them can be zoom dependent.
+/// However, none of visited properties can be feature dependant, because only one instance
+/// of `LayerProperties` struct will be instantiated for each layer
+pub trait LayerProperties: Default {
     type SourceLayerType: ::map::style::StyleLayer;
-
-    /// Generates layout structure for shader compilation
+    /// Accept a visitor for immutable traversal of these properties
     fn accept<V: PropertiesVisitor>(&self, layer: &Self::SourceLayerType, visitor: &mut V);
-
-    /// Evaluates the property values, for this object, using specified evaluator
-    fn eval(&mut self, layer: &Self::SourceLayerType, evaluator: &PropertiesEvaluator) -> Result<bool>;
+    /// Accept a visitor for mutable traversal of these properties
+    fn accept_mut<V: PropertiesVisitor>(&mut self, layer: &Self::SourceLayerType, visitor: &mut V);
+}
+/// Structs that implement `PaintProperties` contain per feature properties.
+/// Visited properties can be zoom and feature dependent, and must be of a format that is uploadable to
+/// the GPU. So, no String or Enum  PaintProperties
+pub trait PaintProperties: Default {
+    type SourceLayerType: ::map::style::StyleLayer;
+    /// Accept a visitor for immutable traversal of these properties
+    fn accept<V: PropertiesVisitor>(&self, layer: &Self::SourceLayerType, visitor: &mut V);
+    /// Accept a visitor for mutable traversal of these properties
+    fn accept_mut<V: PropertiesVisitor>(&mut self, layer: &Self::SourceLayerType, visitor: &mut V);
 }
 
-
+/// Visitor that can visit individual properties. It has to have duplicated methods for base properties,
+/// and GPU properties, because generic argument "T" contains type information about how can value be uploaded to the GPU
 pub trait PropertiesVisitor {
-    fn visit_base<T: Propertable, Z: Bool, F: Bool>(&mut self, v: &Property<T, Z, F>);
-    fn visit_gpu<T: GpuPropertable, Z: Bool, F: Bool>(&mut self, v: &Property<T, Z, F>);
+    fn visit_base<T: Propertable, Z: Bool, F: Bool>(&mut self, v: &Property<T, Z, F>, name: &str, style: &StyleProp<T>) {}
+    fn visit_gpu<T: GpuPropertable, Z: Bool, F: Bool>(&mut self, v: &Property<T, Z, F>, name: &str, style: &StyleProp<T>) {}
 
-    fn visit<T: Propertable, V: Visitable<T>>(&mut self, name: &str, style_prop: &StyleProp<T>, value_prop: &V, can_zoom: bool, can_feature: bool);
+    fn visit_base_mut<T: Propertable, Z: Bool, F: Bool>(&mut self, v: &mut Property<T, Z, F>, name: &str, style: &StyleProp<T>) {}
+    fn visit_gpu_mut<T: GpuPropertable, Z: Bool, F: Bool>(&mut self, v: &mut Property<T, Z, F>, name: &str, style: &StyleProp<T>) {}
 }
-
 
 use map::render::shaders::{
     UniformPropertyLayout,
@@ -142,7 +132,10 @@ impl FeaturePropertyData {
         if pos >= FEATURE_UBO_VECS {
             panic!("Too many attributes, TODO");
         }
-
+        unsafe {
+            *(&mut map.feature_data[pos] as &mut _ as *mut _ as *mut A) = v;
+        }
+        /*
         #[repr(C)]
         struct helper<A: Sized> {
             first: A,
@@ -155,8 +148,10 @@ impl FeaturePropertyData {
             };
             let ptr = &data as *const helper<A> as *const f32;
             let slice = ptr as *const [f32; 4];
+
             map.feature_data[pos] = (*slice);
         };
+        */
     }
 }
 
@@ -219,7 +214,7 @@ impl<'a> UniformPropertyBinder<'a> {
         }
     }
     #[inline]
-    pub fn bind<P: Properties>(layout: &UniformPropertyLayout, props: &P, style: &P::SourceLayerType, data: &mut UniformPropertyData) -> Result<()> {
+    pub fn rebind<P: PaintProperties>(layout: &UniformPropertyLayout, props: &P, style: &P::SourceLayerType, data: &mut UniformPropertyData) -> Result<()> {
         data.clear();
         let mut binder = UniformPropertyBinder::new(layout, data);
         props.accept(style, &mut binder);
@@ -235,24 +230,11 @@ fn fixup<T: AsUniformValue>(t: T) -> UniformValue<'static> {
 
 
 impl<'a> PropertiesVisitor for UniformPropertyBinder<'a> {
-    #[inline]
-    fn visit_base<T: Propertable, Z: Bool, F: Bool>(&mut self, v: &Property<T, Z, F>) {}
-
-    #[inline]
-    fn visit_gpu<T: Propertable + Attribute + AsUniformValue, Z: Bool, F: Bool>(&mut self, v: &Property<T, Z, F>) {
-        let x = v.get().clone();
-        let u = fixup(x);
-        self.last_val = Some(u);//.unwrap();
-    }
-
-    #[inline]
-    fn visit<T: Propertable, V: Visitable<T>>(&mut self, name: &str, style_prop: &StyleProp<T>, value_prop: &V, can_zoom: bool, can_feature: bool) {
-        value_prop.visit(self);
-
-        if let Some(val) = self.last_val.take() {
-            if self.layout.is_uniform(name) {
-                self.data.push(::map::render::shaders::ShaderProcessor::uniform_name(name), val);
-            }
+    fn visit_gpu<T: GpuPropertable, Z: Bool, F: Bool>(&mut self, v: &Property<T, Z, F>, name: &str, style: &StyleProp<T>) {
+        let x = v.get();
+        let val = fixup(x);
+        if self.layout.is_uniform(name) {
+            self.data.push(::map::render::shaders::ShaderProcessor::uniform_name(name), val);
         }
     }
 }
@@ -294,23 +276,11 @@ impl<'a> FeaturePropertyBinder<'a> {
 }
 
 impl<'a> PropertiesVisitor for FeaturePropertyBinder<'a> {
-    #[inline]
-    fn visit_base<T: Propertable, Z: Bool, F: Bool>(&mut self, v: &Property<T, Z, F>) {}
-
-    #[inline]
-    fn visit_gpu<T: GpuPropertable, Z: Bool, F: Bool>(&mut self, v: &Property<T, Z, F>) {
-        if self.push {
+    fn visit_gpu<T: GpuPropertable, Z: Bool, F: Bool>(&mut self, v: &Property<T, Z, F>, name: &str, style: &StyleProp<T>) {
+        if self.layout.is_feature(name) {
             FeaturePropertyData::push_into(&mut self.map, v.get(), self.pos);
             self.pos += 1;
             self.push = false;
         }
-    }
-
-    #[inline]
-    fn visit<T: Propertable, V: Visitable<T>>(&mut self, name: &str, style_prop: &StyleProp<T>, value_prop: &V, can_zoom: bool, can_feature: bool) {
-        if self.layout.is_feature(name) {
-            self.push = true;
-        }
-        value_prop.visit(self)
     }
 }
