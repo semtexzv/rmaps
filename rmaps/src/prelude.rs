@@ -1,6 +1,8 @@
 pub use ::common::export::*;
 pub use common::failure;
 
+pub use map::interop;
+
 
 pub trait Bool: Debug + Clone + Default { const VALUE: bool; }
 
@@ -38,6 +40,7 @@ pub fn start_in_thread<A: Actor<Context=Context<A>> + Send + 'static, F: FnOnce(
         let addr = actor.start();
         let _ = tx.send(addr);
         let _ = sys.run();
+
     });
 
     rx.recv().unwrap()

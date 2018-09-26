@@ -2,11 +2,15 @@
 name = "common"
 version = "0.1.0"
 authors = ["Michal Hornický <semtexzv@gmail.com>"]
-[lib]
-#crate-type = ["dylib"]
 
+[features]
+default = []
+
+wasm = ["actix/runtime-web"]
+desktop = ["actix/runtime-tokio"]
 
 [dependencies]
+http = "*"
 glium = { git  = "https://github.com/semtexzv/glium", branch= "tmp-working"  }
 glium_derive = { git  = "https://github.com/semtexzv/glium_derive" }
 arraydeque = "0.4.2"
@@ -25,7 +29,6 @@ bytes = "*"
 cgmath = { version ="*", features = ["swizzle"] }
 failure = "*"
 
-rusqlite= { version =  "*", features =  ["bundled"] }
 
 scoped-tls = { version = "*", features = ["nightly"] }
 serde= { version = "*", features = ["rc"] }
@@ -34,15 +37,9 @@ serde_json="*"
 
 
 futures = "0.1"
-tokio = "0.1"
 tokio-timer ="*"
 
 geometry = { path = "../libs/geometry" }
-#actix = { path = "../libs/actix" }
-#actix-web =  { path ="../libs/actix-web" , features = ["tls"]}
-
-actix = { version = "0.7.4" }
-actix-web = { version = "0.7.7", features = ["tls", "brotli" ,"flate2-c"], default-features = false }
 
 url = "*"
 uuid = { version = "*" , features = ["v4"]}
@@ -51,3 +48,6 @@ derive_more = "*"
 css-color-parser = "*"
 palette= "*"
 lerp = "*"
+
+
+actix = { path = "../libs/actix", default-features = false}

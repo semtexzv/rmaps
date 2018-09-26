@@ -4,5 +4,12 @@ version = "0.1.0"
 authors = ["Michal Hornický <semtexzv@gmail.com>"]
 
 [dependencies]
-common = { path = "../../common" }
+
+common = { path = "../../common" , default-features = false, features = ["desktop"] }
 rmaps = { path = "../../rmaps" }
+
+actix-web = { version = "0.7.7", features = ["tls", "brotli" ,"flate2-c"], default-features = false }
+
+
+
+rusqlite= { version =  "*", features =  ["bundled"] }

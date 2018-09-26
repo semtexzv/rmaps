@@ -9,14 +9,16 @@ pub mod storage;
 pub mod tiles;
 
 pub mod util;
+pub mod interop;
 
 use std::ptr;
 use std::sync::mpsc::{channel, Sender, Receiver};
+use common::actix::fut::*;
 
 use self::util::profiler;
 
-pub struct MapView {
-    addr: *mut MapViewImpl,
+pub struct MapView<I: interop::Types> {
+    addr: *mut MapViewImpl<I>,
     sys: SystemRunner,
 }
 
@@ -27,13 +29,13 @@ fn pulse(sys: &mut SystemRunner) {
 }
 
 
-impl MapView {
+impl<I: interop::Types> MapView<I> {
     /// Initialization
     pub fn new(f: &Display) -> Self {
         let mut sys = System::new("Map");
         let (tx, rx) = channel();
         let mut _impl = MapViewImpl::new(f, tx);
-        let addr: Addr<MapViewImpl> = _impl.start();
+        let addr: Addr<MapViewImpl<I>> = _impl.start();
         pulse(&mut sys);
         pulse(&mut sys);
         let ptr = rx.recv().unwrap();
@@ -44,7 +46,7 @@ impl MapView {
         };
     }
 
-    pub fn do_run<R: Send + 'static, F: FnOnce(&mut MapViewImpl, &mut Context<MapViewImpl>) -> R + 'static>(&mut self, f: F) -> R {
+    pub fn do_run<R: Send + 'static, F: FnOnce(&mut MapViewImpl<I>, &mut Context<MapViewImpl<I>>) -> R + 'static>(&mut self, f: F) -> R {
         use ::common::futures::future::*;
         use std::sync::Arc;
         use std::cell::RefCell;
@@ -68,7 +70,7 @@ impl MapView {
     }
 
     pub fn render(&mut self, mut surface: glium::Frame) {
-        self.do_run(move |map: &mut MapViewImpl, ctx| {
+        self.do_run(move |map: &mut MapViewImpl<I>, ctx| {
             map.render(&mut surface, ctx);
             surface.finish().unwrap();
         });
@@ -77,31 +79,31 @@ impl MapView {
 
     pub fn set_style_url(&mut self, url: &str) {
         let u = url.to_string();
-        self.do_run(move |map: &mut MapViewImpl, ctx| {
+        self.do_run(move |map: &mut MapViewImpl<I>, ctx| {
             map.set_style_url(&u, ctx);
         });
     }
 
     pub fn window_resized(&mut self, dims: PixelSize) {
-        self.do_run(move |map: &mut MapViewImpl, _| {
+        self.do_run(move |map: &mut MapViewImpl<I>, _| {
             map.window_resized(dims)
         });
     }
 
     pub fn mouse_moved(&mut self, pixel: PixelPoint) {
-        self.do_run(move |map: &mut MapViewImpl, _| {
+        self.do_run(move |map: &mut MapViewImpl<I>, _| {
             map.handle_mouse_moved(pixel)
         });
     }
 
     pub fn mouse_button(&mut self, down: bool) {
-        self.do_run(move |map: &mut MapViewImpl, _| {
+        self.do_run(move |map: &mut MapViewImpl<I>, _| {
             map.handle_mouse_button(down)
         });
     }
 
     pub fn mouse_scroll(&mut self, scroll: f64) {
-        self.do_run(move |map: &mut MapViewImpl, _| {
+        self.do_run(move |map: &mut MapViewImpl<I>, _| {
             map.handle_mouse_scroll(scroll)
         });
     }
@@ -116,7 +118,7 @@ pub struct InputStatus {
 }
 
 
-impl<'a> InputHandler for MapViewImpl {
+impl<'a, I: interop::Types> InputHandler for MapViewImpl<I> {
     fn has_captured(&mut self) -> bool {
         return self.input.captured;
     }
@@ -146,12 +148,12 @@ impl<'a> InputHandler for MapViewImpl {
     }
 }
 
-pub struct MapViewImpl {
-    tx: Sender<*mut MapViewImpl>,
-    addr: Option<Addr<MapViewImpl>>,
+pub struct MapViewImpl<I: interop::Types> {
+    tx: Sender<*mut MapViewImpl<I>>,
+    addr: Option<Addr<MapViewImpl<I>>>,
     camera: Camera,
     renderer: Option<render::Renderer>,
-    file_source: Addr<storage::DefaultFileSource>,
+    file_source: Addr<storage::DefaultFileSource<I>>,
 
     facade: Box<glium::Display>,
     style: Option<Rc<style::Style>>,
@@ -160,10 +162,9 @@ pub struct MapViewImpl {
 
 }
 
-use common::actix_web::actix::fut::*;
 
 
-impl Actor for MapViewImpl {
+impl<I: interop::Types> Actor for MapViewImpl<I> {
     type Context = Context<Self>;
 
     fn started(&mut self, ctx: &mut Self::Context) {
@@ -175,7 +176,7 @@ impl Actor for MapViewImpl {
 }
 
 
-impl MapViewImpl {
+impl<I: interop::Types> MapViewImpl<I> {
     pub fn addr(&self) -> Addr<Self> {
         self.addr.as_ref().map(|x| x.clone()).unwrap()
     }
@@ -201,10 +202,10 @@ impl MapViewImpl {
         return m;
     }
 
-    pub fn set_style(&mut self, style: style::Style, ctx: &mut Context<MapViewImpl>) {
+    pub fn set_style(&mut self, style: style::Style, ctx: &mut Context<MapViewImpl<I>>) {
         trace!("MapViewImpl: Setting style ..");
         let style = Rc::new(style);
-        self.renderer = Some(render::Renderer::new(&self.facade, style.clone(), self.file_source.clone()));
+        self.renderer = Some(render::Renderer::new(&self.facade, style.clone(), self.file_source.clone().recipient()));
         if let Some(ref sprite) = style.as_ref().sprite {
             let image = storage::Request::SpriteImage(format!("{}", sprite));
             let json = storage::Request::SpriteJson(format!("{}", sprite));
@@ -213,7 +214,7 @@ impl MapViewImpl {
             let img =
                 wrap_future(self.file_source.send(image))
                     .from_err::<Error>()
-                    .map(|res, this: &mut MapViewImpl, ctx| {
+                    .map(|res, this: &mut MapViewImpl<I>, ctx| {
                         trace!("MapViewImpl: Retrieved sprite image .. : {:?}", res);
                         this.renderer.as_mut().unwrap().sprite_png_ready(res.unwrap().data);
                     });
@@ -221,7 +222,7 @@ impl MapViewImpl {
             let js =
                 wrap_future(self.file_source.send(json))
                     .from_err::<Error>()
-                    .map(|res, this: &mut MapViewImpl, ctx| {
+                    .map(|res, this: &mut MapViewImpl<I>, ctx| {
                         trace!("MapViewImpl: Retrieved sprite json .. : {:?}", res);
 
                         let parsed: Result<style::sprite::SpriteAtlas> = res
@@ -241,7 +242,7 @@ impl MapViewImpl {
     }
 
 
-    pub fn set_style_url(&mut self, url: &str, ctx: &mut Context<MapViewImpl>) {
+    pub fn set_style_url(&mut self, url: &str, ctx: &mut Context<MapViewImpl<I>>) {
         trace!("Setting style URL");
         let req = storage::resource::Request::style(url.into());
 
@@ -321,11 +322,25 @@ impl MapViewImpl {
         profiler::end();
     }
 
-    pub fn new_tile(&mut self, tile: tiles::TileData, ctx: &mut Context<MapViewImpl>) {
+    pub fn new_tile(&mut self, tile: tiles::TileData, ctx: &mut Context<MapViewImpl<I>>) {
         if let Some(ref mut r) = self.renderer {
             r.tile_ready(Rc::new(tile));
         }
     }
 }
 
+/*
+trace_macros!(true);
+
 impl_invoke_handler!(MapViewImpl);
+
+*/
+
+impl<I: interop::Types, F, R> Handler<Invoke<MapViewImpl<I>, F, R>> for MapViewImpl<I> where
+    F: FnOnce(&mut MapViewImpl<I>, &mut <MapViewImpl<I> as Actor>::Context)
+        -> R, R: 'static {
+    type Result = Result<R>;
+    fn handle(
+        &mut self, msg: Invoke<MapViewImpl<I>, F, R>, _ctx: &mut Context<
+            Self>) -> Result<R> { Ok((msg.f)(self, _ctx)) }
+}

@@ -9,7 +9,7 @@ opt-level=0
 incremental=true
 
 [dependencies]
-common = { path = "../common" }
+common = { path = "../common", default-features = false }
 geometry = { path = "../libs/geometry"}
 mvt = { path = "../libs/mvt" }
 rmaps_derive = { path = "../libs/rmaps_derive"}

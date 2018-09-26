@@ -1,0 +1,7 @@
+[package]
+name = "rt_dummy"
+version = "0.1.0"
+authors = ["Michal Hornický <semtexzv@gmail.com>"]
+
+[dependencies]
+futures = "0.1"

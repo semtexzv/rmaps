@@ -4,8 +4,13 @@
 
 pub extern crate rmaps;
 pub extern crate common;
+pub extern crate actix_web;
+
+pub extern crate rusqlite;
 
 pub mod prelude;
+pub mod types;
+
 
 use prelude::*;
 
@@ -37,7 +42,7 @@ fn main() {
         .with_dimensions(LogicalSize::new(600., 600.));
 
     let context = glutin::ContextBuilder::new()
-        .with_gl(glutin::GlRequest::Specific(glutin::Api::OpenGl, (4,0)))
+        .with_gl(glutin::GlRequest::Specific(glutin::Api::OpenGl, (4, 0)))
         //.with_gl(glutin::GlRequest::Specific(glutin::Api::OpenGlEs, (3, 0)))
         .with_gl_profile(glutin::GlProfile::Core)
         .with_pixel_format(8, 8)
@@ -48,15 +53,14 @@ fn main() {
     let display = glium::Display::new(window, context, &events_loop).unwrap();
 
 
-    let mut map = rmaps::map::MapView::new(&display.clone());//.unwrap();
+    let mut map = rmaps::map::MapView::<types::DesktopTypes>::new(&display.clone());//.unwrap();
     //map.set_style_url("file://simple.json");
     map.set_style_url("mapbox://styles/semtexzv/cjjjv418k6m0b2rok0oiejd4i");
     // North star
     //map.set_style_url("mapbox://styles/semtexzv/cjm699hdycl2y2snx6os4bo9t");
     // Streets
-   // map.set_style_url("mapbox://styles/semtexzv/cjmdb386z7hm22rmlunomo8w0");
+    // map.set_style_url("mapbox://styles/semtexzv/cjmdb386z7hm22rmlunomo8w0");
     let mut running = true;
-
 
 
     while running {
@@ -113,8 +117,8 @@ fn main() {
                                 map.mouse_scroll(y as _);
                             }
                             glutin::MouseScrollDelta::LineDelta(_x, y) => {
-                                map.mouse_scroll( y as f64 / 16.);;
-
+                                map.mouse_scroll(y as f64 / 16.);
+                                ;
                             }
                         };
                     }

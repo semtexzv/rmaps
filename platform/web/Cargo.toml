@@ -1,0 +1,12 @@
+[package]
+name = "web"
+version = "0.1.0"
+authors = ["Michal Hornický <semtexzv@gmail.com>"]
+
+[build]
+target = "wasm32-unknown-unknown"
+
+[dependencies]
+gl = "*"
+common  = { path = "../../common", default-features = false, features = ["wasm"]}
+rmaps = { path = "../../rmaps" }

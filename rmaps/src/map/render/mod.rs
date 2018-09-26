@@ -34,12 +34,12 @@ use map::{
 
 use self::images::ImageAtlas;
 
-pub struct RendererParams<'a> {
+pub struct RendererParams<'a, I: ::map::interop::Types> {
     pub display: &'a Display,
     pub frame: &'a mut glium::Frame,
     pub camera: &'a Camera,
 
-    pub ctx: &'a mut Context<super::MapViewImpl>,
+    pub ctx: &'a mut Context<super::MapViewImpl<I>>,
 
     pub frame_start: PreciseTime,
 
@@ -98,7 +98,7 @@ pub struct Renderer {
 
 
 impl Renderer {
-    pub fn new(display: &Display, style: Rc<style::Style>, file_source: Addr<::map::storage::DefaultFileSource>) -> Self {
+    pub fn new(display: &Display, style: Rc<style::Style>, file_source: Recipient<::map::storage::Request>) -> Self {
         Renderer {
             display: Box::new(display.clone()),
             layers: layers::parse_style_layers(&display, &style).into_iter().map(|l| {
@@ -125,8 +125,8 @@ impl Renderer {
             l.layer.new_tile(&self.display, &tile).unwrap();
         }
     }
-    pub fn render(&mut self, mut params: RendererParams) -> Result<()> {
-        params.frame.clear_color(0.,0.,0.,1.);
+    pub fn render<I: ::map::interop::Types>(&mut self, mut params: RendererParams<I>) -> Result<()> {
+        params.frame.clear_color(0., 0., 0., 1.);
         params.frame.clear_stencil(0xFF);
 
         let camera = params.camera;
@@ -178,7 +178,7 @@ impl Renderer {
             use self::source::TileError;
 
             let fut = req.from_err::<Error>()
-                .and_then(|res, this: &mut super::MapViewImpl, ctx| {
+                .and_then(|res, this: &mut super::MapViewImpl<I>, ctx| {
                     match res {
                         Ok(data) => {
                             this.new_tile(data, ctx);

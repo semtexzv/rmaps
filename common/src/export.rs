@@ -42,15 +42,12 @@ pub use scoped_tls::*;
 pub use bytes;
 
 pub use actix;
-pub use actix_web;
 
 pub use futures;
-pub use tokio;
 pub use tokio_timer;
 
 pub use url;
 pub use uuid::prelude::*;
-pub use rusqlite;
 
 pub use failure::format_err;
 

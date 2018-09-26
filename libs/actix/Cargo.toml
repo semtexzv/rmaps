@@ -1,0 +1,74 @@
+[package]
+name = "actix"
+version = "0.7.4"
+authors = ["Nikolay Kim <fafhrd91@gmail.com>"]
+description = "Actor framework for Rust"
+readme = "README.md"
+keywords = ["actor", "futures", "actix", "async", "tokio"]
+homepage = "https://actix.rs"
+repository = "https://github.com/actix/actix.git"
+documentation = "https://docs.rs/actix/"
+categories = ["network-programming", "asynchronous"]
+license = "MIT/Apache-2.0"
+exclude = [".gitignore", ".travis.yml", ".cargo/config", "appveyor.yml"]
+
+[badges]
+travis-ci = { repository = "actix/actix", branch = "master" }
+appveyor = { repository = "fafhrd91/actix-n9e64" }
+codecov = { repository = "actix/actix", branch = "master", service = "github" }
+
+[lib]
+name = "actix"
+path = "src/lib.rs"
+
+
+[features]
+default = []
+
+# dns resolver
+resolver = ["trust-dns-resolver"]
+
+# signal handling
+signal = ["tokio-signal"]
+
+runtime-tokio = ["rt_tokio"]
+runtime-dummy = ["rt_dummy"]
+runtime-web = ["rt_wasm"]
+
+[dependencies]
+actix_derive = "0.3"
+
+# io
+bytes = "0.4"
+futures = "0.1"
+tokio-executor = "0.1"
+tokio-current-thread = "0.1"
+tokio-timer = "0.2"
+
+rt_dummy = { path = "./runtimes/rt_dummy", optional = true }
+rt_tokio = { path = "./runtimes/rt_tokio", optional = true }
+rt_wasm = { path = "./runtimes/rt_wasm", optional = true }
+
+# other
+log = "0.4"
+fnv = "1.0.5"
+failure = "0.1.1"
+bitflags = "1.0"
+smallvec = "0.6"
+crossbeam-channel = "0.2"
+parking_lot = "0.6"
+uuid = { version = "0.7", features = ["v4"] }
+
+# signal handling
+tokio-signal = { version = "0.2", optional = true }
+
+# dns resolver
+trust-dns-resolver = { version = "0.9", optional = true }
+
+[target.'cfg(unix)'.dependencies]
+libc = "0.2"
+
+[profile.release]
+lto = true
+opt-level = 3
+codegen-units = 1

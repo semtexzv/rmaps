@@ -48,10 +48,10 @@ pub trait Source: Actor + Handler<TileRequest> {
 
     const STYLE_TYPE: SourceType;
 
-    fn from_style(id: String, style: &Rc<StyleSource>, file_source: Addr<DefaultFileSource>) -> Self;
+    fn from_style(id: String, style: &Rc<StyleSource>, file_source: Recipient<::map::storage::Request>) -> Self;
 }
 
-pub fn parse_sources(style: &::map::style::Style, file_source: Addr<DefaultFileSource>) -> BTreeMap<String, Addr<BaseSource>> {
+pub fn parse_sources(style: &::map::style::Style, file_source: Recipient<::map::storage::Request>) -> BTreeMap<String, Addr<BaseSource>> {
     let mut res = BTreeMap::new();
     for (kk, v) in style.sources.iter() {
         let k: String = kk.clone();
@@ -63,10 +63,14 @@ pub fn parse_sources(style: &::map::style::Style, file_source: Addr<DefaultFileS
     res
 }
 
+use map::storage::{
+    self, Request,
+};
+
 pub struct BaseSource {
     id: String,
     style: StyleSource,
-    file_source: Addr<DefaultFileSource>,
+    file_source: Recipient<storage::Request>,
     worker: Addr<TileDataWorker>,
     downloading: BTreeSet<TileCoords>,
     decoding: BTreeSet<TileCoords>,
@@ -76,7 +80,7 @@ impl Actor for BaseSource {
     type Context = Context<Self>;
     fn started(&mut self, ctx: &mut Self::Context) {
         if let (Some(ref url), None) = (&self.style.url, &self.style.tilejson.tiles.as_ref().and_then(|x| x.first())) {
-            use map::storage::Request;
+
             // Load tilejson
             let req = Request::source(self.id.clone(), url.to_string());
 
@@ -97,7 +101,7 @@ impl Actor for BaseSource {
 }
 
 impl BaseSource {
-    fn new(id: String, style: StyleSource, file_source: Addr<DefaultFileSource>) -> Self {
+    fn new(id: String, style: StyleSource, file_source: Recipient<storage::Request>) -> Self {
         let worker = start_in_thread(|| TileDataWorker::new());
         BaseSource {
             id,
@@ -164,10 +168,9 @@ impl Handler<TileRequest> for BaseSource {
             let fut = wrap_future(self.file_source.send(req));
             self.downloading.insert(t);
             box fut.from_err::<Error>().from_err::<TileError>()
-                .and_then(|res, this : &mut BaseSource, ctx| {
+                .and_then(|res, this: &mut BaseSource, ctx| {
                     this.resource_arrived(res, ctx)
                 })
-
         } else {
             return box err(TileError::LoadingTileset);
         }

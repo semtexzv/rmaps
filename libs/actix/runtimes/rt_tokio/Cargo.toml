@@ -1,0 +1,8 @@
+[package]
+name = "rt_tokio"
+version = "0.1.0"
+authors = ["Michal Hornický <semtexzv@gmail.com>"]
+
+[dependencies]
+futures = "0.1"
+tokio = {version =  "0.1.8"}

@@ -4,7 +4,7 @@ pub mod resource;
 
 pub mod local;
 pub mod network;
-pub mod offline_cache;
+//pub mod offline_cache;
 mod url;
 
 pub use self::resource::*;
@@ -12,6 +12,10 @@ pub use self::resource::*;
 use common::actix::prelude::{ResponseActFuture, ResponseFuture, ActorFuture};
 use common::actix::fut::{
     wrap_future, ok, err, result,
+};
+
+use map::interop::{
+    self, OfflineCache,
 };
 
 #[derive(Debug, Fail)]
@@ -27,31 +31,32 @@ pub enum ResourceError {
 pub type ResourceResult = StdResult<Resource, ResourceError>;
 
 
-pub struct DefaultFileSource {
-    cache: offline_cache::OfflineCache,
+pub struct DefaultFileSource<I: interop::Types> {
+    cache: I::OfflineCacheType,
+    //offline_cache::OfflineCache,
     local: Addr<local::LocalFileSource>,
-    network: Addr<network::NetworkFileSource>,
+    network: Addr<network::NetworkFileSource<I>>,
 }
 
-impl Actor for DefaultFileSource {
-    type Context = Context<DefaultFileSource>;
+impl<I: interop::Types> Actor for DefaultFileSource<I> {
+    type Context = Context<DefaultFileSource<I>>;
 }
 
 
-impl Handler<Request> for DefaultFileSource {
+impl<I: interop::Types> Handler<Request> for DefaultFileSource<I> {
     type Result = ResponseActFuture<Self, Resource, ResourceError>;
 
     fn handle(&mut self, msg: Request, _ctx: &mut Context<Self>) -> Self::Result {
         let url = msg.url().to_string();
         trace!("DefaultFileSource: Requesting {:?}", url);
 
-        /*
+
          if let Ok(Some(res)) = self.cache.get(&msg) {
              trace!("DefaultFileSource: Returning from cache");
 
              return box ok(res);
          }
-         */
+
 
         use common::actix::fut::FutureWrap;
         let sent: FutureWrap<Box<Future<Item=_, Error=_>>, Self> = if url.starts_with("file://") || url.starts_with("local://") {
@@ -85,17 +90,17 @@ impl Handler<Request> for DefaultFileSource {
 }
 
 
-impl DefaultFileSource {
+impl<I: interop::Types> DefaultFileSource<I> {
     pub fn new() -> Self {
         DefaultFileSource {
-            cache: offline_cache::OfflineCache::new("./tile-data/cache.db").unwrap(),
+            cache: I::OfflineCacheType::new().unwrap(),
             local: local::LocalFileSource::spawn(),
             network: network::NetworkFileSource::spawn(),
         }
     }
 
     pub fn spawn() -> Addr<Self> {
-        start_in_thread::<DefaultFileSource, _>(|| DefaultFileSource::new())
+        start_in_thread::<DefaultFileSource<I>, _>(|| DefaultFileSource::new())
     }
 }
 

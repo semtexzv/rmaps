@@ -3,6 +3,8 @@
 
 #![allow(unused_variables, unused_mut, dead_code, non_snake_case, unused_parens, unused_imports)]
 
+pub extern crate http;
+
 #[macro_use]
 pub extern crate glium;
 pub extern crate glium_derive;
@@ -15,7 +17,6 @@ pub extern crate rayon;
 pub extern crate arraydeque;
 
 pub extern crate regex;
-pub extern crate rusqlite;
 
 #[macro_use]
 pub extern crate log;
@@ -39,11 +40,8 @@ pub extern crate scoped_tls;
 
 
 pub extern crate actix;
-pub extern crate actix_web;
-//pub extern crate reqwest;
 
 pub extern crate futures;
-pub extern crate tokio;
 pub extern crate tokio_timer;
 
 pub extern crate url;
