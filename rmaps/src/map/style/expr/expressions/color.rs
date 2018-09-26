@@ -68,25 +68,6 @@ impl<'de> Deserialize<'de> for ColorExpr {
     }
 }
 
-parse! { ColorExpr as expected;
-    "rgb" ,
-    a : BaseExpr as Type::Number,
-    b : BaseExpr as Type::Number ,
-    c : BaseExpr as Type::Number => {
-        Ok(ColorExpr::Rgb(a,b,c))
-    }
-    "rgba" ,
-    a : BaseExpr as Type::Number,
-    b : BaseExpr as Type::Number ,
-    c : BaseExpr as Type::Number,
-    d : BaseExpr as Type::Number => {
-        Ok(ColorExpr::Rgba(a,b,c,d))
-    }
-    "to-rgba",
-    c : BaseExpr as Type::Color => {
-        Ok(ColorExpr::ToRgba(c))
-    }
-}
 
 impl Expression for ColorExpr {
     fn is_zoom(&self) -> bool {

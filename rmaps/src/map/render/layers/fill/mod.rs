@@ -83,6 +83,7 @@ impl layers::BucketLayer for FillLayer {
         let mut evaluator = PropertiesEvaluator::only_zoom(params.zoom);
         self.properties.accept_mut(&self.style_layer, &mut evaluator);
 
+        println!("Props: {:#?}", self.properties);
         Ok(())
     }
 
@@ -90,6 +91,7 @@ impl layers::BucketLayer for FillLayer {
     fn eval_bucket(&mut self, params: &render::EvaluationParams, bucket: &mut Self::Bucket) -> Result<()> {
         let mut evaluator = PropertiesEvaluator::only_zoom(params.zoom);
         bucket.properties.accept_mut(&self.style_layer, &mut evaluator);
+
 
         if evaluator.modified {
             UniformPropertyBinder::rebind(&self.layout.0, &bucket.properties, &self.style_layer, &mut bucket.uniforms)?;

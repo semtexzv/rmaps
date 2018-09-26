@@ -45,17 +45,7 @@ impl<'de> Deserialize<'de> for Str {
         Ok(deserializer.deserialize_seq(Vis)?)
     }
 }
-parse! {Str as eaxpected;
-    "concat", ... rest : Vec<BaseExpr> as Type::String => {
-        Ok(Str::Concat(rest))
-    }
-    "downcase", s : BaseExpr as Type::String => {
-        Ok(Str::Downcase(s))
-    }
-    "upcase", s : BaseExpr as Type::String => {
-        Ok(Str::Upcase(s))
-    }
-}
+
 
 impl Expression for Str {
     fn is_zoom(&self) -> bool {

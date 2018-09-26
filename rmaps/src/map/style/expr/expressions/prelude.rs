@@ -8,7 +8,6 @@ pub use super::super::{
     TYPE,
     eval::*,
     val::*,
-    parse::*,
     util::*,
 };
 

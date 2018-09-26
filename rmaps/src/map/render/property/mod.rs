@@ -64,6 +64,7 @@ pub trait LayerProperties: Default {
     /// Accept a visitor for mutable traversal of these properties
     fn accept_mut<V: PropertiesVisitor>(&mut self, layer: &Self::SourceLayerType, visitor: &mut V);
 }
+
 /// Structs that implement `PaintProperties` contain per feature properties.
 /// Visited properties can be zoom and feature dependent, and must be of a format that is uploadable to
 /// the GPU. So, no String or Enum  PaintProperties
@@ -74,6 +75,7 @@ pub trait PaintProperties: Default {
     /// Accept a visitor for mutable traversal of these properties
     fn accept_mut<V: PropertiesVisitor>(&mut self, layer: &Self::SourceLayerType, visitor: &mut V);
 }
+
 
 /// Visitor that can visit individual properties. It has to have duplicated methods for base properties,
 /// and GPU properties, because generic argument "T" contains type information about how can value be uploaded to the GPU

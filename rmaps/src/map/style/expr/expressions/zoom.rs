@@ -3,11 +3,6 @@ use super::prelude::*;
 #[derive(Debug, Clone, PartialEq)]
 pub struct Zoom {}
 
-parse! {Zoom as expected;
-    "zoom" => {
-       Ok(Zoom{})
-    }
-}
 impl Expression for Zoom {
     fn is_zoom(&self) -> bool {
         true

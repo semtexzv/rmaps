@@ -68,7 +68,6 @@ impl FromStr for MathOp {
     }
 }
 
-derive_parse!(MathOp);
 
 #[derive(Debug, Clone)]
 pub struct Math(MathOp, Vec<Expr>);
@@ -84,18 +83,6 @@ impl<'de> Deserialize<'de> for Math {
         })
     }
 }
-/*
-impl Parse for Math {
-    fn parse(value: json::Value, expected: Type) -> ParseResult<Self> {
-
-        let First(op, rest) = First::parse(value, Type::String).map_err(|_| ParseError::NotThis)?;
-        let mut rest: Vec<json::Value> = json::from_value(rest)?;
-        let rest = rest.into_iter().map(|v| Expr::parse(v, Type::Number)).collect::<ParseResult<_>>()?;
-
-        Ok(Math(op, rest))
-    }
-}
-*/
 
 impl Math {
     fn min_args(&self) -> usize {

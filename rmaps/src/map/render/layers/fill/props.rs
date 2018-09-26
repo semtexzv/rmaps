@@ -23,7 +23,10 @@ pub struct FillLayerProperties {
     pub antialias: Property<bool, True, False>,
     #[property(custom = "get_pattern")]
     pub pattern: Property<Option<String>, False, False>,
-
+    #[property(paint = "translate")]
+    pub translate: Property<[f32; 2]>,
+    #[property(paint = "translate_anchor")]
+    pub translate_anchor: Property<Option<String>>,
 }
 
 

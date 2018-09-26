@@ -152,10 +152,9 @@ impl Value {
 
 use std::convert::{TryInto, TryFrom};
 
-
 macro_rules! impl_converts {
-    ($arm:tt,$($typ:ty) * ) => {
-        $(impl From<$typ> for Value {
+    (@prim $arm:tt,$typ:ty ) => {
+        impl From<$typ> for Value {
             fn from(t: $typ) -> Self {
                 Value::$arm(t as _)
             }
@@ -171,6 +170,8 @@ macro_rules! impl_converts {
                 }
             }
         }
+    };
+    (@opt $arm:tt, $typ:ty ) => {
 
         impl From<Option<$typ>> for Value {
             fn from(t: Option<$typ>) -> Self {
@@ -192,19 +193,49 @@ macro_rules! impl_converts {
                 }
             }
         }
-
-
+    };
+    (@slice $arm:tt, $typ:ty , $len:tt) => {
+        impl From<[$typ;$len]> for Value {
+            fn from(t : [$typ;$len]) -> Self {
+                Value::List(t.into_iter().map(|v| Into::into(v.clone())).collect())
+            }
+        }
+        impl TryFrom<Value> for [$typ;$len] {
+            type Error = Type;
+            fn try_from(v : Value) -> StdResult<Self,Type> {
+                match v {
+                    Value::List(l) => {
+                       let data = l.into_iter().map(|v| TryFrom::try_from(v)).collect::<StdResult<Vec<_>,_>>()?;
+                       if data.len() == $len {
+                           return Ok(make_slice(&data[..]));
+                       }
+                       panic!("Invalid len")
+                    }
+                    x => {
+                        return Err(x.get_type())
+                    }
+                }
+            }
+        }
+    };
+    ($arm:tt; $($typ:ty)* ) => {
+        $(
+        impl_converts!(@prim $arm, $typ);
+        impl_converts!(@opt $arm, $typ);
+        impl_converts!(@slice $arm, $typ, 2);
+        impl_converts!(@slice $arm, $typ, 3);
+        impl_converts!(@slice $arm, $typ, 4);
         )*
     };
 }
 
-impl_converts!(Bool,bool);
-impl_converts!(String,String);
-impl_converts!(Num,f64 f32 i32 i64 u32 u64);
-impl_converts!(Color,Color);
+impl_converts!(Bool; bool);
+impl_converts!(String; String);
+impl_converts!(Num; f64 f32 i32 i64 u32 u64);
+impl_converts!(Color; Color);
 
 impl Value {
-    fn typ(&self) -> Type {
+    pub fn get_type(&self) -> Type {
         return match self {
             Value::Null => Type::Null,
             Value::Bool(_) => Type::Boolean,
@@ -215,23 +246,9 @@ impl Value {
             Value::Object(_) => Type::Object,
         };
     }
-    pub fn get_type(&self) -> Type {
-        return self.typ();
-    }
 }
 
 
-impl Parse for Value {
-    fn parse(value: json::Value, expected: Type) -> ParseResult<Self> {
-        match expected {
-            Type::Color => Ok(Value::Color(json::from_value(value.clone())?)),
-            Type::String => Ok(Value::String(json::from_value(value.clone())?)),
-            _ => {
-                Ok(json::from_value(value.clone())?)
-            }
-        }
-    }
-}
 
 impl Expression for Value {
     fn is_zoom(&self) -> bool {

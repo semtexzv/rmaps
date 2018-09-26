@@ -28,9 +28,6 @@ macro_rules! delegate_to_inner {
 }
 
 
-#[macro_use]
-pub mod parse;
-
 
 pub mod expressions;
 pub mod util;
@@ -38,7 +35,7 @@ pub mod val;
 pub mod eval;
 
 pub use self::{
-    parse::*,
+
     util::*,
     val::*,
     eval::*,

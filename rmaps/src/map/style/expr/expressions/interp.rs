@@ -262,34 +262,6 @@ impl<'de> Deserialize<'de> for Step {
     }
 }
 
-parse! {Step as exp;
-    "step", input : BaseExpr as Type::Number, default : BaseExpr as exp, ... arr : Vec<json::Value> => {
-        let mut iter = arr.into_iter();
-        let mut stops = vec![];
-
-        return 'l: loop {
-            match (iter.next().map(json::from_value), iter.next().map(|v| parse_val_expect(v,exp))) {
-                (Some(Ok(k)), Some(Ok(v))) => {
-                    stops.push(Stop {
-                        val: k,
-                        out: v,
-                    });
-                }
-                (a @ Some(Err(_)), b @ _) | (a @ _, b @ Some(Err(_))) => {
-                    return Err(format_err!("Could not parse step arm : input : {:?}, output : {:?}", a, b).into());
-                }
-                _ => {
-                    break 'l Ok(Step {
-                        input,
-                        default,
-                        stops: stops,
-                    });
-                }
-            }
-        };
-    }
-}
-
 impl Expression for Step {
     fn is_zoom(&self) -> bool {
         self.input.is_zoom() || self.default.is_zoom() || self.stops.iter().any(|a| a.out.is_zoom())
