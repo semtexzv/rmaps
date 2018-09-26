@@ -18,11 +18,11 @@ use map::{
 #[properties(BackgroundLayer)]
 pub struct BackgroundLayerProperties {
     #[property(paint = "color")]
-    color: Property<Color, True, False>,
+    color: Property<Color>,
     #[property(paint = "opacity")]
-    opacity: Property<f32, True, False>,
+    opacity: Property<f32>,
     #[property(paint = "pattern")]
-    pattern: Property<Option<String>, False, False>,
+    pattern: Property<Option<String>>,
 }
 
 use map::style::StyleProp;

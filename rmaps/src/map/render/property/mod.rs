@@ -34,12 +34,11 @@ impl<T: Propertable + Attribute + AsUniformValue> GpuPropertable for T {}
 
 #[repr(C)]
 #[derive(Debug, Clone, Default)]
-pub struct Property<T: Propertable, Z: Bool = True, F: Bool = True> {
+pub struct Property<T: Propertable> {
     val: Option<T>,
-    _p: (PhantomData<*const Z>, PhantomData<*const F>),
 }
 
-impl<T: Propertable, Z: Bool, F: Bool> Property<T, Z, F> {
+impl<T: Propertable> Property<T> {
     pub fn get(&self) -> T {
         self.val.clone().unwrap()
     }
@@ -80,11 +79,19 @@ pub trait PaintProperties: Default {
 /// Visitor that can visit individual properties. It has to have duplicated methods for base properties,
 /// and GPU properties, because generic argument "T" contains type information about how can value be uploaded to the GPU
 pub trait PropertiesVisitor {
-    fn visit_base<T: Propertable, Z: Bool, F: Bool>(&mut self, v: &Property<T, Z, F>, name: &str, style: &StyleProp<T>) {}
-    fn visit_gpu<T: GpuPropertable, Z: Bool, F: Bool>(&mut self, v: &Property<T, Z, F>, name: &str, style: &StyleProp<T>) {}
+    fn visit_layer<T: Propertable>(&mut self, v: &Property<T>, name: &str, style: &StyleProp<T>) {
+        panic!("This visitor should not be used on LayerProperties")
+    }
+    fn visit_paint<T: GpuPropertable>(&mut self, v: &Property<T>, name: &str, style: &StyleProp<T>) {
+        panic!("This visitor should not be used on PaintProperties")
+    }
 
-    fn visit_base_mut<T: Propertable, Z: Bool, F: Bool>(&mut self, v: &mut Property<T, Z, F>, name: &str, style: &StyleProp<T>) {}
-    fn visit_gpu_mut<T: GpuPropertable, Z: Bool, F: Bool>(&mut self, v: &mut Property<T, Z, F>, name: &str, style: &StyleProp<T>) {}
+    fn visit_layer_mut<T: Propertable>(&mut self, v: &mut Property<T>, name: &str, style: &StyleProp<T>) {
+        panic!("This visitor should not be used on LayerProperties")
+    }
+    fn visit_paint_mut<T: GpuPropertable>(&mut self, v: &mut Property<T>, name: &str, style: &StyleProp<T>) {
+        panic!("This visitor should not be used on PaintProperties")
+    }
 }
 
 use map::render::shaders::{
@@ -137,23 +144,6 @@ impl FeaturePropertyData {
         unsafe {
             *(&mut map.feature_data[pos] as &mut _ as *mut _ as *mut A) = v;
         }
-        /*
-        #[repr(C)]
-        struct helper<A: Sized> {
-            first: A,
-            pad: [f32; 4],
-        }
-        unsafe {
-            let data = helper {
-                first: v,
-                pad: [0.; 4],
-            };
-            let ptr = &data as *const helper<A> as *const f32;
-            let slice = ptr as *const [f32; 4];
-
-            map.feature_data[pos] = (*slice);
-        };
-        */
     }
 }
 
@@ -232,10 +222,9 @@ fn fixup<T: AsUniformValue>(t: T) -> UniformValue<'static> {
 
 
 impl<'a> PropertiesVisitor for UniformPropertyBinder<'a> {
-    fn visit_gpu<T: GpuPropertable, Z: Bool, F: Bool>(&mut self, v: &Property<T, Z, F>, name: &str, style: &StyleProp<T>) {
-        let x = v.get();
-        let val = fixup(x);
+    fn visit_paint<T: GpuPropertable>(&mut self, v: &Property<T>, name: &str, style: &StyleProp<T>) {
         if self.layout.is_uniform(name) {
+            let val = fixup(v.get());
             self.data.push(::map::render::shaders::ShaderProcessor::uniform_name(name), val);
         }
     }
@@ -247,7 +236,6 @@ pub struct FeaturePropertyBinder<'a> {
     map: glium::buffer::Mapping<'a, FeatureDataUbo>,
     start_size: usize,
     pos: usize,
-    push: bool,
 }
 
 impl<'a> FeaturePropertyBinder<'a> {
@@ -257,7 +245,6 @@ impl<'a> FeaturePropertyBinder<'a> {
             start_size: data.position,
             pos: data.position,
             map: data.map_write(),
-            push: false,
         }
     }
 
@@ -278,11 +265,12 @@ impl<'a> FeaturePropertyBinder<'a> {
 }
 
 impl<'a> PropertiesVisitor for FeaturePropertyBinder<'a> {
-    fn visit_gpu<T: GpuPropertable, Z: Bool, F: Bool>(&mut self, v: &Property<T, Z, F>, name: &str, style: &StyleProp<T>) {
+
+
+    fn visit_paint<T: GpuPropertable>(&mut self, v: &Property<T>, name: &str, style: &StyleProp<T>) {
         if self.layout.is_feature(name) {
             FeaturePropertyData::push_into(&mut self.map, v.get(), self.pos);
             self.pos += 1;
-            self.push = false;
         }
     }
 }

@@ -42,6 +42,7 @@ fn main() {
         .with_gl_profile(glutin::GlProfile::Core)
         .with_pixel_format(8, 8)
         .with_stencil_buffer(8)
+        .with_srgb(true)
         .with_vsync(true);
 
     let display = glium::Display::new(window, context, &events_loop).unwrap();

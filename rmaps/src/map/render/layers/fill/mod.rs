@@ -83,7 +83,7 @@ impl layers::BucketLayer for FillLayer {
         let mut evaluator = PropertiesEvaluator::only_zoom(params.zoom);
         self.properties.accept_mut(&self.style_layer, &mut evaluator);
 
-        println!("Props: {:#?}", self.properties);
+        //println!("Props: {:#?}", self.properties);
         Ok(())
     }
 

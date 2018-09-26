@@ -9,6 +9,16 @@ pub struct EvaluationContext<'a> {
     pub bindings: RefCell<BTreeMap<String, Expr>>,
 }
 
+impl<'a> EvaluationContext<'a> {
+    pub fn new(zoom: Option<f32>, ftr: Option<&'a ::mvt::Feature>) -> Self {
+        EvaluationContext {
+            zoom,
+            feature_data: ftr,
+            bindings: RefCell::new(BTreeMap::new()),
+        }
+    }
+}
+
 #[derive(Debug)]
 pub enum EvalError {
     InvalidType {

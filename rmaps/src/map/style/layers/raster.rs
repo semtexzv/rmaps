@@ -5,7 +5,6 @@ use super::{
     BaseLayout,
     Visibility,
     StyleLayer,
-    StyleLayerExt,
     StyleProp,
 };
 

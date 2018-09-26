@@ -4,7 +4,6 @@ use map::render;
 use super::{
     LayerCommon,
     StyleLayer,
-    StyleLayerExt,
     BaseLayout,
     Visibility,
     StyleProp,

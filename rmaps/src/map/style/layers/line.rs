@@ -1,16 +1,13 @@
 use prelude::*;
 
-
 use super::{
     LayerCommon,
     BaseLayout,
     Visibility,
     StyleLayer,
-    StyleLayerExt,
     StyleProp,
     defaults::*,
 };
-
 
 #[derive(Deserialize, Debug, Clone)]
 pub struct LineLayer {
@@ -65,12 +62,10 @@ pub struct LinePaint {
     #[serde(default = "default_line_width")]
     pub width: StyleProp<f32>,
 
-
     #[serde(rename = "line-gap_width")]
     #[serde(default = "default_gap_width")]
     pub gap_width: StyleProp<f32>,
 
-    /*
     #[serde(rename = "line-offset")]
     pub offset: Option<StyleProp<f32>>,
 
@@ -82,18 +77,22 @@ pub struct LinePaint {
 
     #[serde(rename = "line-pattern")]
     pub pattern: Option<StyleProp<String>>,
-    */
+
 }
 
 impl Default for LinePaint {
     fn default() -> Self {
         LinePaint {
-            opacity : default_opacity(),
-            color : default_color(),
-            translate : default_translate(),
-            translate_anchor : None,
-            width : default_line_width(),
-            gap_width : default_gap_width(),
+            opacity: default_opacity(),
+            color: default_color(),
+            translate: default_translate(),
+            translate_anchor: None,
+            width: default_line_width(),
+            gap_width: default_gap_width(),
+            offset: None,
+            blur: None,
+            dash_array: None,
+            pattern: None,
         }
     }
 }

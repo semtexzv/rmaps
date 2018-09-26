@@ -38,18 +38,12 @@ impl PropertyLayoutBuilder {
 }
 
 impl PropertiesVisitor for PropertyLayoutBuilder {
+    fn visit_layer<T: Propertable>(&mut self, v: &Property<T>, name: &str, style: &StyleProp<T>) {
+        panic!("PropertylayoutBuilder should not be used on LayerProperties")
+    }
+
     #[inline(always)]
-    fn visit_gpu<T: GpuPropertable, Z: Bool, F: Bool>(&mut self, v: &Property<T, Z, F>, name: &str, style: &StyleProp<T>) {
-        let can_zoom = Z::VALUE;
-        let can_feature = F::VALUE;
-
-        if !can_zoom && style.is_zoom() {
-            panic!("Style not supported, `{}` can't be a zoom property", name);
-        }
-
-        if !can_feature && style.is_feature() {
-            panic!("Style not supported, `{}` can't be a feature property", name);
-        }
+    fn visit_paint<T: GpuPropertable>(&mut self, v: &Property<T>, name: &str, style: &StyleProp<T>) {
         if style.is_feature() {
             self.features.push(name, T::get_type());
         } else {

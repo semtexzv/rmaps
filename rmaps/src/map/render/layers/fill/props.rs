@@ -20,9 +20,9 @@ fn get_pattern(style: &::map::style::FillLayer) -> StyleProp<Option<String>> {
 #[properties(FillLayer)]
 pub struct FillLayerProperties {
     #[property(paint = "antialias")]
-    pub antialias: Property<bool, True, False>,
+    pub antialias: Property<bool>,
     #[property(custom = "get_pattern")]
-    pub pattern: Property<Option<String>, False, False>,
+    pub pattern: Property<Option<String>>,
     #[property(paint = "translate")]
     pub translate: Property<[f32; 2]>,
     #[property(paint = "translate_anchor")]

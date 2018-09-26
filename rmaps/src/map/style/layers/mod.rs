@@ -14,8 +14,10 @@ pub use self::raster::*;
 pub use self::symbol::*;
 
 use super::filter::Filter;
+
 pub mod defaults {
     use super::*;
+
     pub fn default_antialias() -> StyleProp<bool> {
         true.into()
     }
@@ -37,6 +39,7 @@ pub mod defaults {
     }
 
     pub fn default_line_width() -> StyleProp<f32> { 1.0.into() }
+
     pub fn default_gap_width() -> StyleProp<f32> { 0.0.into() }
 }
 
@@ -99,14 +102,6 @@ pub trait StyleLayer {
     fn get_layout(&self) -> &Self::LayoutType;
 }
 
-pub trait StyleLayerExt: StyleLayer + Sized {
-    type RenderLayer: ::map::render::layers::LayerNew<StyleLayer=Self>;
-    fn create(&self, disp: &Display) -> Self::RenderLayer {
-        use map::render::layers::LayerNew;
-        Self::RenderLayer::new(disp, self)
-    }
-}
-
 use super::expr::{
     DescribeType,
     TypedExpr,
@@ -121,8 +116,9 @@ pub enum StyleProp<T: DescribeType + Debug> {
     Expr(TypedExpr<T>),
 }
 
-impl<T: DescribeType + Debug> From<Option<StyleProp<T>>> for StyleProp<Option<T>>
-    where Option<T>: DescribeType
+impl<T> From<Option<StyleProp<T>>> for StyleProp<Option<T>>
+    where T: DescribeType,
+          Option<T>: DescribeType
 {
     fn from(v: Option<StyleProp<T>>) -> Self {
         match v {
@@ -135,19 +131,17 @@ impl<T: DescribeType + Debug> From<Option<StyleProp<T>>> for StyleProp<Option<T>
 
 impl<T: DescribeType + Debug> StyleProp<T> {
     pub fn is_zoom(&self) -> bool {
-        return if let StyleProp::Expr(e) = self {
-            e.is_zoom()
-        } else {
-            false
-        };
+        match self {
+            StyleProp::Expr(e) => e.is_zoom(),
+            _ => false
+        }
     }
 
     pub fn is_feature(&self) -> bool {
-        return if let StyleProp::Expr(e) = self {
-            e.is_feature()
-        } else {
-            false
-        };
+        match self {
+            StyleProp::Expr(e) => e.is_feature(),
+            _ => false
+        }
     }
 }
 

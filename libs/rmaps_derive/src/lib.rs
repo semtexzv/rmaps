@@ -187,9 +187,9 @@ fn impl_layer_properties(ast: &DeriveInput, is_paint: bool) -> TokenStream {
 
         let prop_name_str = prop_name.to_string();
         let method = if is_paint {
-            quote!(visit_gpu)
+            quote!(visit_paint)
         } else {
-            quote!(visit_base)
+            quote!(visit_layer)
         };
 
         quote!(visitor.#method(& self.#name,#prop_name_str,&#property_retrieval);)
@@ -218,9 +218,9 @@ fn impl_layer_properties(ast: &DeriveInput, is_paint: bool) -> TokenStream {
         let prop_name_str = prop_name.to_string();
 
         let method = if is_paint {
-            quote!(visit_gpu_mut)
+            quote!(visit_paint_mut)
         } else {
-            quote!(visit_base_mut)
+            quote!(visit_layer_mut)
         };
 
         quote!(visitor.#method(&mut self.#name,#prop_name_str,&#property_retrieval);)

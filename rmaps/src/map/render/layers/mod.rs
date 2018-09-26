@@ -148,6 +148,7 @@ impl<L: BucketLayer> Layer for BucketLayerHolder<L> {
     }
 
     fn prepare(&mut self, mut params: render::PrepareParams) -> Result<()> {
+
         let (next, missing) = self.get_renderable_tiles(&params.cover);
         self.tiles = next;
         if let Some(name) = self.layer.source_name() {

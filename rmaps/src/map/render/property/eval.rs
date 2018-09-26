@@ -19,12 +19,12 @@ impl<'a, 'b : 'a> From<&'b EvaluationParams> for PropertiesEvaluator<'a> {
 }
 
 impl<'a> PropertiesVisitor for PropertiesEvaluator<'a> {
-    fn visit_base_mut<T: Propertable, Z: Bool, F: Bool>(&mut self, v: &mut Property<T, Z, F>, name: &str, style: &StyleProp<T>) {
-        self.modified |= self.evaluate(v, style).unwrap();
+    fn visit_layer_mut<T: Propertable>(&mut self, v: &mut Property<T>, name: &str, style: &StyleProp<T>) {
+        self.modified |= self.evaluate(v, false, style).unwrap();
     }
 
-    fn visit_gpu_mut<T: GpuPropertable, Z: Bool, F: Bool>(&mut self, v: &mut Property<T, Z, F>, name: &str, style: &StyleProp<T>) {
-        self.modified |= self.evaluate(v, style).unwrap();
+    fn visit_paint_mut<T: GpuPropertable>(&mut self, v: &mut Property<T>, name: &str, style: &StyleProp<T>) {
+        self.modified |= self.evaluate(v, true, style).unwrap();
     }
 }
 
@@ -44,35 +44,35 @@ impl<'a> PropertiesEvaluator<'a> {
             modified: false,
         };
     }
+
+    /*
     pub fn with_feature(mut self, feature: &'a ::mvt::Feature) -> Self {
         self.feature = Some(feature);
         self
     }
-    pub fn evaluate<T: Propertable, Z: Bool, F: Bool>(&self, prop: &mut Property<T, Z, F>, expr: &::map::style::StyleProp<T>) -> Result<bool> {
-        let mut zoom_allowed = Z::VALUE;
-        let mut feature_allowed = F::VALUE;
+    */
 
+    pub fn evaluate<T: Propertable>(&self, prop: &mut Property<T>, can_be_data_driven: bool, expr: &::map::style::StyleProp<T>) -> Result<bool> {
         match expr {
             ::map::style::StyleProp::Value(v) => {
                 return Ok(prop.set(v.clone()));
             }
             ::map::style::StyleProp::Expr(e) => {
-                let ctx = ::map::style::expr::EvaluationContext {
-                    zoom: self.zoom,
-                    feature_data: self.feature,
-                    bindings: ::std::cell::RefCell::new(BTreeMap::new()),
-                };
-
-                if e.is_zoom() && !zoom_allowed {
-                    bail!("Zoom expression not allowed for expression : {:?}", e);
-                } else if e.is_feature() && !feature_allowed {
-                    bail!("Feature expression not allowed for expression : {:?}", e)
-                }
-
-                if e.is_feature() && ctx.feature_data.is_none() {
+                // Do not evaluate per-feature expression in per-bucket properties
+                // and per-bucket expression in per-feature properties.
+                if e.is_feature() != self.feature.is_some() {
                     return Ok(false);
                 }
+                if e.is_feature() && !can_be_data_driven {
+                    bail!("Data driven expression not allowed : {:?}", e)
+                }
 
+                if e.is_zoom() && self.zoom.is_none() {
+                    bail!("Zoom driven expression not suported : {:?}", e)
+                }
+
+
+                let ctx = ::map::style::expr::EvaluationContext::new(self.zoom,self.feature);
                 let res = e.eval(&ctx).unwrap();
                 return Ok(prop.set(T::try_from(res).unwrap()));
             }

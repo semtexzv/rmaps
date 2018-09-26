@@ -89,7 +89,7 @@ impl layers::BucketLayer for LineLayer {
         let features = &mut bucket.features;
         FeaturePropertyBinder::with(&self.layout.1, &mut bucket.feature_data, |binder| {
             for (id, data) in features.iter_mut() {
-                let mut evaluator = PropertiesEvaluator::only_zoom(params.zoom).with_feature(&data.feature);
+                let mut evaluator = PropertiesEvaluator::new(params.zoom,&data.feature);
                 data.props.accept_mut(&self.style_layer, &mut evaluator);
 
                 data.props.accept(&self.style_layer, binder);
