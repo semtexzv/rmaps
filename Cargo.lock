@@ -129,6 +129,24 @@ dependencies = [
 ]
 
 [[package]]
+name = "alloc"
+version = "0.0.0"
+dependencies = [
+ "compiler_builtins 0.0.0",
+ "core 0.0.0",
+]
+
+[[package]]
+name = "alloc_system"
+version = "0.0.0"
+dependencies = [
+ "compiler_builtins 0.0.0",
+ "core 0.0.0",
+ "dlmalloc 0.0.0",
+ "libc 0.0.0",
+]
+
+[[package]]
 name = "android"
 version = "0.1.0"
 dependencies = [
@@ -281,6 +299,10 @@ dependencies = [
 ]
 
 [[package]]
+name = "build_helper"
+version = "0.1.0"
+
+[[package]]
 name = "byteorder"
 version = "1.2.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -374,6 +396,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "cmake"
+version = "0.1.34"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+dependencies = [
+ "cc 1.0.25 (registry+https://github.com/rust-lang/crates.io-index)",
+]
+
+[[package]]
 name = "cocoa"
 version = "0.15.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -434,6 +464,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "compiler_builtins"
+version = "0.0.0"
+dependencies = [
+ "cc 1.0.25 (registry+https://github.com/rust-lang/crates.io-index)",
+ "core 0.0.0",
+]
+
+[[package]]
 name = "cookie"
 version = "0.11.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -441,6 +479,10 @@ dependencies = [
  "time 0.1.40 (registry+https://github.com/rust-lang/crates.io-index)",
  "url 1.7.1 (registry+https://github.com/rust-lang/crates.io-index)",
 ]
+
+[[package]]
+name = "core"
+version = "0.0.0"
 
 [[package]]
 name = "core-foundation"
@@ -625,6 +667,14 @@ version = "0.4.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 dependencies = [
  "libloading 0.5.0 (registry+https://github.com/rust-lang/crates.io-index)",
+]
+
+[[package]]
+name = "dlmalloc"
+version = "0.0.0"
+dependencies = [
+ "compiler_builtins 0.0.0",
+ "core 0.0.0",
 ]
 
 [[package]]
@@ -1112,6 +1162,14 @@ dependencies = [
 
 [[package]]
 name = "libc"
+version = "0.0.0"
+dependencies = [
+ "compiler_builtins 0.0.0",
+ "core 0.0.0",
+]
+
+[[package]]
+name = "libc"
 version = "0.2.43"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 
@@ -1506,6 +1564,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "panic_abort"
+version = "0.0.0"
+dependencies = [
+ "compiler_builtins 0.0.0",
+ "core 0.0.0",
+ "libc 0.0.0",
+]
+
+[[package]]
 name = "parking_lot"
 version = "0.6.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1795,6 +1862,54 @@ version = "0.1.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 
 [[package]]
+name = "rustc_asan"
+version = "0.0.0"
+dependencies = [
+ "alloc 0.0.0",
+ "alloc_system 0.0.0",
+ "build_helper 0.1.0",
+ "cmake 0.1.34 (registry+https://github.com/rust-lang/crates.io-index)",
+ "compiler_builtins 0.0.0",
+ "core 0.0.0",
+]
+
+[[package]]
+name = "rustc_lsan"
+version = "0.0.0"
+dependencies = [
+ "alloc 0.0.0",
+ "alloc_system 0.0.0",
+ "build_helper 0.1.0",
+ "cmake 0.1.34 (registry+https://github.com/rust-lang/crates.io-index)",
+ "compiler_builtins 0.0.0",
+ "core 0.0.0",
+]
+
+[[package]]
+name = "rustc_msan"
+version = "0.0.0"
+dependencies = [
+ "alloc 0.0.0",
+ "alloc_system 0.0.0",
+ "build_helper 0.1.0",
+ "cmake 0.1.34 (registry+https://github.com/rust-lang/crates.io-index)",
+ "compiler_builtins 0.0.0",
+ "core 0.0.0",
+]
+
+[[package]]
+name = "rustc_tsan"
+version = "0.0.0"
+dependencies = [
+ "alloc 0.0.0",
+ "alloc_system 0.0.0",
+ "build_helper 0.1.0",
+ "cmake 0.1.34 (registry+https://github.com/rust-lang/crates.io-index)",
+ "compiler_builtins 0.0.0",
+ "core 0.0.0",
+]
+
+[[package]]
 name = "rustc_version"
 version = "0.2.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1969,6 +2084,25 @@ dependencies = [
 name = "stable_deref_trait"
 version = "1.1.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
+
+[[package]]
+name = "std"
+version = "0.0.0"
+dependencies = [
+ "alloc 0.0.0",
+ "alloc_system 0.0.0",
+ "build_helper 0.1.0",
+ "cc 1.0.25 (registry+https://github.com/rust-lang/crates.io-index)",
+ "compiler_builtins 0.0.0",
+ "core 0.0.0",
+ "libc 0.0.0",
+ "panic_abort 0.0.0",
+ "rustc_asan 0.0.0",
+ "rustc_lsan 0.0.0",
+ "rustc_msan 0.0.0",
+ "rustc_tsan 0.0.0",
+ "unwind 0.0.0",
+]
 
 [[package]]
 name = "stdweb"
@@ -2411,6 +2545,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "unwind"
+version = "0.0.0"
+dependencies = [
+ "compiler_builtins 0.0.0",
+ "core 0.0.0",
+ "libc 0.0.0",
+]
+
+[[package]]
 name = "url"
 version = "1.7.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2520,6 +2663,8 @@ dependencies = [
  "common 0.1.0",
  "gl 0.10.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "rmaps 0.1.0",
+ "std 0.0.0",
+ "stdweb 0.4.9 (registry+https://github.com/rust-lang/crates.io-index)",
 ]
 
 [[package]]
@@ -2685,6 +2830,7 @@ dependencies = [
 "checksum clang-sys 0.23.0 (registry+https://github.com/rust-lang/crates.io-index)" = "d7f7c04e52c35222fffcc3a115b5daf5f7e2bfb71c13c4e2321afe1fc71859c2"
 "checksum clap 2.32.0 (registry+https://github.com/rust-lang/crates.io-index)" = "b957d88f4b6a63b9d70d5f454ac8011819c6efa7727858f458ab71c756ce2d3e"
 "checksum cloudabi 0.0.3 (registry+https://github.com/rust-lang/crates.io-index)" = "ddfc5b9aa5d4507acaf872de71051dfd0e309860e88966e1051e462a077aac4f"
+"checksum cmake 0.1.34 (registry+https://github.com/rust-lang/crates.io-index)" = "848b314ea70f48f0e13828c5554e34200952ce5720d6d3aa466b4d983af6c70e"
 "checksum cocoa 0.15.0 (registry+https://github.com/rust-lang/crates.io-index)" = "7b44bd25bd275e9d74a5dff8ca55f2fb66c9ad5e12170d58697701df21a56e0e"
 "checksum color_quant 1.0.1 (registry+https://github.com/rust-lang/crates.io-index)" = "0dbbb57365263e881e805dc77d94697c9118fd94d8da011240555aa7b23445bd"
 "checksum colored 1.6.1 (registry+https://github.com/rust-lang/crates.io-index)" = "dc0a60679001b62fb628c4da80e574b9645ab4646056d7c9018885efffe45533"

@@ -7,6 +7,8 @@ authors = ["Michal Hornický <semtexzv@gmail.com>"]
 target = "wasm32-unknown-unknown"
 
 [dependencies]
+std = { path = "/home/semtexzv/rust/src/libstd"}
+stdweb = "*"
 gl = "*"
 common  = { path = "../../common", default-features = false, features = ["wasm"]}
 rmaps = { path = "../../rmaps" }

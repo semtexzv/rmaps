@@ -2,6 +2,8 @@
 #![feature(nll)]
 #![feature(unboxed_closures)]
 
+extern crate stdweb;
+
 pub extern crate rmaps;
 pub extern crate common;
 
@@ -32,6 +34,8 @@ use glium::glutin::{
 
 
 fn main() {
+    stdweb::initialize();
+
     common::init_log();
 
     let mut events_loop = glutin::EventsLoop::new();
