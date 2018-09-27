@@ -16,7 +16,7 @@ use common::http::{
     },
 };
 
-use map::interop::HttpClient;
+use map::hal::HttpClient;
 
 /*
 use common::actix_web::{
@@ -39,91 +39,50 @@ use common::actix::fut::{
     WrapFuture,
 };
 
-use common::futures::future::*;
-
-pub struct NetworkFileSource<I: interop::Types> {
+pub struct NetworkFileSource<I: hal::Platform> {
     client: I::HttpClientType
 }
 
-impl<I: interop::Types> Actor for NetworkFileSource<I> {
+impl<I: hal::Platform> Actor for NetworkFileSource<I> {
     type Context = Context<Self>;
 }
 
 
-impl<I: interop::Types> Handler<Request> for NetworkFileSource<I> {
+impl<I: hal::Platform> Handler<Request> for NetworkFileSource<I> {
     type Result = ResponseActFuture<Self, Resource, ResourceError>;
 
     fn handle(&mut self, msg: Request, _ctx: &mut Context<Self>) -> Self::Result {
-        println!("NetworkFileSource : requesting {:?}", msg.url());
-        return unimplemented!();
-        /*
-        fn get<I: interop::Types>(url: &str, msg: Request, allowed_redirect_count: usize) -> Box<dyn Future<Item=Resource, Error=ResourceError>> {
-            let request = http::Request::get(url).body(()).unwrap();
-            let resp_fut = I::HttpClientType::new().execute(request);
+        use map::hal::HttpClient;
+
+        fn get<I: hal::Platform>(url: &str, msg: Request, allowed_redirect_count: usize) -> BoxFuture<Resource, ResourceError> {
+            let request = http::Request::get(url).body(bytes::Bytes::new()).unwrap();
+            let resp_fut = I::HttpClientType::new().unwrap().execute(request);
+            box resp_fut.then(move |res: StdResult<_, _>| {
+                let response = res.unwrap();
+                if response.status().is_success() {
+                    let data = response.body();
+                    return Ok(super::Resource {
+                        req: msg.clone(),
+                        cache_until: u64::max_value(),
+                        data: data.to_vec(),
+                    });
+                }
+                return Err(ResourceError::NotFound);
+            })
         }
 
-        let request: Box<dyn Future<Item=_, Error=ResourceError>> = Box::new(client::get(url)
-            .timeout(::std::time::Duration::from_secs(15))
-            .finish().unwrap()
-            .send()
-            .timeout(::std::time::Duration::from_secs(15))
-            .map_err(|e| ResourceError::Other(e.into())));
-
-        let parse_response = move |response: ClientResponse| -> Box<dyn Future<Item=Resource, Error=ResourceError>> {
-            if response.status().is_redirection() {
-                if let Some(location) = response.headers().get("Location") {
-                    if allowed_redirect_count > 0 {
-                        return get(location.to_str().unwrap(), msg, allowed_redirect_count - 1);
-                    }
-                    panic!("Too many redirects")
-                }
-            }
-
-            if response.status().is_success() {
-                return box response.body()
-                    .limit(1024 * 1024 * 32)
-                    .then(move |body| {
-                        match body {
-                            Ok(data) => {
-                                return Ok(super::Resource {
-                                    req: msg.clone(),
-                                    cache_until: u64::max_value(),
-                                    data: data.to_vec(),
-                                });
-                            }
-                            Err(e) => {
-                                return Err(ResourceError::Other(e.into()));
-                            }
-                        };
-                    });
-            } else if response.status().is_client_error() {
-                return box err(ResourceError::NotFound);
-            }
-
-            return box err(ResourceError::NotFound);
-        };
-
-        let next_action: Box<dyn Future<Item=_, Error=ResourceError>> = box request
-            .map_err(|e| ResourceError::Other(e.into()))
-            .and_then(parse_response);
-
-
-        return next_action;
-    }
-
-        let fut = get::<I>(&msg.url(), msg, 3);
+        let mut fut =  get::<I>(&msg.url(), msg, 3);
         return box WrapFuture::into_actor(fut, self);
-    */
     }
 }
 
-impl<I: interop::Types> NetworkFileSource<I> {
+impl<I: hal::Platform> NetworkFileSource<I> {
     pub fn new() -> Self {
         return NetworkFileSource {
             client: I::HttpClientType::new().unwrap()
         };
     }
     pub fn spawn() -> Addr<Self> {
-        start_in_thread(|| NetworkFileSource::new())
+        I::spawn_actor(|| NetworkFileSource::new())
     }
 }

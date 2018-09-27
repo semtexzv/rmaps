@@ -26,7 +26,7 @@ path = "src/lib.rs"
 default = []
 
 # dns resolver
-resolver = ["trust-dns-resolver"]
+resolver = ["trust-dns-resolver", "tokio-tcp"]
 
 # signal handling
 signal = ["tokio-signal"]
@@ -44,6 +44,8 @@ futures = "0.1"
 tokio-executor = "0.1"
 tokio-current-thread = "0.1"
 tokio-timer = "0.2"
+
+tokio-tcp = {version = "0.1", optional = true}
 
 rt_dummy = { path = "./runtimes/rt_dummy", optional = true }
 rt_tokio = { path = "./runtimes/rt_tokio", optional = true }

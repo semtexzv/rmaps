@@ -47,7 +47,7 @@ pub use futures;
 pub use tokio_timer;
 
 pub use url;
-pub use uuid::prelude::*;
+pub use uuid::prelude::Uuid;
 
 pub use failure::format_err;
 

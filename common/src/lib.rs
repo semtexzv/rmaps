@@ -3,6 +3,7 @@
 
 #![allow(unused_variables, unused_mut, dead_code, non_snake_case, unused_parens, unused_imports)]
 
+pub extern crate bytes;
 pub extern crate http;
 
 #[macro_use]
@@ -25,7 +26,6 @@ extern crate fern;
 pub extern crate chrono;
 pub extern crate time;
 
-pub extern crate bytes;
 
 
 pub extern crate failure;

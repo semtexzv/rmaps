@@ -47,6 +47,9 @@ extern crate tokio_executor;
 extern crate tokio_current_thread;
 extern crate tokio_timer;
 
+#[cfg(feature = "resolver")]
+extern crate tokio_tcp;
+
 #[cfg(all(feature = "runtime-dummy"))]
 extern crate rt_dummy as runtime;
 

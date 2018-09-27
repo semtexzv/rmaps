@@ -1,0 +1,18 @@
+[package]
+name = "tess2-sys"
+version = "0.0.1"
+authors = ["Michal Hornický <semtexzv@gmail.com>"]
+
+description = "FFI definitions and build script for libtess2"
+license = "Apache-2.0"
+keywords = ["FFI","Polygon","Triangulation"]
+
+repository = "https://github.com/semtexzv/tess2-sys"
+homepage = "https://github.com/semtexzv/tess2-sys"
+
+build = "build.rs"
+
+[dependencies]
+
+[build-dependencies]
+gcc = "*"

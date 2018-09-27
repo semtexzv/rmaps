@@ -10,7 +10,10 @@ wasm = ["actix/runtime-web"]
 desktop = ["actix/runtime-tokio"]
 
 [dependencies]
+
 http = "*"
+bytes = "*"
+
 glium = { git  = "https://github.com/semtexzv/glium", branch= "tmp-working"  }
 glium_derive = { git  = "https://github.com/semtexzv/glium_derive" }
 arraydeque = "0.4.2"
@@ -24,7 +27,6 @@ fern = { version = "*", features = ["colored"] }
 time = "*"
 chrono = "*"
 regex = "*"
-bytes = "*"
 
 cgmath = { version ="*", features = ["swizzle"] }
 failure = "*"

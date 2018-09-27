@@ -9,7 +9,7 @@ pub mod storage;
 pub mod tiles;
 
 pub mod util;
-pub mod interop;
+pub mod hal;
 
 use std::ptr;
 use std::sync::mpsc::{channel, Sender, Receiver};
@@ -17,7 +17,7 @@ use common::actix::fut::*;
 
 use self::util::profiler;
 
-pub struct MapView<I: interop::Types> {
+pub struct MapView<I: hal::Platform> {
     addr: *mut MapViewImpl<I>,
     sys: SystemRunner,
 }
@@ -29,7 +29,7 @@ fn pulse(sys: &mut SystemRunner) {
 }
 
 
-impl<I: interop::Types> MapView<I> {
+impl<I: hal::Platform> MapView<I> {
     /// Initialization
     pub fn new(f: &Display) -> Self {
         let mut sys = System::new("Map");
@@ -118,7 +118,7 @@ pub struct InputStatus {
 }
 
 
-impl<'a, I: interop::Types> InputHandler for MapViewImpl<I> {
+impl<'a, I: hal::Platform> InputHandler for MapViewImpl<I> {
     fn has_captured(&mut self) -> bool {
         return self.input.captured;
     }
@@ -148,7 +148,7 @@ impl<'a, I: interop::Types> InputHandler for MapViewImpl<I> {
     }
 }
 
-pub struct MapViewImpl<I: interop::Types> {
+pub struct MapViewImpl<I: hal::Platform> {
     tx: Sender<*mut MapViewImpl<I>>,
     addr: Option<Addr<MapViewImpl<I>>>,
     camera: Camera,
@@ -163,8 +163,7 @@ pub struct MapViewImpl<I: interop::Types> {
 }
 
 
-
-impl<I: interop::Types> Actor for MapViewImpl<I> {
+impl<I: hal::Platform> Actor for MapViewImpl<I> {
     type Context = Context<Self>;
 
     fn started(&mut self, ctx: &mut Self::Context) {
@@ -176,7 +175,7 @@ impl<I: interop::Types> Actor for MapViewImpl<I> {
 }
 
 
-impl<I: interop::Types> MapViewImpl<I> {
+impl<I: hal::Platform> MapViewImpl<I> {
     pub fn addr(&self) -> Addr<Self> {
         self.addr.as_ref().map(|x| x.clone()).unwrap()
     }
@@ -205,7 +204,7 @@ impl<I: interop::Types> MapViewImpl<I> {
     pub fn set_style(&mut self, style: style::Style, ctx: &mut Context<MapViewImpl<I>>) {
         trace!("MapViewImpl: Setting style ..");
         let style = Rc::new(style);
-        self.renderer = Some(render::Renderer::new(&self.facade, style.clone(), self.file_source.clone().recipient()));
+        self.renderer = Some(render::Renderer::new::<I>(&self.facade, style.clone(), self.file_source.clone().recipient()));
         if let Some(ref sprite) = style.as_ref().sprite {
             let image = storage::Request::SpriteImage(format!("{}", sprite));
             let json = storage::Request::SpriteJson(format!("{}", sprite));
@@ -336,7 +335,7 @@ impl_invoke_handler!(MapViewImpl);
 
 */
 
-impl<I: interop::Types, F, R> Handler<Invoke<MapViewImpl<I>, F, R>> for MapViewImpl<I> where
+impl<I: hal::Platform, F, R> Handler<Invoke<MapViewImpl<I>, F, R>> for MapViewImpl<I> where
     F: FnOnce(&mut MapViewImpl<I>, &mut <MapViewImpl<I> as Actor>::Context)
         -> R, R: 'static {
     type Result = Result<R>;

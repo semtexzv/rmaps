@@ -39,8 +39,8 @@ impl LocalFileSource {
     pub fn new() -> LocalFileSource {
         LocalFileSource {}
     }
-    pub fn spawn() -> Addr<Self> {
-        start_in_thread(|| Self::new())
+    pub fn spawn<P: hal::Platform>() -> Addr<Self> {
+        P::spawn_actor(|| Self::new())
     }
 }
 

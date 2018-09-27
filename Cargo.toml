@@ -12,6 +12,6 @@ debug = true
 
 
 [replace]
-"glium:0.22.0" = { git  = "https://github.com/semtexzv/glium", branch = "tmp-working"  }
+#"glium:0.22.0" = { git  = "https://github.com/semtexzv/glium", branch = "tmp-working"  }
 "winit:0.16.2" = { git  = "https://github.com/semtexzv/winit"  }
-#"actix:0.5.8" = { path = "./libs/actix" }
+"actix:0.7.4" = { path = "./libs/actix" }

@@ -1,7 +1,7 @@
 pub use ::common::export::*;
 pub use common::failure;
 
-pub use map::interop;
+pub use map::hal;
 
 
 pub trait Bool: Debug + Clone + Default { const VALUE: bool; }
@@ -31,20 +31,6 @@ use common::actix::{ResponseFuture, ResponseActFuture};
 pub use geometry;
 
 
-pub fn start_in_thread<A: Actor<Context=Context<A>> + Send + 'static, F: FnOnce() -> A + Send + 'static>(a: F) -> Addr<A> {
-    let (tx, rx) = ::std::sync::mpsc::channel();
-    ::std::thread::spawn(move || {
-        let sys = System::new("aaaasaas");
-
-        let actor = a();
-        let addr = actor.start();
-        let _ = tx.send(addr);
-        let _ = sys.run();
-
-    });
-
-    rx.recv().unwrap()
-}
 
 use common::glium::uniforms::{Uniforms, UniformValue};
 

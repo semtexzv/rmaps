@@ -14,7 +14,7 @@ use common::actix::fut::{
     wrap_future, ok, err, result,
 };
 
-use map::interop::{
+use map::hal::{
     self, OfflineCache,
 };
 
@@ -31,19 +31,19 @@ pub enum ResourceError {
 pub type ResourceResult = StdResult<Resource, ResourceError>;
 
 
-pub struct DefaultFileSource<I: interop::Types> {
+pub struct DefaultFileSource<I: hal::Platform> {
     cache: I::OfflineCacheType,
     //offline_cache::OfflineCache,
     local: Addr<local::LocalFileSource>,
     network: Addr<network::NetworkFileSource<I>>,
 }
 
-impl<I: interop::Types> Actor for DefaultFileSource<I> {
+impl<I: hal::Platform> Actor for DefaultFileSource<I> {
     type Context = Context<DefaultFileSource<I>>;
 }
 
 
-impl<I: interop::Types> Handler<Request> for DefaultFileSource<I> {
+impl<I: hal::Platform> Handler<Request> for DefaultFileSource<I> {
     type Result = ResponseActFuture<Self, Resource, ResourceError>;
 
     fn handle(&mut self, msg: Request, _ctx: &mut Context<Self>) -> Self::Result {
@@ -90,17 +90,17 @@ impl<I: interop::Types> Handler<Request> for DefaultFileSource<I> {
 }
 
 
-impl<I: interop::Types> DefaultFileSource<I> {
+impl<I: hal::Platform> DefaultFileSource<I> {
     pub fn new() -> Self {
         DefaultFileSource {
             cache: I::OfflineCacheType::new().unwrap(),
-            local: local::LocalFileSource::spawn(),
+            local: local::LocalFileSource::spawn::<I>(),
             network: network::NetworkFileSource::spawn(),
         }
     }
 
     pub fn spawn() -> Addr<Self> {
-        start_in_thread::<DefaultFileSource<I>, _>(|| DefaultFileSource::new())
+        I::spawn_actor(|| DefaultFileSource::new())
     }
 }
 

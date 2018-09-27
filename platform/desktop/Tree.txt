@@ -1,0 +1,674 @@
+desktop v0.1.0 (file:///home/semtexzv/rmaps/platform/desktop)
+├── actix-web v0.7.8
+│   ├── actix v0.7.4
+│   │   ├── actix_derive v0.3.0
+│   │   │   ├── proc-macro2 v0.4.19
+│   │   │   │   └── unicode-xid v0.1.0
+│   │   │   ├── quote v0.6.8
+│   │   │   │   └── proc-macro2 v0.4.19 (*)
+│   │   │   └── syn v0.14.9
+│   │   │       ├── proc-macro2 v0.4.19 (*)
+│   │   │       ├── quote v0.6.8 (*)
+│   │   │       └── unicode-xid v0.1.0 (*)
+│   │   ├── bitflags v1.0.4
+│   │   ├── bytes v0.4.10
+│   │   │   ├── byteorder v1.2.6
+│   │   │   └── iovec v0.1.2
+│   │   │       └── libc v0.2.43
+│   │   ├── crossbeam-channel v0.2.6
+│   │   │   ├── crossbeam-epoch v0.6.0
+│   │   │   │   ├── arrayvec v0.4.7
+│   │   │   │   │   └── nodrop v0.1.12
+│   │   │   │   ├── cfg-if v0.1.5
+│   │   │   │   ├── crossbeam-utils v0.5.0
+│   │   │   │   ├── lazy_static v1.1.0
+│   │   │   │   │   [build-dependencies]
+│   │   │   │   │   └── version_check v0.1.5
+│   │   │   │   ├── memoffset v0.2.1
+│   │   │   │   └── scopeguard v0.3.3
+│   │   │   ├── crossbeam-utils v0.5.0 (*)
+│   │   │   ├── parking_lot v0.6.4
+│   │   │   │   ├── lock_api v0.1.4
+│   │   │   │   │   ├── owning_ref v0.3.3
+│   │   │   │   │   │   └── stable_deref_trait v1.1.1
+│   │   │   │   │   └── scopeguard v0.3.3 (*)
+│   │   │   │   └── parking_lot_core v0.3.1
+│   │   │   │       ├── libc v0.2.43 (*)
+│   │   │   │       ├── rand v0.5.5
+│   │   │   │       │   ├── libc v0.2.43 (*)
+│   │   │   │       │   └── rand_core v0.2.1
+│   │   │   │       └── smallvec v0.6.5
+│   │   │   │           └── unreachable v1.0.0
+│   │   │   │               └── void v1.0.2
+│   │   │   │       [build-dependencies]
+│   │   │   │       └── rustc_version v0.2.3
+│   │   │   │           └── semver v0.9.0
+│   │   │   │               └── semver-parser v0.7.0
+│   │   │   ├── rand v0.5.5 (*)
+│   │   │   └── smallvec v0.6.5 (*)
+│   │   ├── failure v0.1.2
+│   │   │   ├── backtrace v0.3.9
+│   │   │   │   ├── backtrace-sys v0.1.24
+│   │   │   │   │   └── libc v0.2.43 (*)
+│   │   │   │   │   [build-dependencies]
+│   │   │   │   │   └── cc v1.0.25
+│   │   │   │   ├── cfg-if v0.1.5 (*)
+│   │   │   │   ├── libc v0.2.43 (*)
+│   │   │   │   └── rustc-demangle v0.1.9
+│   │   │   └── failure_derive v0.1.2
+│   │   │       ├── proc-macro2 v0.4.19 (*)
+│   │   │       ├── quote v0.6.8 (*)
+│   │   │       ├── syn v0.14.9 (*)
+│   │   │       └── synstructure v0.9.0
+│   │   │           ├── proc-macro2 v0.4.19 (*)
+│   │   │           ├── quote v0.6.8 (*)
+│   │   │           ├── syn v0.14.9 (*)
+│   │   │           └── unicode-xid v0.1.0 (*)
+│   │   ├── fnv v1.0.6
+│   │   ├── futures v0.1.24
+│   │   ├── libc v0.2.43 (*)
+│   │   ├── log v0.4.5
+│   │   │   └── cfg-if v0.1.5 (*)
+│   │   ├── parking_lot v0.6.4 (*)
+│   │   ├── smallvec v0.6.5 (*)
+│   │   ├── tokio v0.1.8
+│   │   │   ├── futures v0.1.24 (*)
+│   │   │   ├── mio v0.6.16
+│   │   │   │   ├── iovec v0.1.2 (*)
+│   │   │   │   ├── lazycell v1.2.0
+│   │   │   │   ├── libc v0.2.43 (*)
+│   │   │   │   ├── log v0.4.5 (*)
+│   │   │   │   ├── net2 v0.2.33
+│   │   │   │   │   ├── cfg-if v0.1.5 (*)
+│   │   │   │   │   └── libc v0.2.43 (*)
+│   │   │   │   └── slab v0.4.1
+│   │   │   ├── tokio-codec v0.1.0
+│   │   │   │   ├── bytes v0.4.10 (*)
+│   │   │   │   ├── futures v0.1.24 (*)
+│   │   │   │   └── tokio-io v0.1.8
+│   │   │   │       ├── bytes v0.4.10 (*)
+│   │   │   │       ├── futures v0.1.24 (*)
+│   │   │   │       └── log v0.4.5 (*)
+│   │   │   ├── tokio-current-thread v0.1.1
+│   │   │   │   ├── futures v0.1.24 (*)
+│   │   │   │   └── tokio-executor v0.1.4
+│   │   │   │       └── futures v0.1.24 (*)
+│   │   │   ├── tokio-executor v0.1.4 (*)
+│   │   │   ├── tokio-fs v0.1.3
+│   │   │   │   ├── futures v0.1.24 (*)
+│   │   │   │   ├── tokio-io v0.1.8 (*)
+│   │   │   │   └── tokio-threadpool v0.1.6
+│   │   │   │       ├── crossbeam-deque v0.6.1
+│   │   │   │       │   ├── crossbeam-epoch v0.5.2
+│   │   │   │       │   │   ├── arrayvec v0.4.7 (*)
+│   │   │   │       │   │   ├── cfg-if v0.1.5 (*)
+│   │   │   │       │   │   ├── crossbeam-utils v0.5.0 (*)
+│   │   │   │       │   │   ├── lazy_static v1.1.0 (*)
+│   │   │   │       │   │   ├── memoffset v0.2.1 (*)
+│   │   │   │       │   │   └── scopeguard v0.3.3 (*)
+│   │   │   │       │   └── crossbeam-utils v0.5.0 (*)
+│   │   │   │       ├── crossbeam-utils v0.5.0 (*)
+│   │   │   │       ├── futures v0.1.24 (*)
+│   │   │   │       ├── log v0.4.5 (*)
+│   │   │   │       ├── num_cpus v1.8.0
+│   │   │   │       │   └── libc v0.2.43 (*)
+│   │   │   │       ├── rand v0.5.5 (*)
+│   │   │   │       └── tokio-executor v0.1.4 (*)
+│   │   │   │   [dev-dependencies]
+│   │   │   │   └── tokio-io v0.1.8 (*)
+│   │   │   ├── tokio-io v0.1.8 (*)
+│   │   │   ├── tokio-reactor v0.1.5
+│   │   │   │   ├── crossbeam-utils v0.5.0 (*)
+│   │   │   │   ├── futures v0.1.24 (*)
+│   │   │   │   ├── lazy_static v1.1.0 (*)
+│   │   │   │   ├── log v0.4.5 (*)
+│   │   │   │   ├── mio v0.6.16 (*)
+│   │   │   │   ├── num_cpus v1.8.0 (*)
+│   │   │   │   ├── parking_lot v0.6.4 (*)
+│   │   │   │   ├── slab v0.4.1 (*)
+│   │   │   │   ├── tokio-executor v0.1.4 (*)
+│   │   │   │   └── tokio-io v0.1.8 (*)
+│   │   │   ├── tokio-tcp v0.1.1
+│   │   │   │   ├── bytes v0.4.10 (*)
+│   │   │   │   ├── futures v0.1.24 (*)
+│   │   │   │   ├── iovec v0.1.2 (*)
+│   │   │   │   ├── mio v0.6.16 (*)
+│   │   │   │   ├── tokio-io v0.1.8 (*)
+│   │   │   │   └── tokio-reactor v0.1.5 (*)
+│   │   │   ├── tokio-threadpool v0.1.6 (*)
+│   │   │   ├── tokio-timer v0.2.6
+│   │   │   │   ├── crossbeam-utils v0.5.0 (*)
+│   │   │   │   ├── futures v0.1.24 (*)
+│   │   │   │   ├── slab v0.4.1 (*)
+│   │   │   │   └── tokio-executor v0.1.4 (*)
+│   │   │   ├── tokio-udp v0.1.2
+│   │   │   │   ├── bytes v0.4.10 (*)
+│   │   │   │   ├── futures v0.1.24 (*)
+│   │   │   │   ├── log v0.4.5 (*)
+│   │   │   │   ├── mio v0.6.16 (*)
+│   │   │   │   ├── tokio-codec v0.1.0 (*)
+│   │   │   │   ├── tokio-io v0.1.8 (*)
+│   │   │   │   └── tokio-reactor v0.1.5 (*)
+│   │   │   └── tokio-uds v0.2.1
+│   │   │       ├── bytes v0.4.10 (*)
+│   │   │       ├── futures v0.1.24 (*)
+│   │   │       ├── iovec v0.1.2 (*)
+│   │   │       ├── libc v0.2.43 (*)
+│   │   │       ├── log v0.4.5 (*)
+│   │   │       ├── mio v0.6.16 (*)
+│   │   │       ├── mio-uds v0.6.7
+│   │   │       │   ├── iovec v0.1.2 (*)
+│   │   │       │   ├── libc v0.2.43 (*)
+│   │   │       │   └── mio v0.6.16 (*)
+│   │   │       ├── tokio-io v0.1.8 (*)
+│   │   │       └── tokio-reactor v0.1.5 (*)
+│   │   ├── tokio-codec v0.1.0 (*)
+│   │   ├── tokio-executor v0.1.4 (*)
+│   │   ├── tokio-io v0.1.8 (*)
+│   │   ├── tokio-reactor v0.1.5 (*)
+│   │   ├── tokio-signal v0.2.5
+│   │   │   ├── futures v0.1.24 (*)
+│   │   │   ├── libc v0.2.43 (*)
+│   │   │   ├── mio v0.6.16 (*)
+│   │   │   ├── mio-uds v0.6.7 (*)
+│   │   │   ├── tokio-executor v0.1.4 (*)
+│   │   │   ├── tokio-io v0.1.8 (*)
+│   │   │   └── tokio-reactor v0.1.5 (*)
+│   │   ├── tokio-tcp v0.1.1 (*)
+│   │   ├── tokio-timer v0.2.6 (*)
+│   │   ├── trust-dns-resolver v0.9.1
+│   │   │   ├── cfg-if v0.1.5 (*)
+│   │   │   ├── error-chain v0.1.12
+│   │   │   │   └── backtrace v0.2.3
+│   │   │   │       ├── backtrace-sys v0.1.24 (*)
+│   │   │   │       ├── cfg-if v0.1.5 (*)
+│   │   │   │       ├── dbghelp-sys v0.2.0
+│   │   │   │       │   └── winapi v0.2.8
+│   │   │   │       │   [build-dependencies]
+│   │   │   │       │   └── winapi-build v0.1.1
+│   │   │   │       ├── kernel32-sys v0.2.2
+│   │   │   │       │   └── winapi v0.2.8 (*)
+│   │   │   │       │   [build-dependencies]
+│   │   │   │       │   └── winapi-build v0.1.1 (*)
+│   │   │   │       ├── libc v0.2.43 (*)
+│   │   │   │       ├── rustc-demangle v0.1.9 (*)
+│   │   │   │       └── winapi v0.2.8 (*)
+│   │   │   ├── futures v0.1.24 (*)
+│   │   │   ├── lazy_static v1.1.0 (*)
+│   │   │   ├── log v0.4.5 (*)
+│   │   │   ├── lru-cache v0.1.1
+│   │   │   │   └── linked-hash-map v0.4.2
+│   │   │   ├── resolv-conf v0.6.1
+│   │   │   │   ├── hostname v0.1.5
+│   │   │   │   │   └── libc v0.2.43 (*)
+│   │   │   │   └── quick-error v1.2.2
+│   │   │   ├── smallvec v0.6.5 (*)
+│   │   │   ├── tokio v0.1.8 (*)
+│   │   │   └── trust-dns-proto v0.4.0
+│   │   │       ├── byteorder v1.2.6 (*)
+│   │   │       ├── error-chain v0.1.12 (*)
+│   │   │       ├── futures v0.1.24 (*)
+│   │   │       ├── idna v0.1.5
+│   │   │       │   ├── matches v0.1.8
+│   │   │       │   ├── unicode-bidi v0.3.4
+│   │   │       │   │   └── matches v0.1.8 (*)
+│   │   │       │   └── unicode-normalization v0.1.7
+│   │   │       ├── lazy_static v1.1.0 (*)
+│   │   │       ├── log v0.4.5 (*)
+│   │   │       ├── rand v0.4.3
+│   │   │       │   └── libc v0.2.43 (*)
+│   │   │       ├── smallvec v0.6.5 (*)
+│   │   │       ├── socket2 v0.3.8
+│   │   │       │   ├── cfg-if v0.1.5 (*)
+│   │   │       │   └── libc v0.2.43 (*)
+│   │   │       ├── tokio-executor v0.1.4 (*)
+│   │   │       ├── tokio-io v0.1.8 (*)
+│   │   │       ├── tokio-reactor v0.1.5 (*)
+│   │   │       ├── tokio-tcp v0.1.1 (*)
+│   │   │       ├── tokio-timer v0.2.6 (*)
+│   │   │       ├── tokio-udp v0.1.2 (*)
+│   │   │       └── url v1.7.1
+│   │   │           ├── encoding v0.2.33
+│   │   │           │   ├── encoding-index-japanese v1.20141219.5
+│   │   │           │   │   └── encoding_index_tests v0.1.4
+│   │   │           │   ├── encoding-index-korean v1.20141219.5
+│   │   │           │   │   └── encoding_index_tests v0.1.4 (*)
+│   │   │           │   ├── encoding-index-simpchinese v1.20141219.5
+│   │   │           │   │   └── encoding_index_tests v0.1.4 (*)
+│   │   │           │   ├── encoding-index-singlebyte v1.20141219.5
+│   │   │           │   │   └── encoding_index_tests v0.1.4 (*)
+│   │   │           │   └── encoding-index-tradchinese v1.20141219.5
+│   │   │           │       └── encoding_index_tests v0.1.4 (*)
+│   │   │           ├── idna v0.1.5 (*)
+│   │   │           ├── matches v0.1.8 (*)
+│   │   │           └── percent-encoding v1.0.1
+│   │   └── uuid v0.6.5
+│   │       ├── cfg-if v0.1.5 (*)
+│   │       └── rand v0.4.3 (*)
+│   ├── base64 v0.9.3
+│   │   ├── byteorder v1.2.6 (*)
+│   │   └── safemem v0.3.0
+│   ├── bitflags v1.0.4 (*)
+│   ├── brotli2 v0.3.2
+│   │   ├── brotli-sys v0.3.2
+│   │   │   └── libc v0.2.43 (*)
+│   │   │   [build-dependencies]
+│   │   │   └── cc v1.0.25 (*)
+│   │   └── libc v0.2.43 (*)
+│   ├── byteorder v1.2.6 (*)
+│   ├── bytes v0.4.10 (*)
+│   ├── cookie v0.11.0
+│   │   ├── time v0.1.40
+│   │   │   └── libc v0.2.43 (*)
+│   │   │   [dev-dependencies]
+│   │   │   └── winapi v0.3.6
+│   │   └── url v1.7.1 (*)
+│   ├── encoding v0.2.33 (*)
+│   ├── failure v0.1.2 (*)
+│   ├── flate2 v1.0.2
+│   │   ├── libc v0.2.43 (*)
+│   │   └── miniz-sys v0.1.10
+│   │       └── libc v0.2.43 (*)
+│   │       [build-dependencies]
+│   │       └── cc v1.0.25 (*)
+│   ├── futures v0.1.24 (*)
+│   ├── futures-cpupool v0.1.8
+│   │   ├── futures v0.1.24 (*)
+│   │   └── num_cpus v1.8.0 (*)
+│   ├── h2 v0.1.12
+│   │   ├── byteorder v1.2.6 (*)
+│   │   ├── bytes v0.4.10 (*)
+│   │   ├── fnv v1.0.6 (*)
+│   │   ├── futures v0.1.24 (*)
+│   │   ├── http v0.1.13
+│   │   │   ├── bytes v0.4.10 (*)
+│   │   │   ├── fnv v1.0.6 (*)
+│   │   │   └── itoa v0.4.3
+│   │   ├── indexmap v1.0.1
+│   │   ├── log v0.4.5 (*)
+│   │   ├── slab v0.4.1 (*)
+│   │   ├── string v0.1.1
+│   │   └── tokio-io v0.1.8 (*)
+│   ├── htmlescape v0.3.1
+│   ├── http v0.1.13 (*)
+│   ├── httparse v1.3.2
+│   ├── language-tags v0.2.2
+│   ├── lazy_static v1.1.0 (*)
+│   ├── lazycell v1.2.0 (*)
+│   ├── log v0.4.5 (*)
+│   ├── mime v0.3.9
+│   │   └── unicase v2.1.0
+│   │       [build-dependencies]
+│   │       └── version_check v0.1.5 (*)
+│   ├── mime_guess v2.0.0-alpha.6
+│   │   ├── mime v0.3.9 (*)
+│   │   ├── phf v0.7.23
+│   │   │   └── phf_shared v0.7.23
+│   │   │       ├── siphasher v0.2.3
+│   │   │       └── unicase v1.4.2
+│   │   │           [build-dependencies]
+│   │   │           └── version_check v0.1.5 (*)
+│   │   └── unicase v1.4.2 (*)
+│   │   [build-dependencies]
+│   │   ├── phf_codegen v0.7.23
+│   │   │   ├── phf_generator v0.7.23
+│   │   │   │   ├── phf_shared v0.7.23 (*)
+│   │   │   │   └── rand v0.5.5 (*)
+│   │   │   └── phf_shared v0.7.23 (*)
+│   │   └── unicase v1.4.2 (*)
+│   ├── mio v0.6.16 (*)
+│   ├── native-tls v0.2.1
+│   │   ├── openssl v0.10.12
+│   │   │   ├── bitflags v1.0.4 (*)
+│   │   │   ├── cfg-if v0.1.5 (*)
+│   │   │   ├── foreign-types v0.3.2
+│   │   │   │   └── foreign-types-shared v0.1.1
+│   │   │   ├── lazy_static v1.1.0 (*)
+│   │   │   ├── libc v0.2.43 (*)
+│   │   │   └── openssl-sys v0.9.36
+│   │   │       └── libc v0.2.43 (*)
+│   │   │       [build-dependencies]
+│   │   │       ├── cc v1.0.25 (*)
+│   │   │       └── pkg-config v0.3.14
+│   │   ├── openssl-probe v0.1.2
+│   │   └── openssl-sys v0.9.36 (*)
+│   ├── net2 v0.2.33 (*)
+│   ├── num_cpus v1.8.0 (*)
+│   ├── parking_lot v0.6.4 (*)
+│   ├── percent-encoding v1.0.1 (*)
+│   ├── rand v0.5.5 (*)
+│   ├── regex v1.0.5
+│   │   ├── aho-corasick v0.6.8
+│   │   │   └── memchr v2.1.0
+│   │   │       ├── cfg-if v0.1.5 (*)
+│   │   │       └── libc v0.2.43 (*)
+│   │   │       [build-dependencies]
+│   │   │       └── version_check v0.1.5 (*)
+│   │   ├── memchr v2.1.0 (*)
+│   │   ├── regex-syntax v0.6.2
+│   │   │   └── ucd-util v0.1.1
+│   │   ├── thread_local v0.3.6
+│   │   │   └── lazy_static v1.1.0 (*)
+│   │   └── utf8-ranges v1.0.1
+│   ├── serde v1.0.79
+│   ├── serde_json v1.0.31
+│   │   ├── itoa v0.4.3 (*)
+│   │   ├── ryu v0.2.6
+│   │   └── serde v1.0.79 (*)
+│   ├── serde_urlencoded v0.5.3
+│   │   ├── dtoa v0.4.3
+│   │   ├── itoa v0.4.3 (*)
+│   │   ├── serde v1.0.79 (*)
+│   │   └── url v1.7.1 (*)
+│   ├── sha1 v0.6.0
+│   ├── slab v0.4.1 (*)
+│   ├── smallvec v0.6.5 (*)
+│   ├── time v0.1.40 (*)
+│   ├── tokio v0.1.8 (*)
+│   ├── tokio-current-thread v0.1.1 (*)
+│   ├── tokio-io v0.1.8 (*)
+│   ├── tokio-reactor v0.1.5 (*)
+│   ├── tokio-tcp v0.1.1 (*)
+│   ├── tokio-timer v0.2.6 (*)
+│   ├── tokio-tls v0.2.0
+│   │   ├── futures v0.1.24 (*)
+│   │   ├── native-tls v0.2.1 (*)
+│   │   └── tokio-io v0.1.8 (*)
+│   └── url v1.7.1 (*)
+│   [build-dependencies]
+│   └── version_check v0.1.5 (*)
+├── common v0.1.0 (file:///home/semtexzv/rmaps/common)
+│   ├── actix v0.7.4 (file:///home/semtexzv/rmaps/libs/actix)
+│   │   ├── actix_derive v0.3.0 (*)
+│   │   ├── bitflags v1.0.4 (*)
+│   │   ├── bytes v0.4.10 (*)
+│   │   ├── crossbeam-channel v0.2.6 (*)
+│   │   ├── failure v0.1.2 (*)
+│   │   ├── fnv v1.0.6 (*)
+│   │   ├── futures v0.1.24 (*)
+│   │   ├── libc v0.2.43 (*)
+│   │   ├── log v0.4.5 (*)
+│   │   ├── parking_lot v0.6.4 (*)
+│   │   ├── rt_tokio v0.1.0 (file:///home/semtexzv/rmaps/libs/actix/runtimes/rt_tokio)
+│   │   │   ├── futures v0.1.24 (*)
+│   │   │   └── tokio v0.1.8 (*)
+│   │   ├── smallvec v0.6.5 (*)
+│   │   ├── tokio-current-thread v0.1.1 (*)
+│   │   ├── tokio-executor v0.1.4 (*)
+│   │   ├── tokio-timer v0.2.6 (*)
+│   │   └── uuid v0.7.1
+│   │       └── rand v0.5.5 (*)
+│   ├── arraydeque v0.4.3
+│   ├── bytes v0.4.10 (*)
+│   ├── cgmath v0.16.1
+│   │   ├── approx v0.1.1
+│   │   ├── num-traits v0.1.43
+│   │   │   └── num-traits v0.2.6
+│   │   └── rand v0.4.3 (*)
+│   ├── chrono v0.4.6
+│   │   ├── num-integer v0.1.39
+│   │   │   └── num-traits v0.2.6 (*)
+│   │   ├── num-traits v0.2.6 (*)
+│   │   └── time v0.1.40 (*)
+│   ├── css-color-parser v0.1.2
+│   │   └── lazy_static v0.1.16
+│   ├── derive_more v0.12.0
+│   │   ├── proc-macro2 v0.4.19 (*)
+│   │   ├── quote v0.6.8 (*)
+│   │   └── syn v0.14.9 (*)
+│   │   [build-dependencies]
+│   │   └── rustc_version v0.2.3 (*)
+│   ├── failure v0.1.2 (*)
+│   ├── fern v0.5.6
+│   │   ├── colored v1.6.1
+│   │   │   └── lazy_static v1.1.0 (*)
+│   │   └── log v0.4.5 (*)
+│   ├── futures v0.1.24 (*)
+│   ├── geometry v0.1.0 (file:///home/semtexzv/rmaps/libs/geometry)
+│   │   ├── serde v1.0.79 (*)
+│   │   └── serde_derive v1.0.79
+│   │       ├── proc-macro2 v0.4.19 (*)
+│   │       ├── quote v0.6.8 (*)
+│   │       └── syn v0.15.6
+│   │           ├── proc-macro2 v0.4.19 (*)
+│   │           ├── quote v0.6.8 (*)
+│   │           └── unicode-xid v0.1.0 (*)
+│   ├── glium v0.22.0 (https://github.com/semtexzv/glium?branch=tmp-working#7b287318)
+│   │   ├── backtrace v0.3.9 (*)
+│   │   ├── fnv v1.0.6 (*)
+│   │   ├── glutin v0.17.0
+│   │   │   ├── lazy_static v1.1.0 (*)
+│   │   │   ├── libc v0.2.43 (*)
+│   │   │   ├── osmesa-sys v0.1.2
+│   │   │   │   └── shared_library v0.1.9
+│   │   │   │       ├── lazy_static v1.1.0 (*)
+│   │   │   │       └── libc v0.2.43 (*)
+│   │   │   ├── shared_library v0.1.9 (*)
+│   │   │   ├── wayland-client v0.20.12
+│   │   │   │   ├── bitflags v1.0.4 (*)
+│   │   │   │   ├── libc v0.2.43 (*)
+│   │   │   │   ├── wayland-commons v0.20.12
+│   │   │   │   │   ├── downcast-rs v1.0.3
+│   │   │   │   │   └── wayland-sys v0.20.12
+│   │   │   │   │       ├── dlib v0.4.1
+│   │   │   │   │       │   └── libloading v0.5.0
+│   │   │   │   │       │       [build-dependencies]
+│   │   │   │   │       │       └── cc v1.0.25 (*)
+│   │   │   │   │       └── lazy_static v1.1.0 (*)
+│   │   │   │   └── wayland-sys v0.20.12 (*)
+│   │   │   │   [build-dependencies]
+│   │   │   │   └── wayland-scanner v0.20.12
+│   │   │   │       └── xml-rs v0.7.0
+│   │   │   │           └── bitflags v1.0.4 (*)
+│   │   │   ├── winit v0.16.2 (https://github.com/semtexzv/winit#13dd191f)
+│   │   │   │   ├── lazy_static v1.1.0 (*)
+│   │   │   │   ├── libc v0.2.43 (*)
+│   │   │   │   ├── log v0.4.5 (*)
+│   │   │   │   ├── parking_lot v0.6.4 (*)
+│   │   │   │   ├── percent-encoding v1.0.1 (*)
+│   │   │   │   ├── smithay-client-toolkit v0.2.6
+│   │   │   │   │   ├── bitflags v1.0.4 (*)
+│   │   │   │   │   ├── byteorder v1.2.6 (*)
+│   │   │   │   │   ├── dlib v0.4.1 (*)
+│   │   │   │   │   ├── lazy_static v1.1.0 (*)
+│   │   │   │   │   ├── memmap v0.6.2
+│   │   │   │   │   │   └── libc v0.2.43 (*)
+│   │   │   │   │   ├── nix v0.11.0
+│   │   │   │   │   │   ├── bitflags v1.0.4 (*)
+│   │   │   │   │   │   ├── cfg-if v0.1.5 (*)
+│   │   │   │   │   │   ├── libc v0.2.43 (*)
+│   │   │   │   │   │   └── void v1.0.2 (*)
+│   │   │   │   │   ├── tempfile v3.0.4
+│   │   │   │   │   │   ├── cfg-if v0.1.5 (*)
+│   │   │   │   │   │   ├── libc v0.2.43 (*)
+│   │   │   │   │   │   ├── rand v0.5.5 (*)
+│   │   │   │   │   │   └── remove_dir_all v0.5.1
+│   │   │   │   │   ├── wayland-client v0.20.12 (*)
+│   │   │   │   │   ├── wayland-commons v0.20.12 (*)
+│   │   │   │   │   └── wayland-protocols v0.20.12
+│   │   │   │   │       ├── bitflags v1.0.4 (*)
+│   │   │   │   │       ├── wayland-client v0.20.12 (*)
+│   │   │   │   │       ├── wayland-commons v0.20.12 (*)
+│   │   │   │   │       └── wayland-sys v0.20.12 (*)
+│   │   │   │   │       [build-dependencies]
+│   │   │   │   │       └── wayland-scanner v0.20.12 (*)
+│   │   │   │   │   [dev-dependencies]
+│   │   │   │   │   └── wayland-client v0.20.12 (*)
+│   │   │   │   ├── wayland-client v0.20.12 (*)
+│   │   │   │   └── x11-dl v2.18.3
+│   │   │   │       ├── lazy_static v1.1.0 (*)
+│   │   │   │       └── libc v0.2.43 (*)
+│   │   │   │       [build-dependencies]
+│   │   │   │       └── pkg-config v0.3.14 (*)
+│   │   │   └── x11-dl v2.18.3 (*)
+│   │   │   [build-dependencies]
+│   │   │   └── gl_generator v0.9.0
+│   │   │       ├── khronos_api v2.2.0
+│   │   │       ├── log v0.4.5 (*)
+│   │   │       └── xml-rs v0.7.0 (*)
+│   │   ├── lazy_static v1.1.0 (*)
+│   │   └── smallvec v0.6.5 (*)
+│   │   [build-dependencies]
+│   │   └── gl_generator v0.9.0 (*)
+│   ├── glium_derive v0.1.1 (https://github.com/semtexzv/glium_derive#023fb824)
+│   │   ├── quote v0.6.8 (*)
+│   │   └── syn v0.14.9 (*)
+│   ├── http v0.1.13 (*)
+│   ├── lerp v0.2.0
+│   │   └── num-traits v0.1.43 (*)
+│   ├── log v0.4.5 (*)
+│   ├── num v0.2.0
+│   │   ├── num-bigint v0.2.0
+│   │   │   ├── num-integer v0.1.39 (*)
+│   │   │   └── num-traits v0.2.6 (*)
+│   │   ├── num-complex v0.2.0
+│   │   │   └── num-traits v0.2.6 (*)
+│   │   ├── num-integer v0.1.39 (*)
+│   │   ├── num-iter v0.1.37
+│   │   │   ├── num-integer v0.1.39 (*)
+│   │   │   └── num-traits v0.2.6 (*)
+│   │   ├── num-rational v0.2.1
+│   │   │   ├── num-bigint v0.2.0 (*)
+│   │   │   ├── num-integer v0.1.39 (*)
+│   │   │   └── num-traits v0.2.6 (*)
+│   │   └── num-traits v0.2.6 (*)
+│   ├── palette v0.4.1
+│   │   ├── approx v0.1.1 (*)
+│   │   ├── num-traits v0.2.6 (*)
+│   │   ├── palette_derive v0.4.1
+│   │   │   ├── proc-macro2 v0.4.19 (*)
+│   │   │   ├── quote v0.6.8 (*)
+│   │   │   └── syn v0.14.9 (*)
+│   │   └── phf v0.7.23 (*)
+│   │   [build-dependencies]
+│   │   └── phf_codegen v0.7.23 (*)
+│   ├── rand v0.5.5 (*)
+│   ├── rayon v1.0.2
+│   │   ├── crossbeam-deque v0.2.0
+│   │   │   ├── crossbeam-epoch v0.3.1
+│   │   │   │   ├── arrayvec v0.4.7 (*)
+│   │   │   │   ├── cfg-if v0.1.5 (*)
+│   │   │   │   ├── crossbeam-utils v0.2.2
+│   │   │   │   │   └── cfg-if v0.1.5 (*)
+│   │   │   │   ├── lazy_static v1.1.0 (*)
+│   │   │   │   ├── memoffset v0.2.1 (*)
+│   │   │   │   ├── nodrop v0.1.12 (*)
+│   │   │   │   └── scopeguard v0.3.3 (*)
+│   │   │   └── crossbeam-utils v0.2.2 (*)
+│   │   ├── either v1.5.0
+│   │   └── rayon-core v1.4.1
+│   │       ├── crossbeam-deque v0.2.0 (*)
+│   │       ├── lazy_static v1.1.0 (*)
+│   │       ├── libc v0.2.43 (*)
+│   │       └── num_cpus v1.8.0 (*)
+│   ├── regex v1.0.5 (*)
+│   ├── scoped-tls v0.1.2
+│   ├── serde v1.0.79 (*)
+│   ├── serde_derive v1.0.79 (*)
+│   ├── serde_json v1.0.31 (*)
+│   ├── time v0.1.40 (*)
+│   ├── tokio-timer v0.2.6 (*)
+│   ├── url v1.7.1 (*)
+│   └── uuid v0.7.1 (*)
+├── rmaps v0.1.0 (file:///home/semtexzv/rmaps/rmaps)
+│   ├── common v0.1.0 (file:///home/semtexzv/rmaps/common) (*)
+│   ├── geometry v0.1.0 (file:///home/semtexzv/rmaps/libs/geometry) (*)
+│   ├── image v0.20.0
+│   │   ├── byteorder v1.2.6 (*)
+│   │   ├── gif v0.10.0
+│   │   │   ├── color_quant v1.0.1
+│   │   │   └── lzw v0.10.0
+│   │   ├── jpeg-decoder v0.1.15
+│   │   │   ├── byteorder v1.2.6 (*)
+│   │   │   └── rayon v1.0.2 (*)
+│   │   ├── lzw v0.10.0 (*)
+│   │   ├── num-iter v0.1.37 (*)
+│   │   ├── num-rational v0.2.1 (*)
+│   │   ├── num-traits v0.2.6 (*)
+│   │   ├── png v0.12.0
+│   │   │   ├── bitflags v1.0.4 (*)
+│   │   │   ├── deflate v0.7.18
+│   │   │   │   ├── adler32 v1.0.3
+│   │   │   │   └── byteorder v1.2.6 (*)
+│   │   │   ├── inflate v0.4.3
+│   │   │   │   └── adler32 v1.0.3 (*)
+│   │   │   └── num-iter v0.1.37 (*)
+│   │   ├── scoped_threadpool v0.1.9
+│   │   └── tiff v0.2.0
+│   │       ├── byteorder v1.2.6 (*)
+│   │       ├── lzw v0.10.0 (*)
+│   │       ├── num-derive v0.2.2
+│   │       │   ├── num-traits v0.2.6 (*)
+│   │       │   ├── proc-macro2 v0.4.19 (*)
+│   │       │   ├── quote v0.6.8 (*)
+│   │       │   └── syn v0.14.9 (*)
+│   │       └── num-traits v0.2.6 (*)
+│   ├── lazy_static v1.1.0 (*)
+│   ├── mvt v0.1.0 (file:///home/semtexzv/rmaps/libs/mvt)
+│   │   ├── bytes v0.4.10 (*)
+│   │   ├── geometry v0.1.0 (file:///home/semtexzv/rmaps/libs/geometry) (*)
+│   │   └── quick-protobuf v0.6.3 (file:///home/semtexzv/rmaps/libs/quick-protobuf)
+│   │       ├── byteorder v1.2.6 (*)
+│   │       ├── failure v0.1.2 (*)
+│   │       └── failure_derive v0.1.2 (*)
+│   ├── rmaps_derive v0.1.0 (file:///home/semtexzv/rmaps/libs/rmaps_derive)
+│   │   ├── quote v0.6.8 (*)
+│   │   └── syn v0.15.6 (*)
+│   ├── serde v1.0.79 (*)
+│   └── tess2 v0.3.0 (file:///home/semtexzv/rmaps/libs/tess2)
+│       ├── itertools v0.7.8
+│       │   └── either v1.5.0 (*)
+│       └── tess2-sys v0.0.1 (https://github.com/semtexzv/tess2-sys#2aba6e2c)
+│           [build-dependencies]
+│           └── gcc v0.3.54
+│       [build-dependencies]
+│       └── bindgen v0.40.0
+│           ├── bitflags v1.0.4 (*)
+│           ├── cexpr v0.2.3
+│           │   └── nom v3.2.1
+│           │       └── memchr v1.0.2
+│           │           └── libc v0.2.43 (*)
+│           ├── cfg-if v0.1.5 (*)
+│           ├── clang-sys v0.23.0
+│           │   ├── glob v0.2.11
+│           │   ├── libc v0.2.43 (*)
+│           │   └── libloading v0.5.0 (*)
+│           │   [build-dependencies]
+│           │   └── glob v0.2.11 (*)
+│           ├── clap v2.32.0
+│           │   ├── ansi_term v0.11.0
+│           │   ├── atty v0.2.11
+│           │   │   └── libc v0.2.43 (*)
+│           │   ├── bitflags v1.0.4 (*)
+│           │   ├── strsim v0.7.0
+│           │   ├── textwrap v0.10.0
+│           │   │   └── unicode-width v0.1.5
+│           │   ├── unicode-width v0.1.5 (*)
+│           │   └── vec_map v0.8.1
+│           ├── env_logger v0.5.13
+│           │   ├── atty v0.2.11 (*)
+│           │   ├── humantime v1.1.1
+│           │   │   └── quick-error v1.2.2 (*)
+│           │   ├── log v0.4.5 (*)
+│           │   ├── regex v1.0.5 (*)
+│           │   └── termcolor v1.0.4
+│           ├── lazy_static v1.1.0 (*)
+│           ├── log v0.4.5 (*)
+│           ├── peeking_take_while v0.1.2
+│           ├── proc-macro2 v0.3.5
+│           │   └── unicode-xid v0.1.0 (*)
+│           ├── quote v0.5.2
+│           │   └── proc-macro2 v0.3.5 (*)
+│           ├── regex v1.0.5 (*)
+│           └── which v1.0.5
+│               └── libc v0.2.43 (*)
+│           [dev-dependencies]
+│           └── clap v2.32.0 (*)
+└── rusqlite v0.14.0
+    ├── bitflags v1.0.4 (*)
+    ├── libsqlite3-sys v0.9.3
+    │   [build-dependencies]
+    │   ├── cc v1.0.25 (*)
+    │   └── pkg-config v0.3.14 (*)
+    ├── lru-cache v0.1.1 (*)
+    └── time v0.1.40 (*)

@@ -175,8 +175,8 @@ impl TileDataWorker {
     pub fn new() -> Self {
         return TileDataWorker();
     }
-    pub fn spawn() -> Addr<TileDataWorker> {
-        start_in_thread(|| {
+    pub fn spawn<P: hal::Platform>() -> Addr<TileDataWorker> {
+        P::spawn_actor(|| {
             Self::new()
         })
     }

@@ -9,6 +9,7 @@ common = { path = "../../common" , default-features = false, features = ["deskto
 rmaps = { path = "../../rmaps" }
 
 actix-web = { version = "0.7.7", features = ["tls", "brotli" ,"flate2-c"], default-features = false }
+actix = { version = "0.7.4" , features=["resolver","signal"]}
 
 
 
