@@ -142,7 +142,7 @@ impl BytesReader {
         }
 
         // cannot read more than 10 bytes
-        Err(Error::Varint)
+        Err(Error::Varint)?
     }
 
     /// Reads the next varint encoded u64
@@ -212,7 +212,7 @@ impl BytesReader {
         }
 
         // cannot read more than 10 bytes
-        Err(Error::Varint)
+        Err(Error::Varint)?
     }
 
     /// Reads int32 (varint)
@@ -378,7 +378,7 @@ impl BytesReader {
             return Err(Error::Io(io::Error::new(
                 io::ErrorKind::UnexpectedEof,
                 "Cannot read fixed packed field",
-            )));
+            )).into());
         }
         let n = len / ::std::mem::size_of::<M>();
         let slice = unsafe {
@@ -436,7 +436,7 @@ impl BytesReader {
                 match t >> 3 {
                     1 => k = read_key(r, bytes)?,
                     2 => v = read_val(r, bytes)?,
-                    t => return Err(Error::Map(t)),
+                    t => return Err(Error::Map(t).into()),
                 }
             }
             Ok((k, v))
@@ -457,10 +457,10 @@ impl BytesReader {
                 self.start += len;
             }
             WIRE_TYPE_START_GROUP | WIRE_TYPE_END_GROUP => {
-                return Err(Error::Deprecated("group"));
+                return Err(Error::Deprecated("group").into());
             }
             t => {
-                return Err(Error::UnknownWireType(t));
+                return Err(Error::UnknownWireType(t).into());
             }
         }
         Ok(())

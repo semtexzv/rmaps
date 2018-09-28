@@ -1,8 +1,8 @@
-extern crate gcc;
+extern crate cc;
 
 
 fn main() {
-    gcc::Build::new().include("native/include/")
+    cc::Build::new().include("native/include/")
         .file("native/src/bucketalloc.c")
         .file("native/src/dict.c")
         .file("native/src/geom.c")

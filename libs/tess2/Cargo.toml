@@ -9,6 +9,6 @@ license = "MIT"
 bindgen = "0.40.0"
 
 [dependencies]
-tess2-sys = { git = "https://github.com/semtexzv/tess2-sys"}
+tess2-sys = { path = "../tess2-sys"}
 itertools = "*"
 

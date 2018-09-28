@@ -1,4 +1,4 @@
-pub use quick_protobuf::Error;
+pub use failure::Error;
 
 pub type Result = ::std::result::Result<(), Error>;
 
@@ -110,7 +110,7 @@ impl<'acc> TileAccess for BufRefAccess<'acc> {
     fn accept(&mut self, vis: &mut impl TileVisitor) -> Result {
         while !self.r.is_eof() {
             match self.r.next_tag(self.buf) {
-                Ok(26) => self.read_nested(|acc: &mut BufRefAccess| vis.visit_layer(acc))?,
+                Ok(26) => self.read_nested(|acc: &mut BufRefAccess| vis.visit_layer(acc)).unwrap(),
                 Ok(t) => { self.r.read_unknown(self.buf, t)?; }
                 Err(e) => return Err(e),
             }
@@ -125,9 +125,9 @@ impl<'acc> LayerAccess for BufRefAccess<'acc> {
             match self.r.next_tag(self.buf) {
                 Ok(120) => vis.visit_version(self.r.read_uint32(self.buf)?),
                 Ok(10) => vis.visit_name(self.r.read_string(self.buf)?),
-                Ok(18) => self.read_nested(|acc| vis.visit_feature(acc))?,
+                Ok(18) => self.read_nested(|acc| vis.visit_feature(acc)).unwrap(),
                 Ok(26) => vis.visit_key(self.r.read_string(self.buf)?),
-                Ok(34) => self.read_nested(|acc| vis.visit_value(acc))?,
+                Ok(34) => self.read_nested(|acc| vis.visit_value(acc)).unwrap(),
                 Ok(40) => vis.visit_extent(self.r.read_uint32(self.buf)?),
                 Ok(t) => { self.r.read_unknown(self.buf, t)?; }
                 Err(e) => return Err(e),
@@ -141,10 +141,10 @@ impl<'acc> FeatureAccess for BufRefAccess<'acc> {
     fn accept(&mut self, vis: &mut impl FeatureVisitor) -> Result {
         while !self.r.is_eof() {
             match self.r.next_tag(self.buf) {
-                Ok(8) => vis.visit_id(self.r.read_uint64(self.buf)?),
-                Ok(18) => vis.visit_tags(&self.r.read_packed(self.buf, |r, bytes| r.read_uint32(bytes))?),
-                Ok(24) => vis.visit_geom_type(self.r.read_enum(self.buf)?),
-                Ok(34) => vis.visit_geometry(&self.r.read_packed(self.buf, |r, bytes| r.read_uint32(bytes))?),
+                Ok(8) => vis.visit_id(self.r.read_uint64(self.buf).unwrap()),
+                Ok(18) => vis.visit_tags(&self.r.read_packed(self.buf, |r, bytes| r.read_uint32(bytes)).unwrap()),
+                Ok(24) => vis.visit_geom_type(self.r.read_enum(self.buf).unwrap()),
+                Ok(34) => vis.visit_geometry(&self.r.read_packed(self.buf, |r, bytes| r.read_uint32(bytes)).unwrap()),
                 Ok(t) => { self.r.read_unknown(self.buf, t)?; }
                 Err(e) => return Err(e),
             }
@@ -157,13 +157,13 @@ impl<'acc> ValueAccess for BufRefAccess<'acc> {
     fn accept(&mut self, vis: &mut impl ValueVisitor) -> Result {
         while !self.r.is_eof() {
             match self.r.next_tag(self.buf) {
-                Ok(10) => vis.visit_string_value(self.r.read_string(self.buf)?),
-                Ok(21) => vis.visit_float_value(self.r.read_float(self.buf)?),
-                Ok(25) => vis.visit_double_value(self.r.read_double(self.buf)?),
-                Ok(32) => vis.visit_int_value(self.r.read_int64(self.buf)?),
-                Ok(40) => vis.visit_uint_value(self.r.read_uint64(self.buf)?),
-                Ok(48) => vis.visit_sint_value(self.r.read_sint64(self.buf)?),
-                Ok(56) => vis.visit_bool_value(self.r.read_bool(self.buf)?),
+                Ok(10) => vis.visit_string_value(self.r.read_string(self.buf).unwrap()),
+                Ok(21) => vis.visit_float_value(self.r.read_float(self.buf).unwrap()),
+                Ok(25) => vis.visit_double_value(self.r.read_double(self.buf).unwrap()),
+                Ok(32) => vis.visit_int_value(self.r.read_int64(self.buf).unwrap()),
+                Ok(40) => vis.visit_uint_value(self.r.read_uint64(self.buf).unwrap()),
+                Ok(48) => vis.visit_sint_value(self.r.read_sint64(self.buf).unwrap()),
+                Ok(56) => vis.visit_bool_value(self.r.read_bool(self.buf).unwrap()),
                 Ok(t) => { self.r.read_unknown(self.buf, t)?; }
                 Err(e) => return Err(e),
             }

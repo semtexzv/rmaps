@@ -4,8 +4,8 @@ use std::thread;
 
 use futures::sync::oneshot::{channel, Sender};
 use futures::{future, Future, IntoFuture};
-use tokio_current_thread::spawn;
 
+use runtime::spawn;
 use runtime::Runtime;
 
 use uuid::Uuid;

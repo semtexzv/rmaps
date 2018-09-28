@@ -104,7 +104,7 @@ impl Handler<DecodeTile> for TileDataWorker {
             }
             SourceType::Vector => {
                 let data = &msg.res.data;
-                let tile = ::mvt::decode(&data).unwrap();
+                let tile = ::mvt::decode(&data).expect("Decode");
 
                 let layers = tile.layers.into_iter().map(|mut l| {
                     let mut pretess = BTreeMap::new();

@@ -6,3 +6,4 @@ authors = ["Michal Hornický <semtexzv@gmail.com>"]
 [dependencies]
 futures = "0.1"
 tokio = {version =  "0.1.8"}
+tokio-current-thread = "0.1"

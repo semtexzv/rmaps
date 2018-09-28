@@ -74,7 +74,7 @@ where
     A: Actor<Context = Self>,
 {
     #[inline]
-    pub(crate) fn new() -> Context<A> {
+    pub fn new() -> Context<A> {
         let mb = Mailbox::default();
         Context {
             parts: ContextParts::new(mb.sender_producer()),

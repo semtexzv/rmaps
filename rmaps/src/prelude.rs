@@ -28,8 +28,6 @@ pub use rmaps_derive::*;
 use common::actix::prelude::*;
 use common::actix::{ResponseFuture, ResponseActFuture};
 
-pub use geometry;
-
 
 
 use common::glium::uniforms::{Uniforms, UniformValue};

@@ -4,6 +4,7 @@ version = "0.1.0"
 authors = ["Michal Hornický <semtexzv@gmail.com>"]
 
 [dependencies]
-stdweb = "*"
+lazy_static = "1.1.0"
+stdweb = { path = "../../../stdweb" , features = ["futures","experimental_features_which_may_break_on_minor_version_bumps"] }
 futures = "0.1"
 tokio-current-thread = "0.1.1"

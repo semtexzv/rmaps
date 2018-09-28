@@ -4,7 +4,7 @@ version = "0.1.0"
 authors = ["Michal Hornický <semtexzv@gmail.com>"]
 
 [dependencies]
-
+failure = "*"
 geometry = {path= "../geometry"}
 
 quick-protobuf = { path = "../quick-protobuf"}

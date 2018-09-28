@@ -24,13 +24,12 @@ pub struct MapView<I: hal::Platform> {
 
 fn pulse(sys: &mut SystemRunner) {
     sys.block_on(::common::futures::future::lazy(|| {
-        ::tokio_timer::sleep(::std::time::Duration::from_millis(1))
-    })).unwrap();
+        ::tokio_timer::sleep(::std::time::Duration::from_micros(1))
+    }));
 }
 
 
 impl<I: hal::Platform> MapView<I> {
-    /// Initialization
     pub fn new(f: &Display) -> Self {
         let mut sys = System::new("Map");
         let (tx, rx) = channel();
@@ -71,6 +70,7 @@ impl<I: hal::Platform> MapView<I> {
 
     pub fn render(&mut self, mut surface: glium::Frame) {
         self.do_run(move |map: &mut MapViewImpl<I>, ctx| {
+            map.window_resized(PixelSize::new(surface.get_dimensions().0,surface.get_dimensions().1));
             map.render(&mut surface, ctx);
             surface.finish().unwrap();
         });
@@ -85,6 +85,7 @@ impl<I: hal::Platform> MapView<I> {
     }
 
     pub fn window_resized(&mut self, dims: PixelSize) {
+        println!("Resized : {:?}", dims);
         self.do_run(move |map: &mut MapViewImpl<I>, _| {
             map.window_resized(dims)
         });
@@ -214,7 +215,7 @@ impl<I: hal::Platform> MapViewImpl<I> {
                 wrap_future(self.file_source.send(image))
                     .from_err::<Error>()
                     .map(|res, this: &mut MapViewImpl<I>, ctx| {
-                        trace!("MapViewImpl: Retrieved sprite image .. : {:?}", res);
+                        //trace!("MapViewImpl: Retrieved sprite image .. : {:?}", res);
                         this.renderer.as_mut().unwrap().sprite_png_ready(res.unwrap().data);
                     });
 
@@ -222,7 +223,7 @@ impl<I: hal::Platform> MapViewImpl<I> {
                 wrap_future(self.file_source.send(json))
                     .from_err::<Error>()
                     .map(|res, this: &mut MapViewImpl<I>, ctx| {
-                        trace!("MapViewImpl: Retrieved sprite json .. : {:?}", res);
+                        //trace!("MapViewImpl: Retrieved sprite json .. : {:?}", res);
 
                         let parsed: Result<style::sprite::SpriteAtlas> = res
                             .map_err(|e| e.into())
@@ -230,7 +231,7 @@ impl<I: hal::Platform> MapViewImpl<I> {
                                 json::from_slice(&x.data[..]).map_err(|e| e.into())
                             });
 
-                        trace!("MapViewImpl: Parsed sprite JSON : {:?}", parsed);
+                        //trace!("MapViewImpl: Parsed sprite JSON : {:?}", parsed);
                         this.renderer.as_mut().unwrap().sprite_json_ready(parsed.unwrap());
                     });
 

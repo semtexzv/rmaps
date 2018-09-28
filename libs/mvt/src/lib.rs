@@ -5,6 +5,8 @@ pub extern crate quick_protobuf;
 
 pub extern crate bytes;
 
+pub extern crate failure;
+
 
 use std::sync::Arc;
 
@@ -17,9 +19,10 @@ pub use geometry::Value;
 pub mod pb;
 
 pub use pb::GeomType;
+pub use failure::Error;
 
 
-pub fn decode(data: &[u8]) -> ::std::result::Result<Tile, pb::Error> {
+pub fn decode(data: &[u8]) -> ::std::result::Result<Tile, Error> {
     let mut acc = pb::BufRefAccess {
         r: &mut quick_protobuf::BytesReader::from_bytes(data),
         buf: &data,
@@ -387,4 +390,9 @@ fn parse_geometry(typ: GeomType, data: &[u32]) -> Vec<Vec<[f32; 2]>> {
             vec![]
         }
     };
+}
+
+pub fn perform_selftest() -> Tile {
+    let mut data = include_bytes!("../test.mvt");
+    decode(data).unwrap()
 }

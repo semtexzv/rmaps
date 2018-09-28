@@ -6,6 +6,8 @@
 pub extern crate bytes;
 pub extern crate http;
 
+pub extern crate backtrace;
+
 #[macro_use]
 pub extern crate glium;
 pub extern crate glium_derive;
@@ -51,7 +53,11 @@ pub extern crate palette;
 pub extern crate lerp;
 #[macro_use]
 pub extern crate derive_more;
+pub extern crate image;
 
+pub extern crate geometry;
+pub extern crate tess2;
+pub extern crate mvt;
 
 pub mod prelude;
 pub mod export;

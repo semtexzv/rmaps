@@ -42,7 +42,6 @@ actix_derive = "0.3"
 bytes = "0.4"
 futures = "0.1"
 tokio-executor = "0.1"
-tokio-current-thread = "0.1"
 tokio-timer = "0.2"
 
 tokio-tcp = {version = "0.1", optional = true}

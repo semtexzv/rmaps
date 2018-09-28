@@ -1,18 +1,20 @@
 extern crate futures;
-extern crate stdweb;
-extern crate tokio_current_thread;
 
+pub extern crate stdweb;
 
-use futures::executor;
-use futures::future::Future;
-use futures::{Stream, Sink, Async};
-use std::fmt::Debug;
-use std::sync::{Arc, Mutex};
-use stdweb::web::set_timeout;
+use futures::Future;
 
-pub struct Runtime {
-
+pub fn spawn<F>(future: F)
+    where F: Future<Item=(), Error=()> + 'static
+{
+    stdweb::PromiseFuture::spawn(future);
 }
+
+pub struct Runtime {}
+
+type LtFuture<'a> = Box<Future<Item=(), Error=()> + 'a>;
+type BoxedFuture = Box<Future<Item=(), Error=()> + 'static>;
+
 
 impl Runtime {
     pub fn new() -> std::io::Result<Runtime> {
@@ -21,13 +23,45 @@ impl Runtime {
     pub fn block_on<F>(&mut self, f: F) -> Result<F::Item, F::Error>
         where F: Future
     {
-        tokio_current_thread::block_on_all(f)
+        use std::{
+            mem,
+            sync::mpsc::*,
+        };
+
+        let (tx, rx) = channel();
+
+        let fut = f.then(move |v| {
+            tx.send(v).unwrap();
+            futures::finished::<(), ()>(())
+        });
+
+        let time: LtFuture = Box::new(fut);
+
+
+        unsafe {
+            let act = mem::transmute::<LtFuture, BoxedFuture>(time);
+            stdweb::PromiseFuture::spawn(act);
+
+            let data = 'l: loop {
+                //println!("Draining");
+                stdweb::webcore::executor::EventLoop.drain();
+                match rx.try_recv() {
+                    Ok(o) => {
+                        break 'l o;
+                    }
+                    Err(e) => {
+                        println!("Not yet finished: {:?}", e);
+                    }
+                }
+            };
+
+            return data;
+        }
     }
     pub fn spawn<F>(&mut self, future: F) -> &mut Self
-        where F: Future<Item = (), Error = ()> + 'static,
+        where F: Future<Item=(), Error=()> + 'static,
     {
-        tokio_current_thread::spawn(future);
+        stdweb::PromiseFuture::spawn(future);
         self
     }
-
 }

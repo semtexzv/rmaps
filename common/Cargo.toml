@@ -3,18 +3,27 @@ name = "common"
 version = "0.1.0"
 authors = ["Michal Hornický <semtexzv@gmail.com>"]
 
+[[bin]]
+name = "test-main"
+path = "src/test_main.rs"
+
 [features]
 default = []
 
-wasm = ["actix/runtime-web"]
-desktop = ["actix/runtime-tokio"]
+web = ["actix/runtime-web", "stdweb" ]
+desktop = ["actix/runtime-tokio", "glium/glutin"]
 
 [dependencies]
 
+stdweb = { path = "../libs/stdweb", optional = true }
+mvt = { path = "../libs/mvt" }
+
 http = "*"
 bytes = "*"
+backtrace = "*"
+image = "*"
 
-glium = { git  = "https://github.com/semtexzv/glium", branch= "tmp-working"  }
+glium = { path = "../libs/glium" }
 glium_derive = { git  = "https://github.com/semtexzv/glium_derive" }
 arraydeque = "0.4.2"
 num = "*"
@@ -41,7 +50,6 @@ serde_json="*"
 futures = "0.1"
 tokio-timer ="*"
 
-geometry = { path = "../libs/geometry" }
 
 url = "*"
 uuid = { version = "*" , features = ["v4"]}
@@ -53,3 +61,7 @@ lerp = "*"
 
 
 actix = { path = "../libs/actix", default-features = false}
+
+
+geometry = { path = "../libs/geometry" }
+tess2 =  { path = "../libs/tess2" }

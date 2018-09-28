@@ -1,6 +1,5 @@
 #version 300 es
-//#define in varying
-precision highp float;
+precision mediump float;
 
 
 out vec4 frag_out;

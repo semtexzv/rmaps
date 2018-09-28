@@ -1,3 +1,4 @@
+#![allow(non_upper_case_globals,non_snake_case)]
 pub mod ffi;
 pub use ffi::*;
 

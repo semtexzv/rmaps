@@ -1,0 +1,56 @@
+[package]
+name = "glium"
+version = "0.22.0"
+authors = ["Pierre Krieger <pierre.krieger1708@gmail.com>"]
+description = """
+Elegant and safe OpenGL wrapper.
+
+Glium is an intermediate layer between OpenGL and your application. You still need to manually handle
+the graphics pipeline, but without having to use OpenGL's old and error-prone API.
+
+Its objectives:
+
+ - Be safe to use. Many aspects of OpenGL that can trigger a crash if misused are automatically handled by glium.
+ - Provide an API that enforces good pratices such as RAII or stateless function calls.
+ - Be compatible with all OpenGL versions that support shaders, providing unified API when things diverge.
+ - Avoid all OpenGL errors beforehand.
+ - Produce optimized OpenGL function calls, and allow the user to easily use modern OpenGL techniques.
+"""
+keywords = ["opengl", "gamedev"]
+categories = ["api-bindings", "rendering::graphics-api"]
+documentation = "https://docs.rs/glium"
+repository = "https://github.com/glium/glium"
+readme = "README.md"
+license = "Apache-2.0"
+build = "build/main.rs"
+exclude = ["doc", ".travis.yml", "circle.yml"]
+
+[badges]
+travis-ci = { repository = "glium/glium" }
+
+[features]
+default = ["glutin"]
+icon_loading = ["glutin/icon_loading"]
+unstable = [] # used for benchmarks
+test_headless = []  # used for testing headless display
+
+[dependencies.glutin]
+version = "0.17"
+features = []
+optional = true
+
+[dependencies]
+backtrace = "0.3.2"
+lazy_static = "1.0"
+smallvec = "0.6"
+fnv = "1.0.5"
+
+[build-dependencies]
+gl_generator = "0.9"
+
+[dev-dependencies]
+cgmath = "0.16"
+genmesh = "0.5"
+image = "0.18"
+obj = { version = "0.8", features = ["genmesh"] }
+rand = "0.4"

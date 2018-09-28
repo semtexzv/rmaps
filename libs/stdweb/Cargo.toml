@@ -1,0 +1,41 @@
+[package]
+name = "stdweb"
+version = "0.4.4"
+authors = ["Jan Bujak <j@exia.io>"]
+repository = "https://github.com/koute/stdweb"
+homepage = "https://github.com/koute/stdweb"
+documentation = "https://docs.rs/stdweb/*/stdweb/"
+license = "MIT/Apache-2.0"
+readme = "README.md"
+keywords = ["web", "asmjs", "webasm", "javascript"]
+categories = ["api-bindings", "gui", "web-programming"]
+description = "A standard library for the client-side Web"
+
+build = "build.rs"
+
+[dependencies]
+discard = "1.0.3"
+serde = { version = "1", optional = true }
+serde_json = { version = "1", optional = true }
+futures = { version = "0.1.18", optional = true }
+
+stdweb-derive = { version = "0.4", path = "stdweb-derive" }
+
+[dev-dependencies]
+serde_json = "1"
+serde_derive = "1"
+
+[features]
+default = ["serde", "serde_json", "futures"]
+nightly = []
+web_test = []
+experimental_features_which_may_break_on_minor_version_bumps = []
+"docs.rs" = []
+
+[target.wasm32-unknown-unknown.dependencies]
+stdweb-internal-macros = { version = "0.1", path = "stdweb-internal-macros" }
+
+[package.metadata.docs.rs]
+features = ["serde", "serde_json", "futures", "docs.rs"]
+all-features = false
+no-default-features = true

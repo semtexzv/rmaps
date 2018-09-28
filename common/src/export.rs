@@ -57,4 +57,8 @@ pub use color::*;
 pub use coord::*;
 pub use mercator::Mercator;
 
-use actix::prelude::*;
+pub use image;
+
+pub use geometry;
+pub use tess2;
+pub use mvt;

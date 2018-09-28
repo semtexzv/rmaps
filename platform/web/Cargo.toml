@@ -3,13 +3,10 @@ name = "web"
 version = "0.1.0"
 authors = ["Michal Hornický <semtexzv@gmail.com>"]
 
-[build]
-target = "wasm32-unknown-unknown"
-
 [dependencies]
+rt_wasm = { path = "../../libs/actix/runtimes/rt_wasm"}
+futures = "0.1"
 
-stdweb = "*"
 
-
-common  = { path = "../../common", default-features = false, features = ["wasm"]}
-rmaps = { path = "../../rmaps" }
+common  = { path = "../../common", default-features = false, features = ["web"]}
+rmaps = { path = "../../rmaps" , features = ["web"]}

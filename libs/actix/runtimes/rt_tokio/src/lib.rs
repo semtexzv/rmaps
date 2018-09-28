@@ -1,7 +1,13 @@
 extern crate futures;
 extern crate tokio;
+extern crate tokio_current_thread;
 
 use futures::prelude::*;
+
+pub fn spawn<F>(future: F) where F: Future<Item=(), Error=()> + 'static
+{
+    tokio_current_thread::spawn(future);
+}
 
 pub struct Runtime {
     rt: tokio::runtime::current_thread::Runtime,

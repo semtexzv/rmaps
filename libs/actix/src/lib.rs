@@ -44,7 +44,6 @@ extern crate bitflags;
 #[macro_use]
 extern crate futures;
 extern crate tokio_executor;
-extern crate tokio_current_thread;
 extern crate tokio_timer;
 
 #[cfg(feature = "resolver")]
@@ -56,7 +55,7 @@ extern crate rt_dummy as runtime;
 #[cfg(all(feature = "runtime-web"))]
 extern crate rt_wasm as runtime;
 
-#[cfg(all(feature = "runtime-tokio", not(feature = "runtime-dummy")))]
+#[cfg(all(feature = "runtime-tokio"))]
 extern crate rt_tokio as runtime;
 
 #[macro_use]

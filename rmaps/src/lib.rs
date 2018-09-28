@@ -15,19 +15,13 @@
 #![allow(unused_imports, dead_code, unused_mut, unused_variables, unused_macros, unreachable_code, unreachable_patterns, unused_parens)]
 #[macro_use]
 pub extern crate common;
-pub extern crate mvt;
+
 #[macro_use]
 pub extern crate rmaps_derive;
-pub extern crate geometry;
-pub extern crate image;
-
-pub extern crate tess2;
 #[macro_use]
 pub extern crate lazy_static;
 
 extern crate serde;
-
-
 
 
 pub mod prelude;

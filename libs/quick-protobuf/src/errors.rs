@@ -31,7 +31,7 @@ pub enum Error {
 }
 
 /// A wrapper for `Result<T, Error>`
-pub type Result<T> = ::std::result::Result<T, Error>;
+pub type Result<T> = ::std::result::Result<T, ::failure::Error>;
 
 impl Into<io::Error> for Error {
     fn into(self) -> ::std::io::Error {

@@ -118,7 +118,7 @@ impl Renderer {
         self.image_atlas.set_sprite_atlas(data);
     }
     pub fn sprite_png_ready(&mut self, data: Vec<u8>) {
-        self.image_atlas.set_sprite_texture(data);
+        //self.image_atlas.set_sprite_texture(data);
     }
     pub fn tile_ready(&mut self, tile: Rc<tiles::TileData>) {
         for l in self.layers.iter_mut() {
@@ -137,7 +137,7 @@ impl Renderer {
 
         let requests: Vec<Vec<(String, TileCoords)>> = self.layers
             .deref_mut()
-            .par_iter_mut()
+            .iter_mut()
             .map(|l| {
                 let mut req = vec![];
                 l.layer.prepare(PrepareParams {
@@ -150,6 +150,8 @@ impl Renderer {
 
                 req
             }).collect();
+
+        //println!("Requests for tiles : {:?}", requests);
 
         let requests: Vec<(String, TileCoords, _)> = requests
             .into_iter()

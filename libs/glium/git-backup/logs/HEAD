@@ -1,0 +1,7 @@
+0000000000000000000000000000000000000000 cda2cc0229f430baa72b49a3e407c153221b3c8d Michal Hornický <semtexzv@gmail.com> 1538088131 +0200	clone: from https://github.com/tomaka/glium
+cda2cc0229f430baa72b49a3e407c153221b3c8d cda2cc0229f430baa72b49a3e407c153221b3c8d Michal Hornický <semtexzv@gmail.com> 1538089071 +0200	reset: moving to HEAD
+cda2cc0229f430baa72b49a3e407c153221b3c8d 7b287318e9b8771ff47c9a3ab6402e9c223c5658 Michal Hornický <semtexzv@gmail.com> 1538089087 +0200	checkout: moving from master to my/tmp-working
+7b287318e9b8771ff47c9a3ab6402e9c223c5658 cda2cc0229f430baa72b49a3e407c153221b3c8d Michal Hornický <semtexzv@gmail.com> 1538089119 +0200	rebase: checkout origin/master
+cda2cc0229f430baa72b49a3e407c153221b3c8d 533e0ed21fbd8afb590779930dfe474b42220110 Michal Hornický <semtexzv@gmail.com> 1538089119 +0200	rebase: Fix UBO name lookup on OpenGL ES 3.0
+533e0ed21fbd8afb590779930dfe474b42220110 170356450bed48b5e0f36d253251cde0d2d43821 Michal Hornický <semtexzv@gmail.com> 1538089119 +0200	rebase: Fix segfault on nvidia drivers
+170356450bed48b5e0f36d253251cde0d2d43821 694d12a2ed02f8cd4c681d1453e887686979b24d Michal Hornický <semtexzv@gmail.com> 1538089119 +0200	rebase: Add missing derives to AttributeType enum

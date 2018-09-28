@@ -6,7 +6,7 @@ authors = ["Michal Hornický <semtexzv@gmail.com>"]
 [dependencies]
 
 common = { path = "../../common" , default-features = false, features = ["desktop"] }
-rmaps = { path = "../../rmaps" }
+rmaps = { path = "../../rmaps", features = ["desktop"] }
 
 actix-web = { version = "0.7.7", features = ["tls", "brotli" ,"flate2-c"], default-features = false }
 actix = { version = "0.7.4" , features=["resolver","signal"]}

@@ -186,9 +186,13 @@ impl ShaderProcessor {
 
             let frag_processed = regex.replace_all(&frag, process);
 
+            //println!("Vertex   : {}",vert_processed);
+            //println!("Fragment : {}",frag_processed);
+
             let res = Rc::new(glium::Program::from_source(displ, &vert_processed, &frag_processed, None)?);
 
-            Ok(entry.or_insert(res).clone())
+            let res = entry.or_insert(res).clone();
+            Ok(res)
         })
     }
 }

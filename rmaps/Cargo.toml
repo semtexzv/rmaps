@@ -8,17 +8,18 @@ codegen-units=8
 opt-level=0
 incremental=true
 
+
+[features]
+default = []
+web = ["common/web"]
+desktop = ["common/desktop"]
+
 [dependencies]
 common = { path = "../common", default-features = false }
-geometry = { path = "../libs/geometry"}
-mvt = { path = "../libs/mvt" }
 rmaps_derive = { path = "../libs/rmaps_derive"}
-
 serde= { version = "*", features = ["rc"] }
-image = "*"
 
 
-tess2 =  { path = "../libs/tess2" }
 lazy_static = "*"
 
 #imgui = { git = "https://github.com/semtexzv/imgui-rs" }
