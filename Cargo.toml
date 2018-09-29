@@ -13,3 +13,4 @@ debug = true
 
 [replace]
 "actix:0.7.4" = { path = "./libs/actix" }
+"image:0.20.0" = { path = "./libs/image" }

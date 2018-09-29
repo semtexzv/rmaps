@@ -5,7 +5,8 @@
 extern crate futures;
 
 extern crate rt_wasm;
-
+#[macro_use]
+extern crate stdweb;
 
 pub extern crate rmaps;
 pub extern crate common;
@@ -32,7 +33,6 @@ use common::glium::{
 use glium::glutin::*;
 
 
-use rt_wasm::stdweb;
 use stdweb::unstable::TryInto;
 use stdweb::web::{
     self,
@@ -44,7 +44,6 @@ use stdweb::web::{
 
 fn async_main() -> impl Future<Item=(), Error=()> {
     futures::lazy(move || {
-
         return futures::finished(());
     })
 }
@@ -52,13 +51,25 @@ fn async_main() -> impl Future<Item=(), Error=()> {
 
 use glium::index::PrimitiveType;
 
-
-/*
 fn main2() {
     let mut events_loop = glutin::EventsLoop::new();
+    let window = glutin::WindowBuilder::new()
+        .with_title("Maps test")
+
+        .with_dimensions(LogicalSize::new(600., 600.));
+
+    let context = glutin::ContextBuilder::new()
+        .with_gl(glutin::GlRequest::Specific(glutin::Api::WebGl, (2, 0)))
+        .with_pixel_format(8, 8)
+        .with_stencil_buffer(8);
+
+
+    let display = glium::Display::new(window, context, &events_loop).unwrap();
+    /*
     let window = glutin::WindowBuilder::new();
     let context = glutin::ContextBuilder::new();
     let display = glium::Display::new(window, context, &events_loop).unwrap();
+    */
 
     // building the vertex buffer, which contains all the vertices that we will draw
     let vertex_buffer = {
@@ -73,9 +84,9 @@ fn main2() {
         glium::VertexBuffer::new(&display,
                                  &[
                                      Vertex { position: [-0.5, -0.5], color: [0.0, 1.0, 0.0] },
-                                     Vertex { position: [ 0.0,  0.5], color: [0.0, 0.0, 1.0] },
-                                     Vertex { position: [ 0.5, -0.5], color: [1.0, 0.0, 0.0] },
-                                 ]
+                                     Vertex { position: [0.0, 0.5], color: [0.0, 0.0, 1.0] },
+                                     Vertex { position: [0.5, -0.5], color: [1.0, 0.0, 0.0] },
+                                 ],
         ).unwrap()
     };
 
@@ -171,7 +182,8 @@ fn main2() {
 
         // drawing a frame
         let mut target = display.draw();
-        target.clear_color(0.0, 0.0, 0.0, 0.0);
+        target.clear_color(0.0, 0.0, 1.0, 1.0);
+        target.clear_stencil(0xFF);
         target.draw(&vertex_buffer, &index_buffer, &program, &uniforms, &Default::default()).unwrap();
         target.finish().unwrap();
     };
@@ -194,11 +206,13 @@ fn main2() {
         glutin::ControlFlow::Continue
     });
 }
-*/
 
 fn main() {
     stdweb::initialize();
     common::init_log();
+
+   // main2();
+
 
     let mut events_loop = glutin::EventsLoop::new();
     let window = glutin::WindowBuilder::new()
@@ -207,17 +221,22 @@ fn main() {
         .with_dimensions(LogicalSize::new(600., 600.));
 
     let context = glutin::ContextBuilder::new()
-        .with_gl(glutin::GlRequest::Specific(glutin::Api::WebGl, (2, 0)));
+        .with_gl(glutin::GlRequest::Specific(glutin::Api::WebGl, (2, 0)))
+        .with_pixel_format(8, 8)
+        .with_stencil_buffer(8);
 
     let display = glium::Display::new(window, context, &events_loop).unwrap();
 
     let mut map = rmaps::map::MapView::<types::WebTypes>::new(&display.clone());
-   // map.set_style_url("mapbox://styles/semtexzv/cjjjv418k6m0b2rok0oiejd4i");
-    map.set_style_url("mapbox://styles/semtexzv/cjmlvlcf3qyqu2rniv6m2oxlu");
+    //map.set_style_url("mapbox://styles/semtexzv/cjjjv418k6m0b2rok0oiejd4i");
+    //map.set_style_url("mapbox://styles/semtexzv/cjmlvlcf3qyqu2rniv6m2oxlu");
+    map.set_style_url("mapbox://styles/semtexzv/cjmmc76cxrxs72ss4k8u81ikd");
+
     let size = display.get_framebuffer_dimensions();
+    map.window_resized(PixelSize::new(size.0, size.1));
+
     events_loop.run_forever(|event| {
         println!("Event loop");
-
         let surface = display.draw();
         map.render(surface);
 
@@ -252,9 +271,7 @@ fn main() {
             },
             _ => ()
         }
-
-        stdweb::webcore::executor::EventLoop.drain();
+        stdweb::webcore::executor::EventLoop.wake();
         glium::glutin::ControlFlow::Continue
     });
-
 }

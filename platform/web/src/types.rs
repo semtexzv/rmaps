@@ -6,10 +6,8 @@ pub struct WebTypes;
 
 pub struct WebCache {}
 
-
-use rt_wasm::{
-    self, *,
-};
+use rt_wasm::{self, *};
+use stdweb::unstable::TryInto;
 
 
 impl hal::Platform for WebTypes {
@@ -32,6 +30,7 @@ impl hal::HttpClient for WebHttpClient {
         Ok(WebHttpClient)
     }
 
+    #[allow(unused_must_use)]
     fn execute(&mut self, request: http::Request<bytes::Bytes>) -> BoxFuture<http::Response<bytes::Bytes>, http::Error> {
         use stdweb::web::{
             self,
@@ -42,19 +41,29 @@ impl hal::HttpClient for WebHttpClient {
 
         let req = stdweb::web::XmlHttpRequest::new();
         req.open("GET", &request.uri().to_string()).unwrap();
+        for (h, v) in request.headers().iter() {
+            req.set_request_header(h.as_str(), v.to_str().unwrap());
+        }
+        let tmp = req.clone();
+
+        js! ( @(no_return) @{tmp}.responseType = "arraybuffer"; );
+
         req.send_with_bytes(request.into_body().deref()).unwrap();
 
         let (tx, rx) = futures::sync::oneshot::channel();
-        let mut ot = Some(tx);
+        let mut sender = Some(tx);
 
-        let req2 = req.clone();
-        req2.add_event_listener(move |e: web::event::LoadEndEvent| {
+        let _sent = req.clone();
+        _sent.add_event_listener(move |e: web::event::LoadEndEvent| {
             if req.ready_state() == XhrReadyState::Done {
-                println!("Received something : Encoding  : {:?}", req.get_response_header("Content-Encoding:"));
-                let txt = req.response_text().unwrap().unwrap();
+                let tmp = req.clone();
+                let data: stdweb::web::ArrayBuffer = js!( return @{tmp}.response; ).try_into().unwrap();
+                let data: Vec<u8> = data.into();
+                println!("Received something");
 
-                let resp = http::Response::builder().body(bytes::Bytes::from(txt));
-                if let Some(t) = ot.take() {
+
+                let resp = http::Response::builder().body(bytes::Bytes::from(data));
+                if let Some(t) = sender.take() {
                     t.send(resp).unwrap()
                 }
             }

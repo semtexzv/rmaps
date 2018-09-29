@@ -33,9 +33,7 @@ impl ImageAtlas {
     }
 
     pub fn set_sprite_texture(&mut self, data: Vec<u8>) {
-        println!("Image Data is : {:x?}", &data[0..100]);
         let format = image::guess_format(&data).unwrap();
-        println!("Image Format is : {:?}", format);
         let decoded = image::load_from_memory_with_format(&data, format).unwrap().to_rgba();
         let dims = decoded.dimensions();
         let raw = glium::texture::RawImage2d::from_raw_rgba_reversed(&decoded, dims);

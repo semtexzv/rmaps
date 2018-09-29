@@ -85,6 +85,9 @@ thread_local! {
 }
 
 impl EventLoop {
+    pub fn wake(&self) {
+        EVENT_LOOP_INNER.with(EventLoopInner::wake)
+    }
     pub fn drain(&self) {
         EVENT_LOOP_INNER.with(EventLoopInner::drain)
     }

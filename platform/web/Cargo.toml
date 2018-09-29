@@ -5,6 +5,7 @@ authors = ["Michal Hornický <semtexzv@gmail.com>"]
 
 [dependencies]
 rt_wasm = { path = "../../libs/actix/runtimes/rt_wasm"}
+stdweb = { path ="../../libs/stdweb" }
 futures = "0.1"
 
 

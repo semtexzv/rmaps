@@ -393,6 +393,6 @@ fn parse_geometry(typ: GeomType, data: &[u32]) -> Vec<Vec<[f32; 2]>> {
 }
 
 pub fn perform_selftest() -> Tile {
-    let mut data = include_bytes!("../test.mvt");
+    let data = include_bytes!("../test.mvt");
     decode(data).unwrap()
 }

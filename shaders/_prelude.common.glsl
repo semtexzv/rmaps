@@ -18,3 +18,5 @@ vec3 feature_get_vec3(float idx, float offset) {
 vec4 feature_get_vec4(float idx, float offset) {
     return feature_data[int(idx * PER_FEATURE_SIZE + offset)].xyzw;
 }
+
+#define TEXTURE texture

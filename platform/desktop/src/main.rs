@@ -2,6 +2,13 @@
 #![feature(nll)]
 #![feature(unboxed_closures)]
 
+#![feature(global_allocator, allocator_api)]
+
+use std::alloc::System;
+
+#[global_allocator]
+static A: System = System;
+
 pub extern crate rmaps;
 pub extern crate common;
 pub extern crate actix_web;
@@ -60,13 +67,16 @@ fn main() {
     //map.set_style_url("mapbox://styles/semtexzv/cjm699hdycl2y2snx6os4bo9t");
     // Streets
     // map.set_style_url("mapbox://styles/semtexzv/cjmdb386z7hm22rmlunomo8w0");
+
+
+
+    //map.set_style_url("mapbox://styles/semtexzv/cjmlvlcf3qyqu2rniv6m2oxlu");
     let mut running = true;
 
 
     while running {
         let surface = display.draw();
         map.render(surface);
-
 
         events_loop.poll_events(|event| {
             //let mut camera: Camera = map.get_camera();
@@ -76,40 +86,17 @@ fn main() {
                         running = false;
                         return;
                     }
-
                     WindowEvent::Resized(s) => {
                         map.window_resized(PixelSize::new(s.width, s.height));
-                        //size = s;
-                        //camera.set_size(PixelSize::new(s.width, s.height));
                     }
                     WindowEvent::CursorMoved { position, .. } => {
-                        //pos = PixelPoint::new(position.x, position.y);
                         map.mouse_moved(PixelPoint::new(position.x, position.y));
-
-                        /*
-                        if let Some(last) = last_pos {
-                            let last = camera.window_to_world(last);
-                            let now = camera.window_to_world(pos);
-
-                            let diff = now - last;
-                            camera.set_pos(camera.pos() - diff);
-                            last_pos = Some(pos);
-                        }
-                        */
                     }
                     WindowEvent::MouseInput { state: glium::glutin::ElementState::Pressed, button: MouseButton::Left, .. } => {
                         map.mouse_button(true);
-
-                        //down_pos = Some(pos.clone());
-                        //last_pos = Some(pos.clone());
                     }
                     WindowEvent::MouseInput { state: ElementState::Released, button: MouseButton::Left, .. } => {
                         map.mouse_button(false);
-                        /*
-                        down_pos = None;
-                        last_pos = None;
-                        map.clicked(PixelPoint::new(pos.x, pos.y));
-                        */
                     }
                     WindowEvent::MouseWheel { delta, modifiers, .. } => {
                         match delta {
@@ -127,7 +114,5 @@ fn main() {
                 _ => ()
             }
         });
-        // let t2 = PreciseTime::now();
-        // info!("Time: {:?}",t1.to(t2).num_milliseconds());
     }
 }

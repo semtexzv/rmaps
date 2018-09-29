@@ -73,6 +73,7 @@ impl Clipper {
 
             let indices = glium::index::NoIndices(glium::index::PrimitiveType::TriangleFan);
 
+
             (params.frame).draw(&vbo, indices, &self.program, &uniforms, &draw_params)?;
         }
         Ok(())

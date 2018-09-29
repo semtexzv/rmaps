@@ -64,14 +64,15 @@ pub fn set_main_loop_callback<F>(callback : F) where F : FnMut() {
         *log.borrow_mut() = &callback as *const _ as *mut c_void;
     });
 
-    unsafe {
-        ffi::emscripten_cancel_main_loop();
-        ffi::emscripten_set_main_loop(Some(wrapper::<F>), 0, 1);
-    }
+    unsafe { ffi::emscripten_set_main_loop(Some(wrapper::<F>), 0, 1); }
+
 
     unsafe extern "C" fn wrapper<F>() where F : FnMut() {
         MAIN_LOOP_CALLBACK.with(|z| {
             let closure = *z.borrow_mut() as *mut F;
+            if(closure == ptr::null_mut()){
+                println!("Callback is null");
+            }
             (*closure)();
         });
     }

@@ -166,8 +166,8 @@ mod gl {
 /// your program.
 #[cfg(feature = "glutin")]
 pub use backend::glutin::Display;
-#[cfg(feature = "glutin")]
-pub use backend::glutin::headless::Headless as HeadlessRenderer;
+//#[cfg(feature = "glutin")]
+//pub use backend::glutin::headless::Headless as HeadlessRenderer;
 
 /// Trait for objects that describe the capabilities of an OpenGL backend.
 pub trait CapabilitiesSource {

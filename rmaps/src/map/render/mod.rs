@@ -118,7 +118,7 @@ impl Renderer {
         self.image_atlas.set_sprite_atlas(data);
     }
     pub fn sprite_png_ready(&mut self, data: Vec<u8>) {
-        //self.image_atlas.set_sprite_texture(data);
+        self.image_atlas.set_sprite_texture(data);
     }
     pub fn tile_ready(&mut self, tile: Rc<tiles::TileData>) {
         for l in self.layers.iter_mut() {
@@ -126,7 +126,7 @@ impl Renderer {
         }
     }
     pub fn render<I: ::map::hal::Platform>(&mut self, mut params: RendererParams<I>) -> Result<()> {
-        params.frame.clear_color(0., 0., 0., 1.);
+        params.frame.clear_color(0., 0., 1., 1.);
         params.frame.clear_stencil(0xFF);
 
         let camera = params.camera;
@@ -173,9 +173,11 @@ impl Renderer {
             let source = self.sources.get(&name).expect("Source missing");
             use common::actix::fut::*;
 
+            //println!("Requesting : {:?} from {:?}", coord, name);
             let req = self::source::TileRequest {
                 coords: coord,
             };
+
             let req = wrap_future(source.send(req));
             use self::source::TileError;
 
@@ -183,6 +185,7 @@ impl Renderer {
                 .and_then(|res, this: &mut super::MapViewImpl<I>, ctx| {
                     match res {
                         Ok(data) => {
+                            println!("Got tile");
                             this.new_tile(data, ctx);
                         }
                         Err(TileError::Error(e)) => {

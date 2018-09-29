@@ -10,7 +10,7 @@ Only available if the 'glutin' feature is enabled.
 */
 pub extern crate glutin;
 
-pub mod headless;
+//pub mod headless;
 
 use {Frame, IncompatibleOpenGl, SwapBuffersError};
 use debug;
@@ -247,6 +247,7 @@ unsafe impl Backend for GlutinBackend {
         match self.borrow().swap_buffers() {
             Ok(()) => Ok(()),
             Err(glutin::ContextError::IoError(e)) => panic!("Error while swapping buffers: {:?}", e),
+            Err(glutin::ContextError::OsError(e)) => panic!("Error while swapping buffers: {:?}", e),
             Err(glutin::ContextError::ContextLost) => Err(SwapBuffersError::ContextLost),
         }
     }

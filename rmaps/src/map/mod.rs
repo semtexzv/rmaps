@@ -70,7 +70,7 @@ impl<I: hal::Platform> MapView<I> {
 
     pub fn render(&mut self, mut surface: glium::Frame) {
         self.do_run(move |map: &mut MapViewImpl<I>, ctx| {
-            map.window_resized(PixelSize::new(surface.get_dimensions().0,surface.get_dimensions().1));
+            map.window_resized(PixelSize::new(surface.get_dimensions().0, surface.get_dimensions().1));
             map.render(&mut surface, ctx);
             surface.finish().unwrap();
         });
@@ -85,13 +85,13 @@ impl<I: hal::Platform> MapView<I> {
     }
 
     pub fn window_resized(&mut self, dims: PixelSize) {
-        println!("Resized : {:?}", dims);
         self.do_run(move |map: &mut MapViewImpl<I>, _| {
             map.window_resized(dims)
         });
     }
 
     pub fn mouse_moved(&mut self, pixel: PixelPoint) {
+        println!("Self ptr : {:?}", self as *mut _);
         self.do_run(move |map: &mut MapViewImpl<I>, _| {
             map.handle_mouse_moved(pixel)
         });
@@ -270,44 +270,20 @@ impl<I: hal::Platform> MapViewImpl<I> {
 
 
     pub fn handle_mouse_moved(&mut self, pixel: PixelPoint) {
-        /*
-        if self.gui.has_captured() {
-            self.gui.mouse_moved(pixel);
-        } else if self.has_captured() {
-        } else {
-            self.gui.mouse_moved(pixel);
-            self.mouse_moved(pixel);
-        }
-        */
-
 
         self.mouse_moved(pixel);
     }
     pub fn handle_mouse_button(&mut self, down: bool) {
-        //self.gui.mouse_button(down);
         self.mouse_button(down);
     }
 
     pub fn handle_mouse_scroll(&mut self, scroll: f64) {
-        /*
-        if self.gui.has_captured() {
-            self.gui.mouse_scroll(scroll);
-        } else if self.has_captured() {
-            self.mouse_scroll(scroll);
-        }
-
-        if !self.gui.mouse_scroll(scroll) {
-            self.mouse_scroll(scroll);
-        }
-        */
-
 
         self.mouse_scroll(scroll);
     }
 
 
     pub fn render(&mut self, target: &mut glium::Frame, ctx: &mut Context<Self>) {
-        profiler::begin("Render");
         let params = self::render::RendererParams {
             display: self.facade.deref(),
             frame: target,
@@ -319,7 +295,6 @@ impl<I: hal::Platform> MapViewImpl<I> {
         if let Some(ref mut render) = self.renderer {
             render.render(params).unwrap();
         }
-        profiler::end();
     }
 
     pub fn new_tile(&mut self, tile: tiles::TileData, ctx: &mut Context<MapViewImpl<I>>) {

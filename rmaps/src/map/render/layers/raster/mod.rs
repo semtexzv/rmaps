@@ -25,6 +25,7 @@ pub struct RasterVertex {
 pub struct RasterBucket {
     pub texture: glium::texture::Texture2d,
     pub vbo: glium::VertexBuffer<RasterVertex>,
+
 }
 
 impl Bucket for RasterBucket {}
@@ -33,6 +34,7 @@ impl Bucket for RasterBucket {}
 pub struct RasterLayer {
     style_layer: style::RasterLayer,
     shader_program: Rc<glium::Program>,
+    _feature_data : FeaturePropertyData,
 }
 
 impl layers::WithSource for RasterLayer {
@@ -45,7 +47,7 @@ impl BucketLayer for RasterLayer {
     type Bucket = RasterBucket;
 
     fn new_tile(&mut self, display: &Display, data: &Rc<TileData>) -> Result<Option<<Self as BucketLayer>::Bucket>> {
-
+        println!("New raster tile");
         let tiles::RasterTileData { ref image, dims } = data.data.unwrap_raster();
 
         let raw = glium::texture::RawImage2d::from_raw_rgba_reversed(image, *dims);
@@ -82,12 +84,15 @@ impl BucketLayer for RasterLayer {
     }
 
     fn render_bucket(&mut self, params: &mut RenderParams, coords: UnwrappedTileCoords, bucket: &<Self as BucketLayer>::Bucket) -> Result<()> {
+        //println!("Rendering Tile : {:?}", coords);
         let tile_matrix = Mercator::tile_to_world(coords);
         let matrix = params.camera.projection() * params.camera.view() * tile_matrix;
         let matrix: [[f32; 4]; 4] = matrix.into();
+
         let uniforms = uniform! {
                 u_matrix : matrix,
-                u_texture : &bucket.texture
+                u_texture : &bucket.texture,
+                feature_data_ubo: &self._feature_data.data,
             };
 
         let draw_params = glium::DrawParameters {
@@ -109,6 +114,7 @@ impl layers::LayerNew for RasterLayer {
         return RasterLayer {
             style_layer: style_layer.clone(),
             shader_program,
+            _feature_data : FeaturePropertyData::new(facade).unwrap(),
         };
     }
 }

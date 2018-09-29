@@ -51,11 +51,11 @@ impl<I: hal::Platform> Handler<Request> for DefaultFileSource<I> {
         trace!("DefaultFileSource: Requesting {:?}", url);
 
 
-         if let Ok(Some(res)) = self.cache.get(&msg) {
-             trace!("DefaultFileSource: Returning from cache");
+        if let Ok(Some(res)) = self.cache.get(&msg) {
+            trace!("DefaultFileSource: Returning from cache");
 
-             return box ok(res);
-         }
+            return box ok(res);
+        }
 
 
         use common::actix::fut::FutureWrap;
@@ -74,7 +74,7 @@ impl<I: hal::Platform> Handler<Request> for DefaultFileSource<I> {
                     Ok(data) => {
                         if data.cacheable() {
                             this.cache.put(&data).unwrap();
-                            trace!("DefaultFileSource: Returning after caching");
+                            trace!("DefaultFileSource: Returning after caching {:?} size : {:?}", data.req, data.data.len());
                         }
                         return ok(data);
                     }

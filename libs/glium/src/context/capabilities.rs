@@ -726,6 +726,8 @@ pub fn get_internal_format(gl: &gl::Gl, version: &Version, extensions: &Extensio
                           version >= &Version(Api::Gl, 4, 2) ||
                           extensions.gl_arb_internalformat_query)
         {
+            None
+            /*
             let mut num = mem::uninitialized();
             gl.GetInternalformativ(target, format.to_glenum(), gl::NUM_SAMPLE_COUNTS, 1, &mut num);
 
@@ -738,7 +740,7 @@ pub fn get_internal_format(gl: &gl::Gl, version: &Version, extensions: &Extensio
 
             } else {
                 Some(Vec::new())
-            }
+            }*/
 
         } else {
             None

@@ -118,7 +118,7 @@ pub struct FeaturePropertyData {
 impl FeaturePropertyData {
     pub fn new(d: &glium::backend::Facade) -> Result<Self> {
         Ok(FeaturePropertyData {
-            data: UniformBuffer::empty_unsized_dynamic(d, mem::size_of::<[f32; 4]>() * FEATURE_UBO_VECS)?,
+            data: UniformBuffer::empty_unsized(d, mem::size_of::<[f32; 4]>() * FEATURE_UBO_VECS)?,
             position: 0,
         })
     }
@@ -216,6 +216,7 @@ impl<'a> UniformPropertyBinder<'a> {
 }
 
 fn fixup<T: AsUniformValue>(t: T) -> UniformValue<'static> {
+    println!("AsUniform");
 // Yaaay, hacks....
     unsafe { ::std::mem::transmute(t.as_uniform_value()) }
 }

@@ -26,7 +26,7 @@ macro_rules! extensions {
         ///
         pub unsafe fn get_extensions(gl: &gl::Gl, version: &Version) -> ExtensionsList {
             let strings = get_extensions_strings(gl, version);
-
+            println!("Ext strings : {:?}",strings);
             let mut extensions = ExtensionsList {
                 $(
                     $field: false,
@@ -212,7 +212,16 @@ extensions! {
 /// being called.
 ///
 unsafe fn get_extensions_strings(gl: &gl::Gl, version: &Version) -> Vec<String> {
-    if version >= &Version(Api::Gl, 3, 0) || version >= &Version(Api::GlEs, 3, 0) {
+
+    let mut modern_available = version >= &Version(Api::Gl, 3, 0) || version >= &Version(Api::GlEs, 3, 0);
+
+    // Emscripten does not support retrieving extensions using the modern way
+    // So we force the legacy code
+    if cfg!(target_os = "emscripten") {
+        modern_available = false;
+    }
+
+    if modern_available  {
         let mut num_extensions = 0;
         gl.GetIntegerv(gl::NUM_EXTENSIONS, &mut num_extensions);
 

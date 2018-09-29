@@ -91,6 +91,7 @@ impl Actor for BaseSource {
                     if let Ok(data) = res {
                         let tile_json = json::from_slice(&data.data).unwrap();
                         this.style.tilejson = tile_json;
+                        trace!("BaseSource: TileJSON loaded");
                     }
                     ok(())
                 });
