@@ -14,16 +14,10 @@ default = []
 web = ["common/web"]
 desktop = ["common/desktop"]
 
+
 [dependencies]
 common = { path = "../common", default-features = false }
 rmaps_derive = { path = "../libs/rmaps_derive"}
 serde= { version = "*", features = ["rc"] }
 
-
 lazy_static = "*"
-
-#imgui = { git = "https://github.com/semtexzv/imgui-rs" }
-#imgui-glium-renderer = { git = "https://github.com/semtexzv/imgui-rs" }
-
-#imgui =  { git = "https://github.com/semtexzv/imgui-rs", branch = "experimental" }
-#imgui-glium-renderer = { git = "https://github.com/semtexzv/imgui-rs", branch = "experimental" }

@@ -87,7 +87,6 @@ impl Handler<DecodeTile> for TileDataWorker {
 
         match msg.source_type {
             SourceType::Raster => {
-                println!("Decoding raster");
                 let data = &msg.res.data;
                 let format = ::image::guess_format(data).unwrap();
                 let decoded = ::image::load_from_memory_with_format(data, format).unwrap().to_rgba();
@@ -177,7 +176,7 @@ impl TileDataWorker {
     pub fn new() -> Self {
         return TileDataWorker();
     }
-    pub fn spawn<P: hal::Platform>() -> Addr<TileDataWorker> {
+    pub fn spawn<P: pal::Platform>() -> Addr<TileDataWorker> {
         P::spawn_actor(|| {
             Self::new()
         })

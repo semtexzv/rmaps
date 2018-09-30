@@ -33,6 +33,7 @@ impl ImageAtlas {
     }
 
     pub fn set_sprite_texture(&mut self, data: Vec<u8>) {
+
         let format = image::guess_format(&data).unwrap();
         let decoded = image::load_from_memory_with_format(&data, format).unwrap().to_rgba();
         let dims = decoded.dimensions();
@@ -40,6 +41,7 @@ impl ImageAtlas {
 
         let texture = glium::texture::Texture2d::new(self.display.deref(), raw).unwrap();
         self.sprite_texture = Some(texture);
+
     }
 
     pub fn atlas_dims(&self) -> [f32; 2] {
@@ -48,6 +50,7 @@ impl ImageAtlas {
         }
         return [0., 0.];
     }
+
     pub fn get_pattern(&self, name: &str) -> Option<(ImagePosition, &Texture2d)> {
         if let (Some(ref s), Some(ref t)) = (&self.sprite_atlas, &self.sprite_texture) {
             let dims = self.atlas_dims();

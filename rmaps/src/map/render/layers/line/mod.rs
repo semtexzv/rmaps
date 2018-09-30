@@ -109,7 +109,7 @@ impl layers::BucketLayer for LineLayer {
         let custom_uniforms = uniform! {
             u_p_matrix : Into::<[[f32; 4]; 4]>::into(params.camera.projection()),
             u_mv_matrix : Into::<[[f32; 4]; 4]>::into(params.camera.view() * tile_matrix),
-            feature_data_ubo: & bucket.feature_data.data,
+            feature_data_ubo: & bucket.feature_data,
         };
 
         let mut uniforms = MergeUniforms(

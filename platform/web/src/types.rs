@@ -1,16 +1,16 @@
 use ::prelude::*;
 
-pub struct WebHttpClient;
-
-pub struct WebTypes;
-
-pub struct WebCache {}
 
 use rt_wasm::{self, *};
 use stdweb::unstable::TryInto;
 
 
-impl hal::Platform for WebTypes {
+pub struct WebHttpClient;
+
+pub struct WebTypes;
+
+pub struct WebCache {}
+impl pal::Platform for WebTypes {
     type HttpClientType = WebHttpClient;
     type OfflineCacheType = WebCache;
 
@@ -25,7 +25,7 @@ impl hal::Platform for WebTypes {
     }
 }
 
-impl hal::HttpClient for WebHttpClient {
+impl pal::HttpClient for WebHttpClient {
     fn new() -> Result<Self> {
         Ok(WebHttpClient)
     }
@@ -74,7 +74,7 @@ impl hal::HttpClient for WebHttpClient {
 }
 
 
-impl hal::OfflineCache for WebCache {
+impl pal::OfflineCache for WebCache {
     fn new() -> Result<Self> {
         Ok(WebCache {})
     }

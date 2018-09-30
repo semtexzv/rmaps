@@ -176,7 +176,7 @@ impl EventLoopInner {
         js! { @(no_return) @{&self.waker}(); }
     }
     // Remove and return a task from the front of the queue
-    fn pop_task(&self) -> Option< Rc< SpawnedTask > > {
+    pub fn pop_task(&self) -> Option< Rc< SpawnedTask > > {
         self.microtask_queue.borrow_mut().pop_front()
     }
     // See if it's worth trying to reclaim some space from the queue

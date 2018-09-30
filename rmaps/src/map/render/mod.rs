@@ -34,7 +34,7 @@ use map::{
 
 use self::images::ImageAtlas;
 
-pub struct RendererParams<'a, I: ::map::hal::Platform> {
+pub struct RendererParams<'a, I: ::map::pal::Platform> {
     pub display: &'a Display,
     pub frame: &'a mut glium::Frame,
     pub camera: &'a Camera,
@@ -98,17 +98,20 @@ pub struct Renderer {
 
 
 impl Renderer {
-    pub fn new<P: hal::Platform>(display: &Display, style: Rc<style::Style>, file_source: Recipient<::map::storage::Request>) -> Self {
+    pub fn new<P: pal::Platform>(display: &Display, style: Rc<style::Style>, file_source: Recipient<::map::storage::Request>) -> Self {
+        let layers = layers::parse_style_layers(&display, &style).into_iter().map(|l| {
+            LayerData {
+                layer: l,
+                evaluated: None,
+            }
+        }).collect();
+
+        let sources = source::parse_sources::<P>(&style, file_source);
         Renderer {
             display: Box::new(display.clone()),
-            layers: layers::parse_style_layers(&display, &style).into_iter().map(|l| {
-                LayerData {
-                    layer: l,
-                    evaluated: None,
-                }
-            }).collect(),
+            layers,
+            sources,
             clipper: clip::Clipper::new(display).unwrap(),
-            sources: source::parse_sources::<P>(&style, file_source),
             image_atlas: images::ImageAtlas::new(&display).unwrap(),
             style,
 
@@ -125,7 +128,7 @@ impl Renderer {
             l.layer.new_tile(&self.display, &tile).unwrap();
         }
     }
-    pub fn render<I: ::map::hal::Platform>(&mut self, mut params: RendererParams<I>) -> Result<()> {
+    pub fn render<I: ::map::pal::Platform>(&mut self, mut params: RendererParams<I>) -> Result<()> {
         params.frame.clear_color(0., 0., 1., 1.);
         params.frame.clear_stencil(0xFF);
 
@@ -134,72 +137,49 @@ impl Renderer {
 
         let eval_params = EvaluationParams::new(params.camera.zoom);
 
+        let mut requests = BTreeSet::<(String,TileCoords)>::new();
 
-        let requests: Vec<Vec<(String, TileCoords)>> = self.layers
-            .deref_mut()
-            .iter_mut()
-            .map(|l| {
-                let mut req = vec![];
-                l.layer.prepare(PrepareParams {
-                    camera,
-                    cover: &cover,
-                    requestor: &mut |source, tile| {
-                        req.push((source.to_string(), tile));
-                    },
-                }).unwrap();
-
-                req
-            }).collect();
-
-        //println!("Requests for tiles : {:?}", requests);
-
-        let requests: Vec<(String, TileCoords, _)> = requests
-            .into_iter()
-            .fold(BTreeSet::new(), |mut acc, v| {
-                acc.extend(v);
-                acc
-            }).into_iter().map(|t| {
-            if let Some(source) = self.style.sources.get(&t.0) {
-                let name: String = t.0.into();
-                let coord = t.1;
-                let source = source.clone();
-                (name, coord, source)
-            } else {
-                panic!()
-            }
-        }).collect();
-
-        for (name, coord, source) in requests.into_iter() {
-            let source = self.sources.get(&name).expect("Source missing");
-            use common::actix::fut::*;
-
-            //println!("Requesting : {:?} from {:?}", coord, name);
-            let req = self::source::TileRequest {
-                coords: coord,
-            };
-
-            let req = wrap_future(source.send(req));
-            use self::source::TileError;
-
-            let fut = req.from_err::<Error>()
-                .and_then(|res, this: &mut super::MapViewImpl<I>, ctx| {
-                    match res {
-                        Ok(data) => {
-                            println!("Got tile");
-                            this.new_tile(data, ctx);
-                        }
-                        Err(TileError::Error(e)) => {
-                            debug!("Tile error occured : {:?}", e);
-                        }
-                        _ => {}
-                    }
-                    ok(())
-                });
-
-            params.ctx.spawn(fut.drop_err());
+        for l in self.layers.iter_mut() {
+            l.layer.prepare(PrepareParams {
+                camera,
+                cover: &cover,
+                requestor: &mut |source, tile| {
+                    requests.insert((source.to_string(), tile));
+                },
+            });
         }
 
-        self.layers.deref_mut().iter_mut().for_each(|l| {
+        for (name,coord) in requests.into_iter() {
+            if let Some(source) = self.sources.get(&name) {
+                let source : Addr<source::BaseSource> = source.clone();
+
+                use common::actix::fut::*;
+                use self::source::TileError;
+
+                let req = self::source::TileRequest {
+                    coords: coord,
+                };
+
+                let req = wrap_future(source.send(req));
+                let fut = req.from_err::<Error>()
+                    .and_then(|res, this: &mut super::MapViewImpl<I>, ctx| {
+                        match res {
+                            Ok(data) => {
+                                this.new_tile(data, ctx);
+                            }
+                            Err(TileError::Error(e)) => {
+                                error!("Tile error occured : {:?}", e);
+                            }
+                            _ => {}
+                        }
+                        ok(())
+                    });
+
+                params.ctx.spawn(fut.drop_err());
+            }
+        }
+
+        for l in self.layers.iter_mut() {
             let (should_eval, really) = match l.evaluated {
                 None => (true, true),
                 Some(ref e) if e.zoom != eval_params.zoom => (true, false),
@@ -209,7 +189,7 @@ impl Renderer {
             if should_eval {
                 l.layer.evaluate(&eval_params).unwrap();
             }
-        });
+        }
 
         let mut params = RenderParams {
             display: &params.display,
@@ -217,14 +197,13 @@ impl Renderer {
             camera: &params.camera,
             atlas: &self.image_atlas,
             frame_start: params.frame_start,
-
         };
+
         self.clipper.apply_mask(&cover, &mut params)?;
 
         for l in self.layers.iter_mut() {
             l.layer.render(&mut params).unwrap();
         }
-
         Ok(())
     }
 }

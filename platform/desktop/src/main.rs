@@ -2,7 +2,7 @@
 #![feature(nll)]
 #![feature(unboxed_closures)]
 
-#![feature(global_allocator, allocator_api)]
+#![feature(allocator_api)]
 
 use std::alloc::System;
 
@@ -59,7 +59,6 @@ fn main() {
 
     let display = glium::Display::new(window, context, &events_loop).unwrap();
 
-
     let mut map = rmaps::map::MapView::<types::DesktopTypes>::new(&display.clone());//.unwrap();
     //map.set_style_url("file://simple.json");
     map.set_style_url("mapbox://styles/semtexzv/cjjjv418k6m0b2rok0oiejd4i");
@@ -67,7 +66,6 @@ fn main() {
     //map.set_style_url("mapbox://styles/semtexzv/cjm699hdycl2y2snx6os4bo9t");
     // Streets
     // map.set_style_url("mapbox://styles/semtexzv/cjmdb386z7hm22rmlunomo8w0");
-
 
 
     //map.set_style_url("mapbox://styles/semtexzv/cjmlvlcf3qyqu2rniv6m2oxlu");

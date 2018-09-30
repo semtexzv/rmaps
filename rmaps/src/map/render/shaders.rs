@@ -113,10 +113,10 @@ impl ShaderProcessor {
 
 
             if let Entry::Occupied(o) = entry {
-                trace!("Loading {} shader from cache", name);
+                //trace!("Loading {} shader from cache", name);
                 return Ok((*o.get()).clone());
             } else {
-                trace!("Processing {} shader", name);
+                //trace!("Processing {} shader", name);
 
             }
 

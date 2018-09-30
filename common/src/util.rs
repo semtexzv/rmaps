@@ -18,7 +18,6 @@ impl TileCover {
                 v += step
             }
         }
-
         let tiles: i32 = 1 << z;
 
         let mut cover = BTreeSet::new();
@@ -176,6 +175,9 @@ impl Camera {
         self.zoom = z;
         if self.zoom < 0. {
             self.zoom = 0.;
+        }
+        if self.zoom > 23. {
+            self.zoom = 23.;
         }
     }
 

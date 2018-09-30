@@ -96,7 +96,6 @@ impl layers::BucketLayer for FillLayer {
         if evaluator.modified {
             UniformPropertyBinder::rebind(&self.layout.0, &bucket.properties, &self.style_layer, &mut bucket.uniforms)?;
         }
-
         let features = &mut bucket.features;
 
         for (id, data) in features.iter_mut() {
@@ -127,18 +126,20 @@ impl layers::BucketLayer for FillLayer {
         if let Some(pattern) = self.properties.pattern.get() {
             if let Some((sprite, texture)) = params.atlas.get_pattern(&pattern) {
                 use self::glium::uniforms::*;
-
+                /*
                 let sampler: Sampler<_> = texture.sampled();
                 sampler
                     .magnify_filter(MagnifySamplerFilter::Nearest)
                     .minify_filter(MinifySamplerFilter::Nearest);
 
+                    */
+
                 let texsize = params.atlas.atlas_dims();
 
                 let a = uniform! {
                     u_matrix : matrix,
-                    feature_data_ubo :  &bucket.feature_data.data,
-                    u_image : sampler,
+                    feature_data_ubo :  &bucket.feature_data,
+                    u_image : texture,
                     u_tex_scale : 1024f32,
                     u_pattern_tl : sprite.tl,
                     u_pattern_br : sprite.br,
@@ -171,7 +172,7 @@ impl layers::BucketLayer for FillLayer {
 
                 (params.frame).draw(buffers, indices, self.pattern_program.as_ref().unwrap(), &uniforms, &draw_params)?;
             } else {
-                error!("Pattern icon : {} not found", pattern);
+              //  error!("Pattern icon : {} not found", pattern);
             }
             // render as pattern
         } else {
@@ -179,7 +180,7 @@ impl layers::BucketLayer for FillLayer {
 
             let a = uniform! {
                 u_matrix: matrix,
-                feature_data_ubo: & bucket.feature_data.data,
+                feature_data_ubo: & bucket.feature_data,
             };
             let mut uniforms = MergeUniforms(
                 &bucket.uniforms,

@@ -14,7 +14,7 @@ use common::actix::fut::{
     wrap_future, ok, err, result,
 };
 
-use map::hal::{
+use map::pal::{
     self, OfflineCache,
 };
 
@@ -31,24 +31,24 @@ pub enum ResourceError {
 pub type ResourceResult = StdResult<Resource, ResourceError>;
 
 
-pub struct DefaultFileSource<I: hal::Platform> {
+pub struct DefaultFileSource<I: pal::Platform> {
     cache: I::OfflineCacheType,
     //offline_cache::OfflineCache,
     local: Addr<local::LocalFileSource>,
     network: Addr<network::NetworkFileSource<I>>,
 }
 
-impl<I: hal::Platform> Actor for DefaultFileSource<I> {
+impl<I: pal::Platform> Actor for DefaultFileSource<I> {
     type Context = Context<DefaultFileSource<I>>;
 }
 
 
-impl<I: hal::Platform> Handler<Request> for DefaultFileSource<I> {
+impl<I: pal::Platform> Handler<Request> for DefaultFileSource<I> {
     type Result = ResponseActFuture<Self, Resource, ResourceError>;
 
     fn handle(&mut self, msg: Request, _ctx: &mut Context<Self>) -> Self::Result {
         let url = msg.url().to_string();
-        trace!("DefaultFileSource: Requesting {:?}", url);
+        //trace!("DefaultFileSource: Requesting {:?}", url);
 
 
         if let Ok(Some(res)) = self.cache.get(&msg) {
@@ -90,7 +90,7 @@ impl<I: hal::Platform> Handler<Request> for DefaultFileSource<I> {
 }
 
 
-impl<I: hal::Platform> DefaultFileSource<I> {
+impl<I: pal::Platform> DefaultFileSource<I> {
     pub fn new() -> Self {
         DefaultFileSource {
             cache: I::OfflineCacheType::new().unwrap(),

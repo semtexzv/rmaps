@@ -1,31 +1,12 @@
 pub use ::common::export::*;
 pub use common::failure;
 
-pub use map::hal;
-
-
-pub trait Bool: Debug + Clone + Default { const VALUE: bool; }
-
-#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct True;
-
-#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct False;
-
-impl Bool for True {
-    const VALUE: bool = true;
-}
-
-impl Bool for False {
-    const VALUE: bool = false;
-}
-
+pub use map::pal;
 
 pub use std::convert::{TryFrom, From, Into};
 pub use rmaps_derive::*;
 
 
-use common::actix::prelude::*;
 use common::actix::{ResponseFuture, ResponseActFuture};
 
 

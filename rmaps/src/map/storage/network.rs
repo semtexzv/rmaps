@@ -16,7 +16,7 @@ use common::http::{
     },
 };
 
-use map::hal::HttpClient;
+use map::pal::HttpClient;
 
 /*
 use common::actix_web::{
@@ -39,22 +39,22 @@ use common::actix::fut::{
     WrapFuture,
 };
 
-pub struct NetworkFileSource<I: hal::Platform> {
+pub struct NetworkFileSource<I: pal::Platform> {
     client: I::HttpClientType
 }
 
-impl<I: hal::Platform> Actor for NetworkFileSource<I> {
+impl<I: pal::Platform> Actor for NetworkFileSource<I> {
     type Context = Context<Self>;
 }
 
 
-impl<I: hal::Platform> Handler<Request> for NetworkFileSource<I> {
+impl<I: pal::Platform> Handler<Request> for NetworkFileSource<I> {
     type Result = ResponseActFuture<Self, Resource, ResourceError>;
 
     fn handle(&mut self, msg: Request, _ctx: &mut Context<Self>) -> Self::Result {
-        use map::hal::HttpClient;
+        use map::pal::HttpClient;
 
-        fn get<I: hal::Platform>(url: &str, msg: Request, allowed_redirect_count: usize) -> BoxFuture<Resource, ResourceError> {
+        fn get<I: pal::Platform>(url: &str, msg: Request, allowed_redirect_count: usize) -> BoxFuture<Resource, ResourceError> {
             let request = http::Request::get(url).body(bytes::Bytes::new()).unwrap();
             let resp_fut = I::HttpClientType::new().unwrap().execute(request);
             box resp_fut.then(move |res: StdResult<_, _>| {
@@ -76,7 +76,7 @@ impl<I: hal::Platform> Handler<Request> for NetworkFileSource<I> {
     }
 }
 
-impl<I: hal::Platform> NetworkFileSource<I> {
+impl<I: pal::Platform> NetworkFileSource<I> {
     pub fn new() -> Self {
         return NetworkFileSource {
             client: I::HttpClientType::new().unwrap()

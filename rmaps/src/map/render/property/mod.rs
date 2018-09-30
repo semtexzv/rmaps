@@ -102,55 +102,68 @@ use map::render::shaders::{
 
 pub const FEATURE_UBO_VECS: usize = 1024;
 
+#[derive(Clone, Copy)]
 pub struct FeatureDataUbo {
-    pub feature_data: [[f32; 4]],
+    pub feature_data: [[f32; 4]; FEATURE_UBO_VECS],
 }
 
-implement_buffer_content!(FeatureDataUbo);
+//implement_buffer_content!(FeatureDataUbo);
 implement_uniform_block!(FeatureDataUbo,feature_data);
 
 pub struct FeaturePropertyData {
-    pub data: UniformBuffer<FeatureDataUbo>,
+    buffer: UniformBuffer<FeatureDataUbo>,
+    data: Box<FeatureDataUbo>,
     position: usize,
 }
 
 
 impl FeaturePropertyData {
     pub fn new(d: &glium::backend::Facade) -> Result<Self> {
-        Ok(FeaturePropertyData {
-            data: UniformBuffer::empty_unsized(d, mem::size_of::<[f32; 4]>() * FEATURE_UBO_VECS)?,
-            position: 0,
-        })
+        unsafe {
+            Ok(FeaturePropertyData {
+                buffer: UniformBuffer::empty(d)?,
+                data: box mem::zeroed(),
+                position: 0,
+            })
+        }
     }
 
     pub fn clear(&mut self) {
         self.position = 0;
     }
 
-    pub fn map_write(&mut self) -> glium::buffer::Mapping<FeatureDataUbo> {
-        self.data.map()
-    }
-
-    pub fn push_into<A: Attribute>(map: &mut glium::buffer::Mapping<FeatureDataUbo>, v: A, pos: usize) {
+    pub fn push<A: Attribute>(&mut self, v: A) {
         use std::mem;
         use std::ptr;
         use std::slice;
 
         assert!(A::get_type().get_size_bytes() <= mem::size_of::<f32>() * 4, "Size is : {:?}", A::get_type());
         assert!(mem::size_of::<A>() == A::get_type().get_size_bytes());
-        if pos >= FEATURE_UBO_VECS {
+        if self.position >= FEATURE_UBO_VECS {
             panic!("Too many attributes, TODO");
         }
         unsafe {
-            *(&mut map.feature_data[pos] as &mut _ as *mut _ as *mut A) = v;
+            let dest = &mut self.data.feature_data[self.position];
+            *(dest as *mut _ as *mut A) = v;
+            self.position += 1;
         }
+    }
+
+    pub fn upload(&mut self) {
+        self.buffer.write(&self.data);
     }
 }
 
 
 impl fmt::Debug for FeaturePropertyData {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        f.write_str("FeaturePropertyData")
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result { f.write_str("FeaturePropertyData") }
+}
+
+
+impl<'a> AsUniformValue for &'a FeaturePropertyData {
+    #[inline]
+    fn as_uniform_value(&self) -> UniformValue {
+        UniformValue::Block(self.buffer.as_slice_any(), |_| { Ok(()) })
     }
 }
 
@@ -185,9 +198,7 @@ impl UniformPropertyData {
 }
 
 impl fmt::Debug for UniformPropertyData {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        f.write_str("UniformPropertyData")
-    }
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result { f.write_str("UniformPropertyData") }
 }
 
 
@@ -210,14 +221,11 @@ impl<'a> UniformPropertyBinder<'a> {
         data.clear();
         let mut binder = UniformPropertyBinder::new(layout, data);
         props.accept(style, &mut binder);
-        // trace!("Uniform propery binder : got {:?} uniforms", binder.data.values.len());
         Ok(())
     }
 }
 
 fn fixup<T: AsUniformValue>(t: T) -> UniformValue<'static> {
-    println!("AsUniform");
-// Yaaay, hacks....
     unsafe { ::std::mem::transmute(t.as_uniform_value()) }
 }
 
@@ -234,7 +242,7 @@ impl<'a> PropertiesVisitor for UniformPropertyBinder<'a> {
 
 pub struct FeaturePropertyBinder<'a> {
     layout: &'a FeaturePropertyLayout,
-    map: glium::buffer::Mapping<'a, FeatureDataUbo>,
+    data: &'a mut FeaturePropertyData,
     start_size: usize,
     pos: usize,
 }
@@ -245,33 +253,26 @@ impl<'a> FeaturePropertyBinder<'a> {
             layout,
             start_size: data.position,
             pos: data.position,
-            map: data.map_write(),
+            data,
         }
     }
 
     #[inline]
     pub fn with<R, F: FnOnce(&mut FeaturePropertyBinder) -> R>(layout: &FeaturePropertyLayout, data: &mut FeaturePropertyData, fun: F) -> R {
-        let (pos, r) = {
+        let r = {
             let mut binder = Self::new(layout, data);
-
             let r = fun(&mut binder);
-
-            (binder.pos, r)
+            r
         };
-
-
-        data.position = pos;
+        data.upload();
         r
     }
 }
 
 impl<'a> PropertiesVisitor for FeaturePropertyBinder<'a> {
-
-
     fn visit_paint<T: GpuPropertable>(&mut self, v: &Property<T>, name: &str, style: &StyleProp<T>) {
         if self.layout.is_feature(name) {
-            FeaturePropertyData::push_into(&mut self.map, v.get(), self.pos);
-            self.pos += 1;
+            self.data.push(v.get());
         }
     }
 }

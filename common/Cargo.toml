@@ -3,19 +3,12 @@ name = "common"
 version = "0.1.0"
 authors = ["Michal Hornický <semtexzv@gmail.com>"]
 
-[[bin]]
-name = "test-main"
-path = "src/test_main.rs"
-
 [features]
 default = []
 
-web = ["actix/runtime-web", "stdweb" ]
+web = ["actix/runtime-web", ]
 desktop = ["actix/runtime-tokio", "glium/glutin"]
 
-[dependencies.stdweb]
-path = "../libs/stdweb"
-optional = true
 
 [dependencies.glium]
 path = "../libs/glium"
@@ -23,10 +16,14 @@ path = "../libs/glium"
 [dependencies.glium_derive]
 git  = "https://github.com/semtexzv/glium_derive"
 
+[dependencies.image]
+git = "https://github.com/semtexzv/image/"
+default-features = false
+features =[ "png_codec","jpeg", "webp"]
+
 [dependencies]
 
 mvt = { path = "../libs/mvt" }
-image =  { version = "0.20.0", default-features = false, features =[ "png_codec","jpeg", "webp"]}
 
 http = "*"
 bytes = "*"

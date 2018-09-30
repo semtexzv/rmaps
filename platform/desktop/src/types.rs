@@ -11,16 +11,41 @@ pub struct DesktopTypes;
 pub struct SqliteCache {}
 
 use rmaps::map::{
-    hal,
+    pal,
     storage,
 };
 
 
-impl hal::Platform for DesktopTypes {
+impl pal::Platform for DesktopTypes {
     type HttpClientType = DesktopHttpClient;
     type OfflineCacheType = SqliteCache;
+
+    fn spawn_actor<A, F>(create: F) -> Addr<A> where A: Actor<Context=Context<A>> + Send + 'static,
+                                                     F: FnOnce() -> A + Send + 'static {
+        use actix::Context;
+
+        let ctx = Context::<A>::new();
+        let act = create();
+
+        return ctx.run(act);
+    }
 }
 
+/* Spawn actor into thread
+
+let (tx, rx) = ::std::sync::mpsc::channel();
+        ::std::thread::spawn(move || {
+            let sys = System::new("");
+
+            let actor = create();
+            let addr = actor.start();
+            let _ = tx.send(addr);
+            let _ = sys.run();
+        });
+
+        rx.recv().unwrap()
+
+        */
 
 use actix_web::{
     client,
@@ -28,7 +53,7 @@ use actix_web::{
 };
 
 
-impl hal::HttpClient for DesktopHttpClient {
+impl pal::HttpClient for DesktopHttpClient {
     fn new() -> Result<Self> {
         Ok(DesktopHttpClient)
     }
@@ -54,7 +79,7 @@ impl hal::HttpClient for DesktopHttpClient {
 }
 
 
-impl hal::OfflineCache for SqliteCache {
+impl pal::OfflineCache for SqliteCache {
     fn new() -> Result<Self> {
         Ok(SqliteCache {})
     }

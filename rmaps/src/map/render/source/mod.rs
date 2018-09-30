@@ -51,7 +51,7 @@ pub trait Source: Actor + Handler<TileRequest> {
     fn from_style(id: String, style: &Rc<StyleSource>, file_source: Recipient<::map::storage::Request>) -> Self;
 }
 
-pub fn parse_sources<P: hal::Platform>(style: &::map::style::Style, file_source: Recipient<::map::storage::Request>) -> BTreeMap<String, Addr<BaseSource>> {
+pub fn parse_sources<P: pal::Platform>(style: &::map::style::Style, file_source: Recipient<::map::storage::Request>) -> BTreeMap<String, Addr<BaseSource>> {
     let mut res = BTreeMap::new();
     for (kk, v) in style.sources.iter() {
         let k: String = kk.clone();
@@ -102,7 +102,7 @@ impl Actor for BaseSource {
 }
 
 impl BaseSource {
-    fn new<P: hal::Platform>(id: String, style: StyleSource, file_source: Recipient<storage::Request>) -> Self {
+    fn new<P: pal::Platform>(id: String, style: StyleSource, file_source: Recipient<storage::Request>) -> Self {
         let worker = P::spawn_actor(|| TileDataWorker::new());
         BaseSource {
             id,

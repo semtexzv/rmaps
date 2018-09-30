@@ -19,8 +19,7 @@ void main() {
     vec2 end = u_pattern_br / u_texsize;
 
     vec2 tex_coord = mix(start, end, coord);
-    //vec4 texel_color = texture2D(u_image, tex_coord);
+    vec4 texel_color = TEX_LOOKUP(u_image, tex_coord);
 
-    //frag_out = texel_color * vec4(opacity);
-    frag_out = vec4(1.0);
+    frag_out = texel_color * vec4(1.0,1.0,1.0,opacity);
 }

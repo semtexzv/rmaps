@@ -92,7 +92,7 @@ impl BucketLayer for RasterLayer {
         let uniforms = uniform! {
                 u_matrix : matrix,
                 u_texture : &bucket.texture,
-                feature_data_ubo: &self._feature_data.data,
+                feature_data_ubo: &self._feature_data,
             };
 
         let draw_params = glium::DrawParameters {

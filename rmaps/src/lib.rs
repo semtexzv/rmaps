@@ -3,7 +3,6 @@
 #![recursion_limit="512"]
 #![feature(slice_patterns)]
 #![feature(never_type)]
-#![feature(pattern_parentheses)]
 #![feature(associated_type_defaults)]
 #![feature(box_syntax)]
 

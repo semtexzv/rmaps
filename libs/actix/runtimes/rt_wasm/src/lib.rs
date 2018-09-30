@@ -57,6 +57,7 @@ impl Runtime {
             return data;
         }
     }
+
     pub fn spawn<F>(&mut self, future: F) -> &mut Self
         where F: Future<Item=(), Error=()> + 'static,
     {

@@ -13,7 +13,7 @@ pub mod background;
 pub mod raster;
 
 pub mod fill;
-pub mod line;
+//pub mod line;
 
 #[repr(C)]
 #[derive(Debug, Clone, Copy, Vertex)]
@@ -174,7 +174,7 @@ impl<L: BucketLayer> Layer for BucketLayerHolder<L> {
                     _ => false,
                 };
                 if should_eval {
-                    self.layer.eval_bucket(params, &mut v.bucket)?;
+                    self.layer.eval_bucket(params, &mut v.bucket).unwrap();
                 }
 
                 v.evaluated = Some(render::EvaluationParams::new(zoom));
@@ -189,8 +189,8 @@ impl<L: BucketLayer> Layer for BucketLayerHolder<L> {
 
         for t in self.tiles.iter() {
             if let Some(mut v) = self.buckets.get_mut(&t.wrap()) {
-                v.bucket.upload(params.display)?;
-                self.layer.render_bucket(params, *t, &mut v.bucket)?;
+                v.bucket.upload(params.display).unwrap();
+                self.layer.render_bucket(params, *t, &mut v.bucket).unwrap();
             }
         }
 
@@ -239,7 +239,7 @@ pub fn parse_style_layers(facade: &Display, style: &style::Style) -> Vec<Box<dyn
                 res.push(box BucketLayerHolder::new(fill::FillLayer::new(facade, l)))
             }
             style::BaseStyleLayer::Line(l) => {
-                res.push(box BucketLayerHolder::new(line::LineLayer::new(facade, l)))
+                //res.push(box BucketLayerHolder::new(line::LineLayer::new(facade, l)))
             }
             style::BaseStyleLayer::Raster(l) => {
                 res.push(box BucketLayerHolder::new(raster::RasterLayer::new(facade, l)))

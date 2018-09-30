@@ -1,3 +1,6 @@
+//! PAL = Platform abstraction layer.
+//!
+//! This
 use ::prelude::*;
 use ::common::futures::Future;
 use ::common::http;
