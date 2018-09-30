@@ -463,7 +463,7 @@ impl Window {
             try_set(ffi::emscripten_set_touchmove_callback(doc_name, ev_loop, ffi::EM_FALSE, Some(touch_callback)))?;
             try_set(ffi::emscripten_set_touchcancel_callback(doc_name, ev_loop, ffi::EM_FALSE, Some(touch_callback)))?;
             try_set(ffi::emscripten_set_resize_callback(canvas_name, ev_loop, ffi::EM_FALSE, Some(resize_callback)))?;
-            try_set(ffi::emscripten_set_wheel_callback(ptr::null(), ev_loop, ffi::EM_FALSE, Some(wheel_callback)))?;
+            try_set(ffi::emscripten_set_wheel_callback(canvas_name, ev_loop, ffi::EM_FALSE, Some(wheel_callback)))?;
 
             if attribs.fullscreen.is_some() {
                 try_set(ffi::emscripten_request_fullscreen(ptr::null(), ffi::EM_TRUE))?;
