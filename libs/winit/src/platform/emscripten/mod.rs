@@ -13,6 +13,7 @@ use dpi::{LogicalPosition, LogicalSize, PhysicalPosition, PhysicalSize};
 use window::MonitorId as RootMonitorId;
 
 const DOCUMENT_NAME: &'static str = "#document\0";
+const CANVAS_NAME: &'static str = "#canvas\0";
 
 fn get_hidpi_factor() -> f64 {
     unsafe { ffi::emscripten_get_device_pixel_ratio() as f64 }
@@ -22,6 +23,7 @@ fn get_hidpi_factor() -> f64 {
 pub struct PlatformSpecificWindowBuilderAttributes;
 
 unsafe impl Send for PlatformSpecificWindowBuilderAttributes {}
+
 unsafe impl Sync for PlatformSpecificWindowBuilderAttributes {}
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -59,20 +61,20 @@ impl MonitorId {
 thread_local!(static MAIN_LOOP_CALLBACK: RefCell<*mut c_void> = RefCell::new(ptr::null_mut()));
 
 // Used to assign a callback to emscripten main loop
-pub fn set_main_loop_callback<F>(callback : F) where F : FnMut() {
+pub fn set_main_loop_callback<F>(callback: F) where F: FnMut() {
     MAIN_LOOP_CALLBACK.with(|log| {
         *log.borrow_mut() = &callback as *const _ as *mut c_void;
     });
 
-    unsafe { ffi::emscripten_set_main_loop(Some(wrapper::<F>), 0, 1); }
 
+    unsafe {
+        ffi::emscripten_cancel_main_loop();
+        ffi::emscripten_set_main_loop(Some(wrapper::<F>), 0, 1);
+    }
 
-    unsafe extern "C" fn wrapper<F>() where F : FnMut() {
+    unsafe extern "C" fn wrapper<F>() where F: FnMut() {
         MAIN_LOOP_CALLBACK.with(|z| {
             let closure = *z.borrow_mut() as *mut F;
-            if(closure == ptr::null_mut()){
-                println!("Callback is null");
-            }
             (*closure)();
         });
     }
@@ -138,11 +140,13 @@ impl EventsLoop {
     {
         self.interrupted.store(false, Ordering::Relaxed);
 
-        // TODO: handle control flow
-
         set_main_loop_callback(|| {
-            self.poll_events(|e| { callback(e); });
-            ::std::thread::sleep(::std::time::Duration::from_millis(5));
+            self.poll_events(|e| {
+
+                if callback(e) == ::ControlFlow::Break {
+                    self.interrupted.store(true, Ordering::Relaxed);
+                };
+            });
             if self.interrupted.load(Ordering::Relaxed) {
                 unsafe { ffi::emscripten_cancel_main_loop(); }
             }
@@ -179,7 +183,7 @@ fn show_mouse() {
     // }
     // styleSheet.insertRule('canvas.emscripten { border: none; cursor: auto; }', 0);
     unsafe {
-            ffi::emscripten_asm_const(b"var styleSheet = document.styleSheets[0]; var rules = styleSheet.cssRules; for (var i = 0; i < rules.length; i++) { if (rules[i].cssText.substr(0, 6) == 'canvas') { styleSheet.deleteRule(i); i--; } } styleSheet.insertRule('canvas.emscripten { border: none; cursor: auto; }', 0);\0".as_ptr() as *const c_char);
+        ffi::emscripten_asm_const(b"var styleSheet = document.styleSheets[0]; var rules = styleSheet.cssRules; for (var i = 0; i < rules.length; i++) { if (rules[i].cssText.substr(0, 6) == 'canvas') { styleSheet.deleteRule(i); i--; } } styleSheet.insertRule('canvas.emscripten { border: none; cursor: auto; }', 0);\0".as_ptr() as *const c_char);
     }
 }
 
@@ -211,15 +215,15 @@ extern "C" fn mouse_callback(
                         device_id: ::DeviceId(DeviceId),
                         position,
                         modifiers: modifiers,
-                    }
+                    },
                 });
                 queue.lock().unwrap().push_back(::Event::DeviceEvent {
                     device_id: ::DeviceId(DeviceId),
                     event: ::DeviceEvent::MouseMotion {
                         delta: ((*event).movementX as f64, (*event).movementY as f64),
-                    }
+                    },
                 });
-            },
+            }
             mouse_input @ ffi::EMSCRIPTEN_EVENT_MOUSEDOWN |
             mouse_input @ ffi::EMSCRIPTEN_EVENT_MOUSEUP => {
                 let button = match (*event).button {
@@ -240,11 +244,10 @@ extern "C" fn mouse_callback(
                         state: state,
                         button: button,
                         modifiers: modifiers,
-                    }
+                    },
                 })
-            },
-            _ => {
             }
+            _ => {}
         }
     }
     ffi::EM_FALSE
@@ -279,7 +282,7 @@ extern "C" fn keyboard_callback(
                         },
                     },
                 });
-            },
+            }
             ffi::EMSCRIPTEN_EVENT_KEYUP => {
                 queue.lock().unwrap().push_back(::Event::WindowEvent {
                     window_id: ::WindowId(WindowId(0)),
@@ -293,9 +296,8 @@ extern "C" fn keyboard_callback(
                         },
                     },
                 });
-            },
-            _ => {
             }
+            _ => {}
         }
     }
     ffi::EM_FALSE
@@ -362,6 +364,59 @@ unsafe extern "C" fn pointerlockchange_callback(
     ffi::EM_FALSE
 }
 
+#[allow(non_snake_case)]
+unsafe extern "C" fn resize_callback(
+    event_type: c_int,
+    event: *const ffi::EmscriptenUiEvent,
+    event_queue: *mut c_void) -> ffi::EM_BOOL
+{
+    let queue: &Mutex<VecDeque<::Event>> = mem::transmute(event_queue);
+    if event_type == ffi::EMSCRIPTEN_EVENT_RESIZE {
+        return ffi::EM_TRUE;
+    }
+    return ffi::EM_FALSE;
+}
+
+#[allow(non_snake_case)]
+unsafe extern "C" fn wheel_callback(
+    event_type: c_int,
+    event: *const ffi::EmscriptenWheelEvent,
+    event_queue: *mut c_void) -> ffi::EM_BOOL
+{
+
+
+    let queue: &Mutex<VecDeque<::Event>> = mem::transmute(event_queue);
+
+    let event = &*event;
+    if event_type == ffi::EMSCRIPTEN_EVENT_WHEEL {
+
+        let delta = match event.deltaMode {
+            ffi::DOM_DELTA_PIXEL => {
+                ::MouseScrollDelta::PixelDelta(LogicalPosition::new(event.deltaX,-event.deltaY))
+            }
+            ffi::DOM_DELTA_LINE => {
+                ::MouseScrollDelta::LineDelta(event.deltaX as _,-event.deltaY as _)
+            }
+            _ => {
+                return ffi::EM_FALSE;
+                unimplemented!()
+            }
+        };
+
+        queue.lock().unwrap().push_back(::Event::WindowEvent {
+            window_id: ::WindowId(WindowId(0)),
+            event : ::WindowEvent::MouseWheel {
+                phase : ::TouchPhase::Started,
+                device_id: ::DeviceId(DeviceId),
+                delta,
+                modifiers : ::ModifiersState::default(),
+            }
+        });
+        return ffi::EM_TRUE;
+    }
+    return ffi::EM_FALSE;
+}
+
 fn em_try(res: ffi::EMSCRIPTEN_RESULT) -> Result<(), String> {
     match res {
         ffi::EMSCRIPTEN_RESULT_SUCCESS | ffi::EMSCRIPTEN_RESULT_DEFERRED => Ok(()),
@@ -372,7 +427,7 @@ fn em_try(res: ffi::EMSCRIPTEN_RESULT) -> Result<(), String> {
 impl Window {
     pub fn new(events_loop: &EventsLoop, attribs: ::WindowAttributes,
                _pl_attribs: PlatformSpecificWindowBuilderAttributes)
-        -> Result<Window, ::CreationError>
+               -> Result<Window, ::CreationError>
     {
         if events_loop.window.lock().unwrap().is_some() {
             return Err(::CreationError::OsError("Cannot create another window".to_owned()));
@@ -392,36 +447,33 @@ impl Window {
 
         // TODO: set up more event callbacks
         unsafe {
-            em_try(ffi::emscripten_set_mousemove_callback(DOCUMENT_NAME.as_ptr() as *const c_char, mem::transmute(&*window.window.events), ffi::EM_FALSE, Some(mouse_callback)))
-                .map_err(|e| ::CreationError::OsError(format!("emscripten error: {}", e)))?;
-            em_try(ffi::emscripten_set_mousedown_callback(DOCUMENT_NAME.as_ptr() as *const c_char, mem::transmute(&*window.window.events), ffi::EM_FALSE, Some(mouse_callback)))
-                .map_err(|e| ::CreationError::OsError(format!("emscripten error: {}", e)))?;
-            em_try(ffi::emscripten_set_mouseup_callback(DOCUMENT_NAME.as_ptr() as *const c_char, mem::transmute(&*window.window.events), ffi::EM_FALSE, Some(mouse_callback)))
-                .map_err(|e| ::CreationError::OsError(format!("emscripten error: {}", e)))?;
-            em_try(ffi::emscripten_set_keydown_callback(DOCUMENT_NAME.as_ptr() as *const c_char, mem::transmute(&*window.window.events), ffi::EM_FALSE, Some(keyboard_callback)))
-                .map_err(|e| ::CreationError::OsError(format!("emscripten error: {}", e)))?;
-            em_try(ffi::emscripten_set_keyup_callback(DOCUMENT_NAME.as_ptr() as *const c_char, mem::transmute(&*window.window.events), ffi::EM_FALSE, Some(keyboard_callback)))
-                .map_err(|e| ::CreationError::OsError(format!("emscripten error: {}", e)))?;
-            em_try(ffi::emscripten_set_touchstart_callback(DOCUMENT_NAME.as_ptr() as *const c_char, mem::transmute(&*window.window.events), ffi::EM_FALSE, Some(touch_callback)))
-                .map_err(|e| ::CreationError::OsError(format!("emscripten error: {}", e)))?;
-            em_try(ffi::emscripten_set_touchend_callback(DOCUMENT_NAME.as_ptr() as *const c_char, mem::transmute(&*window.window.events), ffi::EM_FALSE, Some(touch_callback)))
-                .map_err(|e| ::CreationError::OsError(format!("emscripten error: {}", e)))?;
-            em_try(ffi::emscripten_set_touchmove_callback(DOCUMENT_NAME.as_ptr() as *const c_char, mem::transmute(&*window.window.events), ffi::EM_FALSE, Some(touch_callback)))
-                .map_err(|e| ::CreationError::OsError(format!("emscripten error: {}", e)))?;
-            em_try(ffi::emscripten_set_touchcancel_callback(DOCUMENT_NAME.as_ptr() as *const c_char, mem::transmute(&*window.window.events), ffi::EM_FALSE, Some(touch_callback)))
-                .map_err(|e| ::CreationError::OsError(format!("emscripten error: {}", e)))?;
+            let doc_name = DOCUMENT_NAME.as_ptr() as *const c_char;
+            let canvas_name = CANVAS_NAME.as_ptr() as *const c_char;
+            let ev_loop = mem::transmute(&*window.window.events);
+
+            let try_set = |res : ffi::EM_BOOL| { em_try(res).map_err(|e| ::CreationError::OsError(format!("emscripten error: {}", e))) };
+
+            try_set(ffi::emscripten_set_mousemove_callback(doc_name, ev_loop, ffi::EM_FALSE, Some(mouse_callback)))?;
+            try_set(ffi::emscripten_set_mousedown_callback(doc_name, ev_loop, ffi::EM_FALSE, Some(mouse_callback)))?;
+            try_set(ffi::emscripten_set_mouseup_callback(doc_name, ev_loop, ffi::EM_FALSE, Some(mouse_callback)))?;
+            try_set(ffi::emscripten_set_keydown_callback(doc_name, ev_loop, ffi::EM_FALSE, Some(keyboard_callback)))?;
+            try_set(ffi::emscripten_set_keyup_callback(doc_name, ev_loop, ffi::EM_FALSE, Some(keyboard_callback)))?;
+            try_set(ffi::emscripten_set_touchstart_callback(doc_name, ev_loop, ffi::EM_FALSE, Some(touch_callback)))?;
+            try_set(ffi::emscripten_set_touchend_callback(doc_name, ev_loop, ffi::EM_FALSE, Some(touch_callback)))?;
+            try_set(ffi::emscripten_set_touchmove_callback(doc_name, ev_loop, ffi::EM_FALSE, Some(touch_callback)))?;
+            try_set(ffi::emscripten_set_touchcancel_callback(doc_name, ev_loop, ffi::EM_FALSE, Some(touch_callback)))?;
+            try_set(ffi::emscripten_set_resize_callback(canvas_name, ev_loop, ffi::EM_FALSE, Some(resize_callback)))?;
+            try_set(ffi::emscripten_set_wheel_callback(ptr::null(), ev_loop, ffi::EM_FALSE, Some(wheel_callback)))?;
+
+            if attribs.fullscreen.is_some() {
+                try_set(ffi::emscripten_request_fullscreen(ptr::null(), ffi::EM_TRUE))?;
+                try_set(ffi::emscripten_set_fullscreenchange_callback(ptr::null(), 0 as *mut c_void, ffi::EM_FALSE, Some(fullscreen_callback)))?
+            } else if let Some(size) = attribs.dimensions {
+                window.set_inner_size(size);
+            }
         }
 
-        if attribs.fullscreen.is_some() {
-            unsafe {
-                em_try(ffi::emscripten_request_fullscreen(ptr::null(), ffi::EM_TRUE))
-                    .map_err(|e| ::CreationError::OsError(e))?;
-                em_try(ffi::emscripten_set_fullscreenchange_callback(ptr::null(), 0 as *mut c_void, ffi::EM_FALSE, Some(fullscreen_callback)))
-                    .map_err(|e| ::CreationError::OsError(e))?;
-            }
-        } else if let Some(size) = attribs.dimensions {
-            window.set_inner_size(size);
-        }
+
 
         *events_loop.window.lock().unwrap() = Some(window.window.clone());
         Ok(window)
@@ -433,8 +485,7 @@ impl Window {
     }
 
     #[inline]
-    pub fn set_title(&self, _title: &str) {
-    }
+    pub fn set_title(&self, _title: &str) {}
 
     #[inline]
     pub fn get_position(&self) -> Option<LogicalPosition> {
@@ -447,8 +498,7 @@ impl Window {
     }
 
     #[inline]
-    pub fn set_position(&self, _: LogicalPosition) {
-    }
+    pub fn set_position(&self, _: LogicalPosition) {}
 
     #[inline]
     pub fn get_inner_size(&self) -> Option<LogicalSize> {
@@ -459,9 +509,9 @@ impl Window {
 
             if ffi::emscripten_get_canvas_size(&mut width, &mut height, &mut fullscreen)
                 != ffi::EMSCRIPTEN_RESULT_SUCCESS
-            {
-                None
-            } else {
+                {
+                    None
+                } else {
                 let dpi_factor = self.get_hidpi_factor();
                 let logical = LogicalSize::from_physical((width as u32, height as u32), dpi_factor);
                 Some(logical)
@@ -480,6 +530,7 @@ impl Window {
             let dpi_factor = self.get_hidpi_factor();
             let physical = PhysicalSize::from_logical(size, dpi_factor);
             let (width, height): (u32, u32) = physical.into();
+            ffi::emscripten_set_canvas_size(width as _, height as _);
             ffi::emscripten_set_element_css_size(
                 ptr::null(),
                 width as c_double,
@@ -635,8 +686,8 @@ impl Drop for Window {
             }
 
             // Delete callbacks
-            ffi::emscripten_set_keydown_callback(DOCUMENT_NAME.as_ptr() as *const c_char, 0 as *mut c_void, ffi::EM_FALSE,None);
-            ffi::emscripten_set_keyup_callback(DOCUMENT_NAME.as_ptr() as *const c_char, 0 as *mut c_void, ffi::EM_FALSE,None);
+            ffi::emscripten_set_keydown_callback(DOCUMENT_NAME.as_ptr() as *const c_char, 0 as *mut c_void, ffi::EM_FALSE, None);
+            ffi::emscripten_set_keyup_callback(DOCUMENT_NAME.as_ptr() as *const c_char, 0 as *mut c_void, ffi::EM_FALSE, None);
         }
     }
 }
@@ -644,7 +695,7 @@ impl Drop for Window {
 fn error_to_str(code: ffi::EMSCRIPTEN_RESULT) -> &'static str {
     match code {
         ffi::EMSCRIPTEN_RESULT_SUCCESS | ffi::EMSCRIPTEN_RESULT_DEFERRED
-            => "Internal error in the library (success detected as failure)",
+        => "Internal error in the library (success detected as failure)",
 
         ffi::EMSCRIPTEN_RESULT_NOT_SUPPORTED => "Not supported",
         ffi::EMSCRIPTEN_RESULT_FAILED_NOT_DEFERRED => "Failed not deferred",
@@ -663,7 +714,7 @@ fn key_translate(input: [ffi::EM_UTF8; ffi::EM_HTML5_SHORT_STRING_LEN_BYTES]) ->
     let maybe_key = unsafe { str::from_utf8(mem::transmute::<_, &[u8]>(slice)) };
     let key = match maybe_key {
         Ok(key) => key,
-        Err(_) => { return 0; },
+        Err(_) => { return 0; }
     };
     if key.chars().count() == 1 {
         key.as_bytes()[0]
@@ -679,7 +730,7 @@ fn key_translate_virt(input: [ffi::EM_UTF8; ffi::EM_HTML5_SHORT_STRING_LEN_BYTES
     let maybe_key = unsafe { str::from_utf8(mem::transmute::<_, &[u8]>(slice)) };
     let key = match maybe_key {
         Ok(key) => key,
-        Err(_) => { return None; },
+        Err(_) => { return None; }
     };
     use VirtualKeyCode::*;
     match key {

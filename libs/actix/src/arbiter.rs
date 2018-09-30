@@ -5,8 +5,7 @@ use std::thread;
 use futures::sync::oneshot::{channel, Sender};
 use futures::{future, Future, IntoFuture};
 
-use runtime::spawn;
-use runtime::Runtime;
+use runtime::{self, Runtime};
 
 use uuid::Uuid;
 
@@ -148,7 +147,7 @@ impl Arbiter {
         Q.with(|cell| {
             let mut v = cell.borrow_mut();
             for fut in v.drain(..) {
-                spawn(fut);
+                runtime::spawn(fut);
             }
         });
     }
@@ -183,12 +182,12 @@ impl Arbiter {
 
     /// Executes a future on the current thread.
     pub fn spawn<F>(future: F)
-    where
-        F: Future<Item = (), Error = ()> + 'static,
+        where
+            F: Future<Item=(), Error=()> + 'static,
     {
         RUNNING.with(move |cell| {
             if cell.get() {
-                spawn(Box::new(future));
+                runtime::spawn(Box::new(future));
             } else {
                 Q.with(move |cell| cell.borrow_mut().push(Box::new(future)));
             }
@@ -197,9 +196,9 @@ impl Arbiter {
 
     /// Executes a future on the current thread.
     pub fn spawn_fn<F, R>(f: F)
-    where
-        F: FnOnce() -> R + 'static,
-        R: IntoFuture<Item = (), Error = ()> + 'static,
+        where
+            F: FnOnce() -> R + 'static,
+            R: IntoFuture<Item=(), Error=()> + 'static,
     {
         Arbiter::spawn(future::lazy(f))
     }
@@ -208,7 +207,7 @@ impl Arbiter {
     /// Returns `Addr<Syn, A>` of created actor.
     pub fn start<A, F>(f: F) -> Addr<A>
         where
-            A: Actor<Context = Context<A>>,
+            A: Actor<Context=Context<A>>,
             F: FnOnce(&mut A::Context) -> A + Send + 'static,
     {
         Arbiter::builder().start(f)
@@ -216,7 +215,7 @@ impl Arbiter {
 
     fn start_with_builder<A, F>(builder: Builder, f: F) -> Addr<A>
         where
-            A: Actor<Context = Context<A>>,
+            A: Actor<Context=Context<A>>,
             F: FnOnce(&mut A::Context) -> A + Send + 'static,
     {
         let (stx, srx) = channel::channel(DEFAULT_CAPACITY);
@@ -229,7 +228,7 @@ impl Arbiter {
             let mut ctx = Context::with_receiver(srx);
             let act = f(&mut ctx);
             let fut = ctx.into_future(act);
-            spawn(fut);
+            runtime::spawn(fut);
             Ok(())
         }));
 
@@ -248,8 +247,8 @@ impl Handler<StopArbiter> for Arbiter {
 }
 
 impl<A> Handler<StartActor<A>> for Arbiter
-where
-    A: Actor<Context = Context<A>>,
+    where
+        A: Actor<Context=Context<A>>,
 {
     type Result = Addr<A>;
 
@@ -308,7 +307,7 @@ impl Builder {
     /// Returns `Addr<Syn, A>` of created actor.
     pub fn start<A, F>(self, f: F) -> Addr<A>
         where
-            A: Actor<Context = Context<A>>,
+            A: Actor<Context=Context<A>>,
             F: FnOnce(&mut A::Context) -> A + Send + 'static,
     {
         Arbiter::start_with_builder(self, f)

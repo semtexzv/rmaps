@@ -26,7 +26,6 @@ macro_rules! extensions {
         ///
         pub unsafe fn get_extensions(gl: &gl::Gl, version: &Version) -> ExtensionsList {
             let strings = get_extensions_strings(gl, version);
-            println!("Ext strings : {:?}",strings);
             let mut extensions = ExtensionsList {
                 $(
                     $field: false,
@@ -219,6 +218,7 @@ unsafe fn get_extensions_strings(gl: &gl::Gl, version: &Version) -> Vec<String> 
     // So we force the legacy code
     if cfg!(target_os = "emscripten") {
         modern_available = false;
+
     }
 
     if modern_available  {

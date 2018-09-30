@@ -41,6 +41,16 @@ impl Context {
             attributes.minorVersion = minor as _;
         }
 
+        if let Some(_) = _pf_reqs.alpha_bits {
+            attributes.alpha = 1;
+        }
+        if let Some(_) = _pf_reqs.depth_bits {
+            attributes.depth = 1;
+        }
+        if let Some (stencil) = _pf_reqs.stencil_bits {
+            attributes.stencil = 1;
+        }
+
         // creating the context
         let context = unsafe {
             use std::{mem, ptr};

@@ -43,7 +43,6 @@ impl Runtime {
             stdweb::PromiseFuture::spawn(act);
 
             let data = 'l: loop {
-                //println!("Draining");
                 stdweb::webcore::executor::EventLoop.drain();
                 match rx.try_recv() {
                     Ok(o) => {
