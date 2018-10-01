@@ -7,12 +7,14 @@ prepend-js = "src/setup.js"
 link-args = [
 "-s","USE_WEBGL2=1",
 "-s","FULL_ES3=1",
+"-s", "TOTAL_MEMORY=64MB",
 "-s","ALLOW_MEMORY_GROWTH=1",
+"-s","TOTAL_STACK=16MB",
 
 "-s","ASSERTIONS=2",
 
 "-s","SAFE_HEAP=1",
-#"-s","DETERMINISTIC=1",
+"-s","DETERMINISTIC=1",
 #"-s","EMULATE_FUNCTION_POINTER_CASTS=1",
 #"-s","BINARYEN_METHOD=\"native-wasm\"",
 

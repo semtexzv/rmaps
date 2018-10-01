@@ -9,7 +9,10 @@ panic = "abort"
 [profile.release]
 debug-assertions =true
 debug = true
-
+opt-level = 3
+#codegen-units = 1
+# Panic =unwind not working on wasm32
+panic = "abort"
 
 [replace]
 "actix:0.7.4" = { path = "./libs/actix" }

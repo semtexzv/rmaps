@@ -58,25 +58,28 @@ impl MonitorId {
 }
 
 // Used to assign a callback to emscripten main loop
-thread_local!(static MAIN_LOOP_CALLBACK: RefCell<*mut c_void> = RefCell::new(ptr::null_mut()));
+thread_local!(static MAIN_LOOP_CALLBACK: RefCell<Option<Box<FnMut()>>> = RefCell::new(None));
 
 // Used to assign a callback to emscripten main loop
 pub fn set_main_loop_callback<F>(callback: F) where F: FnMut() {
-    MAIN_LOOP_CALLBACK.with(|log| {
-        *log.borrow_mut() = &callback as *const _ as *mut c_void;
-    });
-
-
     unsafe {
-        ffi::emscripten_cancel_main_loop();
-        ffi::emscripten_set_main_loop(Some(wrapper::<F>), 0, 1);
-    }
-
-    unsafe extern "C" fn wrapper<F>() where F: FnMut() {
-        MAIN_LOOP_CALLBACK.with(|z| {
-            let closure = *z.borrow_mut() as *mut F;
-            (*closure)();
+        MAIN_LOOP_CALLBACK.with(|log| {
+            *log.borrow_mut() = Some(mem::transmute::<Box<FnMut()>, Box<FnMut() + 'static>>(Box::new(callback)));
         });
+
+
+        unsafe {
+            ffi::emscripten_cancel_main_loop();
+            ffi::emscripten_set_main_loop(Some(wrapper), 0, 1);
+        }
+
+        unsafe extern "C" fn wrapper() {
+            MAIN_LOOP_CALLBACK.with(|ref mut z| {
+                if let Some(ref mut cb) = *z.borrow_mut() {
+                    cb();
+                }
+            });
+        }
     }
 }
 

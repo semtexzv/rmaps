@@ -54,6 +54,7 @@ use glium::index::PrimitiveType;
 fn main() {
     stdweb::initialize();
     common::init_log();
+//    panic!("Should abort");
 
     let mut events_loop = glutin::EventsLoop::new();
     let window = glutin::WindowBuilder::new()
@@ -67,9 +68,9 @@ fn main() {
     let display = glium::Display::new(window, context, &events_loop).unwrap();
 
     let mut map = rmaps::map::MapView::<types::WebTypes>::new(&display.clone());
-    //map.set_style_url("mapbox://styles/semtexzv/cjjjv418k6m0b2rok0oiejd4i");
+    map.set_style_url("mapbox://styles/semtexzv/cjjjv418k6m0b2rok0oiejd4i");
     //map.set_style_url("mapbox://styles/semtexzv/cjmlvlcf3qyqu2rniv6m2oxlu");
-    map.set_style_url("mapbox://styles/semtexzv/cjmmc76cxrxs72ss4k8u81ikd");
+    //map.set_style_url("mapbox://styles/semtexzv/cjmmc76cxrxs72ss4k8u81ikd");
 
     let size = display.get_framebuffer_dimensions();
     map.window_resized(PixelSize::new(size.0, size.1));
