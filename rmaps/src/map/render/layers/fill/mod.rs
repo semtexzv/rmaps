@@ -140,7 +140,7 @@ impl layers::BucketLayer for FillLayer {
                     u_matrix : matrix,
                     feature_data_ubo :  &bucket.feature_data,
                     u_image : texture,
-                    u_tex_scale : 1024f32,
+                    u_tex_scale : 2048f32,
                     u_pattern_tl : sprite.tl,
                     u_pattern_br : sprite.br,
                     u_texsize : texsize,

@@ -1,3 +1,4 @@
 0000000000000000000000000000000000000000 7c55aadf432e1bea5db26d60a5737fd6bb38fddf Michal Hornický <semtexzv@gmail.com> 1537981690 +0200	clone: from https://github.com/actix/actix
 7c55aadf432e1bea5db26d60a5737fd6bb38fddf 7c55aadf432e1bea5db26d60a5737fd6bb38fddf Michal Hornický <semtexzv@gmail.com> 1537986308 +0200	reset: moving to HEAD
 7c55aadf432e1bea5db26d60a5737fd6bb38fddf 5dd634bf0eaf2b3e59ffd3cddd8329ce94f7f7ac Michal Hornický <semtexzv@gmail.com> 1537988903 +0200	commit: Example support for multiple runtimes
+5dd634bf0eaf2b3e59ffd3cddd8329ce94f7f7ac bdf99e4f1225b7353b958497c3d36b724d59a4d1 Michal Hornický <semtexzv@gmail.com> 1538592659 +0200	commit: Wasm runtime

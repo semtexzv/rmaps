@@ -13,7 +13,7 @@ pub mod background;
 pub mod raster;
 
 pub mod fill;
-//pub mod line;
+pub mod line;
 
 #[repr(C)]
 #[derive(Debug, Clone, Copy, Vertex)]
@@ -239,7 +239,7 @@ pub fn parse_style_layers(facade: &Display, style: &style::Style) -> Vec<Box<dyn
                 res.push(box BucketLayerHolder::new(fill::FillLayer::new(facade, l)))
             }
             style::BaseStyleLayer::Line(l) => {
-                //res.push(box BucketLayerHolder::new(line::LineLayer::new(facade, l)))
+                res.push(box BucketLayerHolder::new(line::LineLayer::new(facade, l)))
             }
             style::BaseStyleLayer::Raster(l) => {
                 res.push(box BucketLayerHolder::new(raster::RasterLayer::new(facade, l)))

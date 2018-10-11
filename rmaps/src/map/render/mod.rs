@@ -129,7 +129,7 @@ impl Renderer {
         }
     }
     pub fn render<I: ::map::pal::Platform>(&mut self, mut params: RendererParams<I>) -> Result<()> {
-        params.frame.clear_color(0., 0., 1., 1.);
+        params.frame.clear_color(0., 0., 0., 1.);
         params.frame.clear_stencil(0xFF);
 
         let camera = params.camera;

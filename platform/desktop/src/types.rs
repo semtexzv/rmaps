@@ -22,12 +22,24 @@ impl pal::Platform for DesktopTypes {
 
     fn spawn_actor<A, F>(create: F) -> Addr<A> where A: Actor<Context=Context<A>> + Send + 'static,
                                                      F: FnOnce() -> A + Send + 'static {
-        use actix::Context;
+        /*use actix::Context;
 
         let ctx = Context::<A>::new();
         let act = create();
 
         return ctx.run(act);
+        */
+        let (tx, rx) = ::std::sync::mpsc::channel();
+        ::std::thread::spawn(move || {
+            let sys = System::new("");
+
+            let actor = create();
+            let addr = actor.start();
+            let _ = tx.send(addr);
+            let _ = sys.run();
+        });
+
+        rx.recv().unwrap()
     }
 }
 
@@ -63,15 +75,20 @@ impl pal::HttpClient for DesktopHttpClient {
 
         let req = client::get(request.uri().to_string()).body(request.into_body()).unwrap();
         let sent = req.send();
-        let resp = sent.then(|resp| {
-            let r = resp.unwrap();
-            let status = r.status();
-            r.body().then(move |body|
-                http::Response::builder()
-                    .status(status)
-                    .body(body.unwrap().into())
-            )
-        });
+
+        let to = ::std::time::Duration::from_secs(10);
+        let resp = sent.timeout(to)
+            .conn_timeout(to)
+            .wait_timeout(to)
+            .then(|resp| {
+                let r = resp.unwrap();
+                let status = r.status();
+                r.body().then(move |body|
+                    http::Response::builder()
+                        .status(status)
+                        .body(body.unwrap().into())
+                )
+            });
 
 
         Box::new(resp)
